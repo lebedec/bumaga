@@ -1,33 +1,116 @@
-use lightningcss::properties::align::{AlignContent, AlignItems, AlignSelf, BaselinePosition, ContentDistribution, ContentPosition, GapValue, JustifyContent, JustifyItems, JustifySelf, SelfPosition};
+use lightningcss::properties::align::{AlignContent, AlignItems, AlignSelf, ContentDistribution, ContentPosition, GapValue, JustifyContent, JustifyItems, JustifySelf, SelfPosition};
 use lightningcss::properties::border::BorderSideWidth;
 use lightningcss::properties::display::{Display, DisplayInside, DisplayKeyword, DisplayOutside};
 use lightningcss::properties::flex::{FlexDirection, FlexWrap};
+use lightningcss::properties::font::{FontSize};
 use lightningcss::properties::grid::{GridAutoFlow, GridColumn, GridLine, GridRow, RepeatCount, TrackBreadth, TrackListItem, TrackSize, TrackSizing};
 use lightningcss::properties::overflow::OverflowKeyword;
 use lightningcss::properties::position::Position;
 use lightningcss::properties::Property;
 use lightningcss::properties::size::{MaxSize, Size};
 use lightningcss::values::color::CssColor;
+use lightningcss::values::image::Image;
 use lightningcss::values::length::{Length, LengthPercentage, LengthPercentageOrAuto, LengthValue};
-use lightningcss::values::ratio::Ratio;
 use log::error;
 use taffy::{Dimension, GridPlacement, GridTrackRepetition, LengthPercentageAuto, Line, Overflow, Style, TrackSizingFunction};
-use taffy::prelude::{FromFlex, FromPercent, length, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
+use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
 use crate::{Rectangle, Ruleset, SizeContext};
 use taffy::prelude::FromLength;
 use taffy::prelude::TaffyAuto;
 
-pub fn apply_rectangle_rules<'i>(ruleset: &Ruleset<'i>, rectangle: &mut Rectangle<'i>) {
+pub fn inherit<'i>(parent: &Rectangle, rectangle: &mut Rectangle) {
+    // border-collapse
+    // border-spacing
+    // caption-side
+    // color
+    rectangle.color = parent.color;
+    // cursor
+    // direction
+    // empty-cells
+    // font-family
+    // font-size
+    rectangle.font_size = parent.font_size;
+    // font-style
+    // font-variant
+    // font-weight
+    // font-size-adjust
+    // font-stretch
+    // font
+    // letter-spacing
+    // line-height
+    // list-style-image
+    // list-style-position
+    // list-style-type
+    // list-style
+    // orphans
+    // quotes
+    // tab-size
+    // text-align
+    // text-align-last
+    // text-decoration-color
+    // text-indent
+    // text-justify
+    // text-shadow
+    // text-transform
+    // visibility
+    // white-space
+    // widows
+    // word-break
+    // word-spacing
+    // word-wrap
+}
+
+pub fn apply_rectangle_rules<'i>(ruleset: &Ruleset<'i>, parent: &Rectangle, rectangle: &mut Rectangle, context: SizeContext) {
+    inherit(parent, rectangle);
     for property in &ruleset.style.declarations.declarations {
         match property {
             Property::Background(background) => {
-                rectangle.background = background[0].clone()
+                if background.len() > 1 {
+                    error!("multiple background not supported");
+                }
+                let background = &background[0];
+                rectangle.background.color = background.color.clone();
+                rectangle.background.image = match &background.image {
+                    Image::None => None,
+                    Image::Url(url) => Some(url.url.to_string()),
+                    image => {
+                        error!("background image {image:?} not supported");
+                        None
+                    }
+                };
+                rectangle.background.position = background.position.clone();
+                rectangle.background.repeat = background.repeat.clone();
+                rectangle.background.size = background.size.clone();
+                rectangle.background.attachment = background.attachment.clone();
+                rectangle.background.clip = background.clip.clone();
+                rectangle.background.origin = background.origin.clone();
             }
+            Property::BackgroundColor(color) => rectangle.background.color = color.clone(),
+            Property::BackgroundImage(image) => rectangle.background.image = match &image[0] {
+                Image::None => None,
+                Image::Url(url) => Some(url.url.to_string()),
+                image => {
+                    error!("background image {image:?} not supported");
+                    None
+                }
+            },
+            Property::BackgroundPosition(position) => rectangle.background.position = position[0].clone(),
+            Property::BackgroundPositionX(position) => rectangle.background.position.x = position[0].clone(),
+            Property::BackgroundPositionY(position) => rectangle.background.position.y = position[0].clone(),
+            Property::BackgroundRepeat(repeat) => rectangle.background.repeat = repeat[0].clone(),
+            Property::BackgroundSize(size) => rectangle.background.size = size[0].clone(),
+            Property::BackgroundAttachment(attach) => rectangle.background.attachment = attach[0].clone(),
+            Property::BackgroundClip(clip, _) => rectangle.background.clip = clip[0].clone(),
+            Property::BackgroundOrigin(origin) => rectangle.background.origin = origin[0].clone(),
             Property::Color(color) => {
                 match color {
                     CssColor::RGBA(color) => rectangle.color = *color,
                     color => error!("color {color:?} not supported")
                 };
+            }
+            Property::FontSize(size) => rectangle.font_size = resolve_font_size(size, context),
+            Property::Font(font) => {
+                rectangle.font_size = resolve_font_size(&font.size, context)
             }
             _ => {}
         }
@@ -36,7 +119,6 @@ pub fn apply_rectangle_rules<'i>(ruleset: &Ruleset<'i>, rectangle: &mut Rectangl
 
 pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeContext) {
     for property in &ruleset.style.declarations.declarations {
-        println!("PROP {property:?}");
         match property {
             Property::Display(value) => match value {
                 Display::Keyword(keyword) => match keyword {
@@ -133,7 +215,7 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
                 AlignItems::Stretch => style.align_items = Some(taffy::AlignItems::Stretch),
                 AlignItems::BaselinePosition(_) => style.align_items = Some(taffy::AlignItems::Baseline),
                 AlignItems::SelfPosition { value, .. } => style.align_items = map_self_position(value),
-                align => error!("align {align:?} not supported")
+                // align => error!("align {align:?} not supported")
             },
             Property::AlignSelf(align, _) => match align {
                 AlignSelf::Auto => style.align_self = None,
@@ -141,7 +223,7 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
                 AlignSelf::Stretch => style.align_self = Some(taffy::AlignSelf::Stretch),
                 AlignSelf::BaselinePosition(_) => style.align_self = Some(taffy::AlignSelf::Baseline),
                 AlignSelf::SelfPosition { value, .. } => style.align_self = map_self_position(value),
-                align => error!("align {align:?} not supported")
+                // align => error!("align {align:?} not supported")
             }
             Property::JustifyItems(justify) => match justify {
                 JustifyItems::Normal => style.justify_items = None,
@@ -220,10 +302,10 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
             }
             Property::GridTemplateRows(rows) => style.grid_template_rows = map_track_sizing(rows, context),
             Property::GridTemplateColumns(rows) => style.grid_template_columns = map_track_sizing(rows, context),
-            Property::GridAutoColumns(columns) => {
+            Property::GridAutoColumns(_columns) => {
                 error!("grid auto columns not supported");
             }
-            Property::GridAutoRows(rows) => {
+            Property::GridAutoRows(_rows) => {
                 error!("grid auto rows not supported");
                 // style.grid_auto_rows = map_track_sizing(rows, context);
             }
@@ -318,6 +400,40 @@ fn map_track_sizing(sizing: &TrackSizing, context: SizeContext) -> Vec<TrackSizi
                 result.push(map_track_item(item, context));
             }
             result
+        }
+    }
+}
+
+fn resolve_font_size(size: &FontSize, context: SizeContext) -> f32 {
+    match size {
+        FontSize::Length(size) => match size {
+            LengthPercentage::Dimension(size) => match size {
+                LengthValue::Px(value) => *value,
+                LengthValue::Em(value) => context.parent_font_size * value,
+                LengthValue::Rem(value) => context.root_font_size * value,
+                LengthValue::Vw(value) => context.viewport_width * value / 100.0,
+                LengthValue::Vh(value) => context.viewport_height * value / 100.0,
+                size => {
+                    error!("font size {size:?} not supported");
+                    context.parent_font_size
+                }
+            }
+            size => {
+                error!("font size {size:?} not supported");
+                context.parent_font_size
+            }
+        }
+        FontSize::Absolute(size) => match size {
+            size => {
+                error!("font size {size:?} not supported");
+                context.parent_font_size
+            },
+        }
+        FontSize::Relative(size) => match size {
+            size => {
+                error!("font size {size:?} not supported");
+                context.parent_font_size
+            }
         }
     }
 }
@@ -463,7 +579,7 @@ fn map_grid_line(line: &GridLine) -> GridPlacement {
 }
 
 impl Resolver<Line<GridPlacement>> for GridRow<'_> {
-    fn resolve(&self, context: SizeContext) -> Line<GridPlacement> {
+    fn resolve(&self, _context: SizeContext) -> Line<GridPlacement> {
         Line {
             start: map_grid_line(&self.start),
             end: map_grid_line(&self.end),
@@ -472,7 +588,7 @@ impl Resolver<Line<GridPlacement>> for GridRow<'_> {
 }
 
 impl Resolver<Line<GridPlacement>> for GridColumn<'_> {
-    fn resolve(&self, context: SizeContext) -> Line<GridPlacement> {
+    fn resolve(&self, _context: SizeContext) -> Line<GridPlacement> {
         Line {
             start: map_grid_line(&self.start),
             end: map_grid_line(&self.end),
