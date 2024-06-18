@@ -1,0 +1,13 @@
+[package]
+name = "bumaga"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+scraper="0.19.0"
+ego-tree = "0.6.2"
+lightningcss = { version = "1.0.0-alpha.57", default-features = false, features = ["grid"] }
+taffy = "0.5.1"
+serde = "1.0"
+serde_json = "1.0"
+log = "0.4"

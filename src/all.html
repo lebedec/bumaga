@@ -1,0 +1,68 @@
+<html>
+<style>
+    * {
+        font-family: monospace;
+        font-size: 15px;
+    }
+
+    .something {
+        background: red;
+        padding: 8px;
+    }
+
+    .boris {
+        background: violet;
+
+    }
+
+    button {
+        padding: 8px;
+        outline: none;
+        border: none;
+        background: violet;
+    }
+
+    @keyframes animation-name {
+        0% {
+            color: pink;
+        }
+        50% {
+            color: yellow;
+        }
+        100% {
+            color: blue;
+        }
+    }
+</style>
+<body>
+Hello, {name}!
+<h1 ?="myCondition">
+    Condition A
+</h1>
+<h1 !="myCondition" @="value">
+    {warning Warning condition}
+</h1>
+<div class="something boris?condition" data-repeat="items">$items</div>
+<div *="units">
+    <div>Health: <span >10</span></div>
+    <div>Mana: {units.mana}</div>
+</div>
+<div id="panel" *="units:unit:unit.id">
+    <div>Health: {unit.health}</div>
+    <div>Mana: {unit.boris}</div>
+</div>
+<div @="bigObject">
+    <div translate>{propertyA}</div>
+    <div +="$propertyB">Something</div>
+</div>
+<div @="bigObject">
+    <div translate @="bigObject.propertyA">My super property</div>
+    <div +="$bigObject.propertyB">Something</div>
+</div>
+<button onclick="doSomething(id)">Click me</button>
+<label>
+    Value:
+    <input name="myString" value="myString" onchange="changeSomething()"/>
+</label>
+</body>
+</html>
