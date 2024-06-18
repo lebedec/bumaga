@@ -1,406 +1,40 @@
-use lightningcss::properties::align::{AlignContent, AlignItems, AlignSelf, BaselinePosition, ContentDistribution, ContentPosition, JustifyContent, JustifyItems, JustifySelf, SelfPosition};
+use lightningcss::properties::align::{AlignContent, AlignItems, AlignSelf, BaselinePosition, ContentDistribution, ContentPosition, GapValue, JustifyContent, JustifyItems, JustifySelf, SelfPosition};
 use lightningcss::properties::border::BorderSideWidth;
 use lightningcss::properties::display::{Display, DisplayInside, DisplayKeyword, DisplayOutside};
+use lightningcss::properties::flex::{FlexDirection, FlexWrap};
+use lightningcss::properties::grid::{GridAutoFlow, GridColumn, GridLine, GridRow, RepeatCount, TrackBreadth, TrackListItem, TrackSize, TrackSizing};
 use lightningcss::properties::overflow::OverflowKeyword;
 use lightningcss::properties::position::Position;
 use lightningcss::properties::Property;
 use lightningcss::properties::size::{MaxSize, Size};
+use lightningcss::values::color::CssColor;
 use lightningcss::values::length::{Length, LengthPercentage, LengthPercentageOrAuto, LengthValue};
 use lightningcss::values::ratio::Ratio;
 use log::error;
-use taffy::{Dimension, LengthPercentageAuto, Overflow, Style};
-use taffy::prelude::length;
+use taffy::{Dimension, GridPlacement, GridTrackRepetition, LengthPercentageAuto, Line, Overflow, Style, TrackSizingFunction};
+use taffy::prelude::{FromFlex, FromPercent, length, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
 use crate::{Rectangle, Ruleset, SizeContext};
+use taffy::prelude::FromLength;
+use taffy::prelude::TaffyAuto;
 
 pub fn apply_rectangle_rules<'i>(ruleset: &Ruleset<'i>, rectangle: &mut Rectangle<'i>) {
     for property in &ruleset.style.declarations.declarations {
         match property {
-            Property::BackgroundColor(_) => {}
-            Property::BackgroundImage(_) => {}
-            Property::BackgroundPositionX(_) => {}
-            Property::BackgroundPositionY(_) => {}
-            Property::BackgroundPosition(_) => {}
-            Property::BackgroundSize(_) => {}
-            Property::BackgroundRepeat(_) => {}
-            Property::BackgroundAttachment(_) => {}
-            Property::BackgroundClip(_, _) => {}
-            Property::BackgroundOrigin(_) => {}
             Property::Background(background) => {
                 rectangle.background = background[0].clone()
             }
-            Property::BoxShadow(_, _) => {}
-            Property::Opacity(_) => {}
-            Property::Color(_) => {}
-            Property::Display(_) => {}
-            Property::Visibility(_) => {}
-            Property::Width(_) => {}
-            Property::Height(_) => {}
-            Property::MinWidth(_) => {}
-            Property::MinHeight(_) => {}
-            Property::MaxWidth(_) => {}
-            Property::MaxHeight(_) => {}
-            Property::BlockSize(_) => {}
-            Property::InlineSize(_) => {}
-            Property::MinBlockSize(_) => {}
-            Property::MinInlineSize(_) => {}
-            Property::MaxBlockSize(_) => {}
-            Property::MaxInlineSize(_) => {}
-            Property::BoxSizing(_, _) => {}
-            Property::AspectRatio(_) => {}
-            Property::Overflow(_) => {}
-            Property::OverflowX(_) => {}
-            Property::OverflowY(_) => {}
-            Property::TextOverflow(_, _) => {}
-            Property::Position(_) => {}
-            Property::Top(_) => {}
-            Property::Bottom(_) => {}
-            Property::Left(_) => {}
-            Property::Right(_) => {}
-            Property::InsetBlockStart(_) => {}
-            Property::InsetBlockEnd(_) => {}
-            Property::InsetInlineStart(_) => {}
-            Property::InsetInlineEnd(_) => {}
-            Property::InsetBlock(_) => {}
-            Property::InsetInline(_) => {}
-            Property::Inset(_) => {}
-            Property::BorderSpacing(_) => {}
-            Property::BorderTopColor(_) => {}
-            Property::BorderBottomColor(_) => {}
-            Property::BorderLeftColor(_) => {}
-            Property::BorderRightColor(_) => {}
-            Property::BorderBlockStartColor(_) => {}
-            Property::BorderBlockEndColor(_) => {}
-            Property::BorderInlineStartColor(_) => {}
-            Property::BorderInlineEndColor(_) => {}
-            Property::BorderTopStyle(_) => {}
-            Property::BorderBottomStyle(_) => {}
-            Property::BorderLeftStyle(_) => {}
-            Property::BorderRightStyle(_) => {}
-            Property::BorderBlockStartStyle(_) => {}
-            Property::BorderBlockEndStyle(_) => {}
-            Property::BorderInlineStartStyle(_) => {}
-            Property::BorderInlineEndStyle(_) => {}
-            Property::BorderTopWidth(_) => {}
-            Property::BorderBottomWidth(_) => {}
-            Property::BorderLeftWidth(_) => {}
-            Property::BorderRightWidth(_) => {}
-            Property::BorderBlockStartWidth(_) => {}
-            Property::BorderBlockEndWidth(_) => {}
-            Property::BorderInlineStartWidth(_) => {}
-            Property::BorderInlineEndWidth(_) => {}
-            Property::BorderTopLeftRadius(_, _) => {}
-            Property::BorderTopRightRadius(_, _) => {}
-            Property::BorderBottomLeftRadius(_, _) => {}
-            Property::BorderBottomRightRadius(_, _) => {}
-            Property::BorderStartStartRadius(_) => {}
-            Property::BorderStartEndRadius(_) => {}
-            Property::BorderEndStartRadius(_) => {}
-            Property::BorderEndEndRadius(_) => {}
-            Property::BorderRadius(_, _) => {}
-            Property::BorderImageSource(_) => {}
-            Property::BorderImageOutset(_) => {}
-            Property::BorderImageRepeat(_) => {}
-            Property::BorderImageWidth(_) => {}
-            Property::BorderImageSlice(_) => {}
-            Property::BorderImage(_, _) => {}
-            Property::BorderColor(_) => {}
-            Property::BorderStyle(_) => {}
-            Property::BorderWidth(_) => {}
-            Property::BorderBlockColor(_) => {}
-            Property::BorderBlockStyle(_) => {}
-            Property::BorderBlockWidth(_) => {}
-            Property::BorderInlineColor(_) => {}
-            Property::BorderInlineStyle(_) => {}
-            Property::BorderInlineWidth(_) => {}
-            Property::Border(_) => {}
-            Property::BorderTop(_) => {}
-            Property::BorderBottom(_) => {}
-            Property::BorderLeft(_) => {}
-            Property::BorderRight(_) => {}
-            Property::BorderBlock(_) => {}
-            Property::BorderBlockStart(_) => {}
-            Property::BorderBlockEnd(_) => {}
-            Property::BorderInline(_) => {}
-            Property::BorderInlineStart(_) => {}
-            Property::BorderInlineEnd(_) => {}
-            Property::Outline(_) => {}
-            Property::OutlineColor(_) => {}
-            Property::OutlineStyle(_) => {}
-            Property::OutlineWidth(_) => {}
-            Property::FlexDirection(_, _) => {}
-            Property::FlexWrap(_, _) => {}
-            Property::FlexFlow(_, _) => {}
-            Property::FlexGrow(_, _) => {}
-            Property::FlexShrink(_, _) => {}
-            Property::FlexBasis(_, _) => {}
-            Property::Flex(_, _) => {}
-            Property::Order(_, _) => {}
-            Property::AlignContent(_, _) => {}
-            Property::JustifyContent(_, _) => {}
-            Property::PlaceContent(_) => {}
-            Property::AlignSelf(_, _) => {}
-            Property::JustifySelf(_) => {}
-            Property::PlaceSelf(_) => {}
-            Property::AlignItems(_, _) => {}
-            Property::JustifyItems(_) => {}
-            Property::PlaceItems(_) => {}
-            Property::RowGap(_) => {}
-            Property::ColumnGap(_) => {}
-            Property::Gap(_) => {}
-            Property::BoxOrient(_, _) => {}
-            Property::BoxDirection(_, _) => {}
-            Property::BoxOrdinalGroup(_, _) => {}
-            Property::BoxAlign(_, _) => {}
-            Property::BoxFlex(_, _) => {}
-            Property::BoxFlexGroup(_, _) => {}
-            Property::BoxPack(_, _) => {}
-            Property::BoxLines(_, _) => {}
-            Property::FlexPack(_, _) => {}
-            Property::FlexOrder(_, _) => {}
-            Property::FlexAlign(_, _) => {}
-            Property::FlexItemAlign(_, _) => {}
-            Property::FlexLinePack(_, _) => {}
-            Property::FlexPositive(_, _) => {}
-            Property::FlexNegative(_, _) => {}
-            Property::FlexPreferredSize(_, _) => {}
-            Property::GridTemplateColumns(_) => {}
-            Property::GridTemplateRows(_) => {}
-            Property::GridAutoColumns(_) => {}
-            Property::GridAutoRows(_) => {}
-            Property::GridAutoFlow(_) => {}
-            Property::GridTemplateAreas(_) => {}
-            Property::GridTemplate(_) => {}
-            Property::Grid(_) => {}
-            Property::GridRowStart(_) => {}
-            Property::GridRowEnd(_) => {}
-            Property::GridColumnStart(_) => {}
-            Property::GridColumnEnd(_) => {}
-            Property::GridRow(_) => {}
-            Property::GridColumn(_) => {}
-            Property::GridArea(_) => {}
-            Property::MarginTop(_) => {}
-            Property::MarginBottom(_) => {}
-            Property::MarginLeft(_) => {}
-            Property::MarginRight(_) => {}
-            Property::MarginBlockStart(_) => {}
-            Property::MarginBlockEnd(_) => {}
-            Property::MarginInlineStart(_) => {}
-            Property::MarginInlineEnd(_) => {}
-            Property::MarginBlock(_) => {}
-            Property::MarginInline(_) => {}
-            Property::Margin(_) => {}
-            Property::PaddingTop(_) => {}
-            Property::PaddingBottom(_) => {}
-            Property::PaddingLeft(_) => {}
-            Property::PaddingRight(_) => {}
-            Property::PaddingBlockStart(_) => {}
-            Property::PaddingBlockEnd(_) => {}
-            Property::PaddingInlineStart(_) => {}
-            Property::PaddingInlineEnd(_) => {}
-            Property::PaddingBlock(_) => {}
-            Property::PaddingInline(_) => {}
-            Property::Padding(_) => {}
-            Property::ScrollMarginTop(_) => {}
-            Property::ScrollMarginBottom(_) => {}
-            Property::ScrollMarginLeft(_) => {}
-            Property::ScrollMarginRight(_) => {}
-            Property::ScrollMarginBlockStart(_) => {}
-            Property::ScrollMarginBlockEnd(_) => {}
-            Property::ScrollMarginInlineStart(_) => {}
-            Property::ScrollMarginInlineEnd(_) => {}
-            Property::ScrollMarginBlock(_) => {}
-            Property::ScrollMarginInline(_) => {}
-            Property::ScrollMargin(_) => {}
-            Property::ScrollPaddingTop(_) => {}
-            Property::ScrollPaddingBottom(_) => {}
-            Property::ScrollPaddingLeft(_) => {}
-            Property::ScrollPaddingRight(_) => {}
-            Property::ScrollPaddingBlockStart(_) => {}
-            Property::ScrollPaddingBlockEnd(_) => {}
-            Property::ScrollPaddingInlineStart(_) => {}
-            Property::ScrollPaddingInlineEnd(_) => {}
-            Property::ScrollPaddingBlock(_) => {}
-            Property::ScrollPaddingInline(_) => {}
-            Property::ScrollPadding(_) => {}
-            Property::FontWeight(_) => {}
-            Property::FontSize(_) => {}
-            Property::FontStretch(_) => {}
-            Property::FontFamily(_) => {}
-            Property::FontStyle(_) => {}
-            Property::FontVariantCaps(_) => {}
-            Property::LineHeight(_) => {}
-            Property::Font(_) => {}
-            Property::VerticalAlign(_) => {}
-            Property::FontPalette(_) => {}
-            Property::TransitionProperty(_, _) => {}
-            Property::TransitionDuration(_, _) => {}
-            Property::TransitionDelay(_, _) => {}
-            Property::TransitionTimingFunction(_, _) => {}
-            Property::Transition(_, _) => {}
-            Property::AnimationName(_, _) => {}
-            Property::AnimationDuration(_, _) => {}
-            Property::AnimationTimingFunction(_, _) => {}
-            Property::AnimationIterationCount(_, _) => {}
-            Property::AnimationDirection(_, _) => {}
-            Property::AnimationPlayState(_, _) => {}
-            Property::AnimationDelay(_, _) => {}
-            Property::AnimationFillMode(_, _) => {}
-            Property::AnimationComposition(_) => {}
-            Property::AnimationTimeline(_) => {}
-            Property::Animation(_, _) => {}
-            Property::Transform(_, _) => {}
-            Property::TransformOrigin(_, _) => {}
-            Property::TransformStyle(_, _) => {}
-            Property::TransformBox(_) => {}
-            Property::BackfaceVisibility(_, _) => {}
-            Property::Perspective(_, _) => {}
-            Property::PerspectiveOrigin(_, _) => {}
-            Property::Translate(_) => {}
-            Property::Rotate(_) => {}
-            Property::Scale(_) => {}
-            Property::TextTransform(_) => {}
-            Property::WhiteSpace(_) => {}
-            Property::TabSize(_, _) => {}
-            Property::WordBreak(_) => {}
-            Property::LineBreak(_) => {}
-            Property::Hyphens(_, _) => {}
-            Property::OverflowWrap(_) => {}
-            Property::WordWrap(_) => {}
-            Property::TextAlign(_) => {}
-            Property::TextAlignLast(_, _) => {}
-            Property::TextJustify(_) => {}
-            Property::WordSpacing(_) => {}
-            Property::LetterSpacing(_) => {}
-            Property::TextIndent(_) => {}
-            Property::TextDecorationLine(_, _) => {}
-            Property::TextDecorationStyle(_, _) => {}
-            Property::TextDecorationColor(_, _) => {}
-            Property::TextDecorationThickness(_) => {}
-            Property::TextDecoration(_, _) => {}
-            Property::TextDecorationSkipInk(_, _) => {}
-            Property::TextEmphasisStyle(_, _) => {}
-            Property::TextEmphasisColor(_, _) => {}
-            Property::TextEmphasis(_, _) => {}
-            Property::TextEmphasisPosition(_, _) => {}
-            Property::TextShadow(_) => {}
-            Property::TextSizeAdjust(_, _) => {}
-            Property::Direction(_) => {}
-            Property::UnicodeBidi(_) => {}
-            Property::BoxDecorationBreak(_, _) => {}
-            Property::Resize(_) => {}
-            Property::Cursor(_) => {}
-            Property::CaretColor(_) => {}
-            Property::CaretShape(_) => {}
-            Property::Caret(_) => {}
-            Property::UserSelect(_, _) => {}
-            Property::AccentColor(_) => {}
-            Property::Appearance(_, _) => {}
-            Property::ListStyleType(_) => {}
-            Property::ListStyleImage(_) => {}
-            Property::ListStylePosition(_) => {}
-            Property::ListStyle(_) => {}
-            Property::MarkerSide(_) => {}
-            Property::Composes(_) => {}
-            Property::Fill(_) => {}
-            Property::FillRule(_) => {}
-            Property::FillOpacity(_) => {}
-            Property::Stroke(_) => {}
-            Property::StrokeOpacity(_) => {}
-            Property::StrokeWidth(_) => {}
-            Property::StrokeLinecap(_) => {}
-            Property::StrokeLinejoin(_) => {}
-            Property::StrokeMiterlimit(_) => {}
-            Property::StrokeDasharray(_) => {}
-            Property::StrokeDashoffset(_) => {}
-            Property::MarkerStart(_) => {}
-            Property::MarkerMid(_) => {}
-            Property::MarkerEnd(_) => {}
-            Property::Marker(_) => {}
-            Property::ColorInterpolation(_) => {}
-            Property::ColorInterpolationFilters(_) => {}
-            Property::ColorRendering(_) => {}
-            Property::ShapeRendering(_) => {}
-            Property::TextRendering(_) => {}
-            Property::ImageRendering(_) => {}
-            Property::ClipPath(_, _) => {}
-            Property::ClipRule(_) => {}
-            Property::MaskImage(_, _) => {}
-            Property::MaskMode(_) => {}
-            Property::MaskRepeat(_, _) => {}
-            Property::MaskPositionX(_) => {}
-            Property::MaskPositionY(_) => {}
-            Property::MaskPosition(_, _) => {}
-            Property::MaskClip(_, _) => {}
-            Property::MaskOrigin(_, _) => {}
-            Property::MaskSize(_, _) => {}
-            Property::MaskComposite(_) => {}
-            Property::MaskType(_) => {}
-            Property::Mask(_, _) => {}
-            Property::MaskBorderSource(_) => {}
-            Property::MaskBorderMode(_) => {}
-            Property::MaskBorderSlice(_) => {}
-            Property::MaskBorderWidth(_) => {}
-            Property::MaskBorderOutset(_) => {}
-            Property::MaskBorderRepeat(_) => {}
-            Property::MaskBorder(_) => {}
-            Property::WebKitMaskComposite(_) => {}
-            Property::WebKitMaskSourceType(_, _) => {}
-            Property::WebKitMaskBoxImage(_, _) => {}
-            Property::WebKitMaskBoxImageSource(_, _) => {}
-            Property::WebKitMaskBoxImageSlice(_, _) => {}
-            Property::WebKitMaskBoxImageWidth(_, _) => {}
-            Property::WebKitMaskBoxImageOutset(_, _) => {}
-            Property::WebKitMaskBoxImageRepeat(_, _) => {}
-            Property::Filter(_, _) => {}
-            Property::BackdropFilter(_, _) => {}
-            Property::ZIndex(_) => {}
-            Property::ContainerType(_) => {}
-            Property::ContainerName(_) => {}
-            Property::Container(_) => {}
-            Property::ViewTransitionName(_) => {}
-            Property::ColorScheme(_) => {}
-            Property::All(_) => {}
-            Property::Unparsed(_) => {}
-            Property::Custom(_) => {}
+            Property::Color(color) => {
+                match color {
+                    CssColor::RGBA(color) => rectangle.color = *color,
+                    color => error!("color {color:?} not supported")
+                };
+            }
+            _ => {}
         }
     }
 }
 
 pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeContext) {
-    // let def = Style {
-    //     display: Default::default(),
-    //     overflow: Default::default(),
-    //     scrollbar_width: 0.0,
-    //     position: Default::default(),
-    //     inset: Rect {},
-    //     size: Size {},
-    //     min_size: Size {},
-    //     max_size: Size {},
-    //     aspect_ratio: None,
-    //     margin: Rect {},
-    //     padding: Rect {},
-    //     border: Rect {},
-    //     align_items: None,
-    //     align_self: None,
-    //     justify_items: None,
-    //     justify_self: None,
-    //     align_content: None,
-    //     justify_content: None,
-    //     gap: Size {},
-    //     flex_direction: Default::default(),
-    //     flex_wrap: Default::default(),
-    //     flex_basis: Dimension::Auto,
-    //     flex_grow: 0.0,
-    //     flex_shrink: 0.0,
-    //     grid_template_rows: vec![],
-    //     grid_template_columns: vec![],
-    //     grid_auto_rows: vec![],
-    //     grid_auto_columns: vec![],
-    //     grid_auto_flow: Default::default(),
-    //     grid_row: Default::default(),
-    //     grid_column: Default::default(),
-    // }
-
     for property in &ruleset.style.declarations.declarations {
         println!("PROP {property:?}");
         match property {
@@ -556,6 +190,53 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
                 },
                 justify => error!("justify content {justify:?} not supported")
             }
+            Property::Gap(gap) => {
+                style.gap.width = gap.column.resolve(context);
+                style.gap.height = gap.row.resolve(context);
+            }
+            Property::ColumnGap(value) => style.gap.width = value.resolve(context),
+            Property::RowGap(value) => style.gap.height = value.resolve(context),
+            Property::FlexDirection(direction, _) => style.flex_direction = match direction {
+                FlexDirection::Row => taffy::FlexDirection::Row,
+                FlexDirection::RowReverse => taffy::FlexDirection::RowReverse,
+                FlexDirection::Column => taffy::FlexDirection::Column,
+                FlexDirection::ColumnReverse => taffy::FlexDirection::ColumnReverse,
+            },
+            Property::FlexWrap(wrap, _) => style.flex_wrap = match wrap {
+                FlexWrap::NoWrap => taffy::FlexWrap::NoWrap,
+                FlexWrap::Wrap => taffy::FlexWrap::Wrap,
+                FlexWrap::WrapReverse => taffy::FlexWrap::WrapReverse,
+            },
+            Property::FlexBasis(basis, _) => style.flex_basis = match basis {
+                LengthPercentageOrAuto::Auto => Dimension::Auto,
+                LengthPercentageOrAuto::LengthPercentage(value) => resolve_dimension(value, context)
+            },
+            Property::FlexGrow(grow, _) => style.flex_grow = *grow,
+            Property::FlexShrink(shrink, _) => style.flex_shrink = *shrink,
+            Property::GridTemplate(template) => {
+                style.grid_template_rows = map_track_sizing(&template.rows, context);
+                style.grid_template_columns = map_track_sizing(&template.columns, context);
+                // template.areas
+            }
+            Property::GridTemplateRows(rows) => style.grid_template_rows = map_track_sizing(rows, context),
+            Property::GridTemplateColumns(rows) => style.grid_template_columns = map_track_sizing(rows, context),
+            Property::GridAutoColumns(columns) => {
+                error!("grid auto columns not supported");
+            }
+            Property::GridAutoRows(rows) => {
+                error!("grid auto rows not supported");
+                // style.grid_auto_rows = map_track_sizing(rows, context);
+            }
+            Property::GridAutoFlow(flow) => style.grid_auto_flow = match *flow {
+                GridAutoFlow::Row => taffy::GridAutoFlow::Row,
+                GridAutoFlow::Column => taffy::GridAutoFlow::Column,
+                flow => {
+                    error!("grid flow {flow:?} not supported");
+                    taffy::GridAutoFlow::default()
+                }
+            },
+            Property::GridRow(row) => style.grid_row = row.resolve(context),
+            Property::GridColumn(column) => style.grid_column = column.resolve(context),
             _ => {}
         }
     }
@@ -563,7 +244,7 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
 
 fn map_overflow(keyword: OverflowKeyword) -> Overflow {
     match keyword {
-        OverflowKeyword::Visible =>  Overflow::Visible,
+        OverflowKeyword::Visible => Overflow::Visible,
         OverflowKeyword::Hidden => Overflow::Hidden,
         OverflowKeyword::Clip => Overflow::Clip,
         OverflowKeyword::Scroll => Overflow::Scroll,
@@ -585,29 +266,106 @@ fn map_self_position(value: &SelfPosition) -> Option<taffy::AlignItems> {
     }
 }
 
+fn map_track_item(item: &TrackListItem, context: SizeContext) -> TrackSizingFunction {
+    match item {
+        TrackListItem::TrackSize(size) => match size {
+            TrackSize::TrackBreadth(breadth) => match breadth {
+                TrackBreadth::Length(length) => match length {
+                    LengthPercentage::Dimension(value) => match value {
+                        LengthValue::Px(pixels) => TrackSizingFunction::from_length(*pixels),
+                        length => {
+                            error!("length {length:?} not supported");
+                            TrackSizingFunction::AUTO
+                        }
+                    }
+                    LengthPercentage::Percentage(percentage) => TrackSizingFunction::from_percent(percentage.0),
+                    LengthPercentage::Calc(calc) => {
+                        error!("calc {calc:?} not supported");
+                        TrackSizingFunction::AUTO
+                    }
+                },
+                TrackBreadth::Flex(flex) => TrackSizingFunction::from_flex(*flex),
+                TrackBreadth::MinContent => TrackSizingFunction::MIN_CONTENT,
+                TrackBreadth::MaxContent => TrackSizingFunction::MAX_CONTENT,
+                TrackBreadth::Auto => TrackSizingFunction::AUTO,
+            }
+            TrackSize::MinMax { .. } => {
+                error!("grid min max not supported yet");
+                TrackSizingFunction::AUTO
+            }
+            TrackSize::FitContent(length) => TrackSizingFunction::fit_content(resolve_length(length, context))
+        },
+        TrackListItem::TrackRepeat(repeat) => {
+            error!("grid repeat not supported yet");
+            TrackSizingFunction::Repeat(
+                match repeat.count {
+                    RepeatCount::Number(count) => GridTrackRepetition::Count(count as u16),
+                    RepeatCount::AutoFill => GridTrackRepetition::AutoFill,
+                    RepeatCount::AutoFit => GridTrackRepetition::AutoFit
+                },
+                vec![],
+            )
+        }
+    }
+}
+
+fn map_track_sizing(sizing: &TrackSizing, context: SizeContext) -> Vec<TrackSizingFunction> {
+    match sizing {
+        TrackSizing::None => vec![],
+        TrackSizing::TrackList(track) => {
+            let mut result = vec![];
+            for item in &track.items {
+                result.push(map_track_item(item, context));
+            }
+            result
+        }
+    }
+}
+
+
+fn resolve_dimension(value: &LengthPercentage, _context: SizeContext) -> Dimension {
+    match value {
+        LengthPercentage::Dimension(value) => match value {
+            LengthValue::Px(px) => Dimension::Length(*px),
+            dimension => {
+                error!("dimension {dimension:?} not supported");
+                Dimension::Length(0.0)
+            }
+        }
+        LengthPercentage::Percentage(percentage) => Dimension::Percent(percentage.0),
+        LengthPercentage::Calc(calc) => {
+            error!("calc {calc:?} not supported");
+            Dimension::Length(0.0)
+        }
+    }
+}
+
+fn resolve_length(value: &LengthPercentage, _context: SizeContext) -> taffy::LengthPercentage {
+    match value {
+        LengthPercentage::Dimension(length) => match length {
+            LengthValue::Px(length) => taffy::LengthPercentage::Length(*length),
+            length => {
+                error!("length {length:?} not supported");
+                taffy::LengthPercentage::Length(0.0)
+            }
+        }
+        LengthPercentage::Percentage(percentage) => taffy::LengthPercentage::Percent(percentage.0),
+        LengthPercentage::Calc(calc) => {
+            error!("calc {calc:?} not supported");
+            taffy::LengthPercentage::Length(0.0)
+        }
+    }
+}
 
 trait Resolver<T> {
     fn resolve(&self, context: SizeContext) -> T;
 }
 
 impl Resolver<Dimension> for MaxSize {
-    fn resolve(&self, _context: SizeContext) -> Dimension {
+    fn resolve(&self, context: SizeContext) -> Dimension {
         match self {
             MaxSize::None => Dimension::Auto,
-            MaxSize::LengthPercentage(value) => match value {
-                LengthPercentage::Dimension(value) => match value {
-                    LengthValue::Px(px) => Dimension::Length(*px),
-                    dimension => {
-                        error!("max-size dimension {dimension:?} not supported");
-                        Dimension::Length(0.0)
-                    }
-                }
-                LengthPercentage::Percentage(percentage) => Dimension::Percent(percentage.0),
-                LengthPercentage::Calc(calc) => {
-                    error!("max-size calc {calc:?} not supported");
-                    Dimension::Length(0.0)
-                }
-            }
+            MaxSize::LengthPercentage(value) => resolve_dimension(value, context),
             dimension => {
                 error!("max-size {dimension:?} not supported");
                 Dimension::Length(0.0)
@@ -617,25 +375,12 @@ impl Resolver<Dimension> for MaxSize {
 }
 
 impl Resolver<Dimension> for Size {
-    fn resolve(&self, _context: SizeContext) -> Dimension {
+    fn resolve(&self, context: SizeContext) -> Dimension {
         match self {
             Size::Auto => Dimension::Auto,
-            Size::LengthPercentage(value) => match value {
-                LengthPercentage::Dimension(value) => match value {
-                    LengthValue::Px(px) => Dimension::Length(*px),
-                    dimension => {
-                        error!("dimension {dimension:?} not supported");
-                        Dimension::Length(0.0)
-                    }
-                }
-                LengthPercentage::Percentage(percentage) => Dimension::Percent(percentage.0),
-                LengthPercentage::Calc(calc) => {
-                    error!("calc {calc:?} not supported");
-                    Dimension::Length(0.0)
-                }
-            }
+            Size::LengthPercentage(value) => resolve_dimension(value, context),
             dimension => {
-                error!("dimension {dimension:?} not supported");
+                error!("size {dimension:?} not supported");
                 Dimension::Length(0.0)
             }
         }
@@ -665,23 +410,10 @@ impl Resolver<LengthPercentageAuto> for LengthPercentageOrAuto {
 }
 
 impl Resolver<taffy::LengthPercentage> for LengthPercentageOrAuto {
-    fn resolve(&self, _context: SizeContext) -> taffy::LengthPercentage {
+    fn resolve(&self, context: SizeContext) -> taffy::LengthPercentage {
         match self {
             LengthPercentageOrAuto::Auto => taffy::LengthPercentage::Length(0.0),
-            LengthPercentageOrAuto::LengthPercentage(value) => match value {
-                LengthPercentage::Dimension(length) => match length {
-                    LengthValue::Px(length) => taffy::LengthPercentage::Length(*length),
-                    length => {
-                        error!("length {length:?} not supported");
-                        taffy::LengthPercentage::Length(0.0)
-                    }
-                }
-                LengthPercentage::Percentage(percentage) => taffy::LengthPercentage::Percent(percentage.0),
-                LengthPercentage::Calc(calc) => {
-                    error!("calc {calc:?} not supported");
-                    taffy::LengthPercentage::Length(0.0)
-                }
-            }
+            LengthPercentageOrAuto::LengthPercentage(value) => resolve_length(value, context)
         }
     }
 }
@@ -705,6 +437,45 @@ impl Resolver<taffy::LengthPercentage> for BorderSideWidth {
                     taffy::LengthPercentage::Length(0.0)
                 }
             }
+        }
+    }
+}
+
+impl Resolver<taffy::LengthPercentage> for GapValue {
+    fn resolve(&self, context: SizeContext) -> taffy::LengthPercentage {
+        match self {
+            GapValue::Normal => taffy::LengthPercentage::Length(0.0),
+            GapValue::LengthPercentage(value) => resolve_length(value, context)
+        }
+    }
+}
+
+fn map_grid_line(line: &GridLine) -> GridPlacement {
+    match line {
+        GridLine::Auto => GridPlacement::Auto,
+        GridLine::Area { .. } => {
+            error!("grid area placement not supported");
+            GridPlacement::Auto
+        },
+        GridLine::Line { index, .. } => GridPlacement::Line((*index as i16).into()),
+        GridLine::Span { index, .. } => GridPlacement::Span(*index as u16)
+    }
+}
+
+impl Resolver<Line<GridPlacement>> for GridRow<'_> {
+    fn resolve(&self, context: SizeContext) -> Line<GridPlacement> {
+        Line {
+            start: map_grid_line(&self.start),
+            end: map_grid_line(&self.end),
+        }
+    }
+}
+
+impl Resolver<Line<GridPlacement>> for GridColumn<'_> {
+    fn resolve(&self, context: SizeContext) -> Line<GridPlacement> {
+        Line {
+            start: map_grid_line(&self.start),
+            end: map_grid_line(&self.end),
         }
     }
 }

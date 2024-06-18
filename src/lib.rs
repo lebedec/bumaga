@@ -9,6 +9,7 @@ use lightningcss::rules::CssRule;
 use lightningcss::rules::style::StyleRule;
 use lightningcss::stylesheet::{ParserOptions, StyleSheet};
 use lightningcss::traits::ToCss;
+use lightningcss::values::color::{CssColor, RGBA};
 use log::error;
 use scraper::{ElementRef, Html, Node, Selector, StrTendril};
 use scraper::selectable::Selectable;
@@ -34,7 +35,8 @@ pub struct SizeContext {
 
 #[derive(Clone)]
 pub struct Rectangle<'i> {
-    background: Background<'i>
+    background: Background<'i>,
+    color: RGBA
 }
 
 impl Default for Rectangle<'_> {
@@ -49,7 +51,8 @@ impl Default for Rectangle<'_> {
                 attachment: Default::default(),
                 origin: BackgroundOrigin::PaddingBox,
                 clip: Default::default(),
-            }
+            },
+            color: RGBA::new(255, 255, 255, 1.0),
         }
     }
 }
