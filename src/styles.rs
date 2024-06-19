@@ -1,22 +1,94 @@
-use lightningcss::properties::align::{AlignContent, AlignItems, AlignSelf, ContentDistribution, ContentPosition, GapValue, JustifyContent, JustifyItems, JustifySelf, SelfPosition};
+use crate::models::{MyBackground, Presentation, Rectangle, Ruleset, SizeContext};
+use lightningcss::properties::align::{
+    AlignContent, AlignItems, AlignSelf, ContentDistribution, ContentPosition, GapValue,
+    JustifyContent, JustifyItems, JustifySelf, SelfPosition,
+};
+use lightningcss::properties::background::BackgroundOrigin;
 use lightningcss::properties::border::BorderSideWidth;
+use lightningcss::properties::custom::TokenList;
 use lightningcss::properties::display::{Display, DisplayInside, DisplayKeyword, DisplayOutside};
 use lightningcss::properties::flex::{FlexDirection, FlexWrap};
-use lightningcss::properties::font::{FontSize};
-use lightningcss::properties::grid::{GridAutoFlow, GridColumn, GridLine, GridRow, RepeatCount, TrackBreadth, TrackListItem, TrackSize, TrackSizing};
+use lightningcss::properties::font::FontSize;
+use lightningcss::properties::grid::{
+    GridAutoFlow, GridColumn, GridLine, GridRow, RepeatCount, TrackBreadth, TrackListItem,
+    TrackSize, TrackSizing,
+};
 use lightningcss::properties::overflow::OverflowKeyword;
 use lightningcss::properties::position::Position;
-use lightningcss::properties::Property;
 use lightningcss::properties::size::{MaxSize, Size};
-use lightningcss::values::color::CssColor;
+use lightningcss::properties::Property;
+use lightningcss::rules::CssRule;
+use lightningcss::selector::{Component, Direction, PseudoClass, PseudoElement, ViewTransitionPartName, WebKitScrollbarPseudoClass, WebKitScrollbarPseudoElement};
+use lightningcss::stylesheet::{ParserOptions, StyleSheet};
+use lightningcss::values::color::{CssColor, RGBA};
 use lightningcss::values::image::Image;
 use lightningcss::values::length::{Length, LengthPercentage, LengthPercentageOrAuto, LengthValue};
+use lightningcss::values::string::CowArcStr;
+use lightningcss::vendor_prefix::VendorPrefix;
 use log::error;
-use taffy::{Dimension, GridPlacement, GridTrackRepetition, LengthPercentageAuto, Line, Overflow, Style, TrackSizingFunction};
-use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
-use crate::{Rectangle, Ruleset, SizeContext};
+use scraper::Selector;
+use std::collections::HashMap;
+use std::fmt;
+use std::marker::PhantomData;
 use taffy::prelude::FromLength;
 use taffy::prelude::TaffyAuto;
+use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
+use taffy::{
+    Dimension, GridPlacement, GridTrackRepetition, LengthPercentageAuto, Line, Overflow, Point,
+    Rect, Style, TrackSizingFunction,
+};
+
+pub fn default_rectangle_style() -> Rectangle {
+    Rectangle {
+        key: "".to_string(),
+        background: MyBackground {
+            image: None,
+            color: Default::default(),
+            position: Default::default(),
+            repeat: Default::default(),
+            size: Default::default(),
+            attachment: Default::default(),
+            origin: BackgroundOrigin::PaddingBox,
+            clip: Default::default(),
+        },
+        color: RGBA::new(255, 255, 255, 1.0),
+        font_size: 16.0,
+        text: None,
+    }
+}
+
+pub fn default_layout_style() -> Style {
+    Style {
+        display: taffy::Display::Block,
+        overflow: Point {
+            x: Overflow::Visible,
+            y: Overflow::Visible,
+        },
+        scrollbar_width: 0.0,
+        position: taffy::Position::Relative,
+        inset: Rect::auto(),
+        margin: Rect::zero(),
+        padding: Rect::zero(),
+        border: Rect::zero(),
+        size: taffy::Size::auto(),
+        min_size: taffy::Size::auto(),
+        max_size: taffy::Size::auto(),
+        aspect_ratio: None,
+        gap: taffy::Size::zero(),
+        align_items: None,
+        align_self: None,
+        justify_items: None,
+        justify_self: None,
+        align_content: None,
+        justify_content: None,
+        flex_direction: taffy::FlexDirection::Row,
+        flex_wrap: taffy::FlexWrap::NoWrap,
+        flex_grow: 0.0,
+        flex_shrink: 1.0,
+        flex_basis: Dimension::Auto,
+        ..Default::default()
+    }
+}
 
 pub fn inherit<'i>(parent: &Rectangle, rectangle: &mut Rectangle) {
     // border-collapse
@@ -60,7 +132,12 @@ pub fn inherit<'i>(parent: &Rectangle, rectangle: &mut Rectangle) {
     // word-wrap
 }
 
-pub fn apply_rectangle_rules<'i>(ruleset: &Ruleset<'i>, parent: &Rectangle, rectangle: &mut Rectangle, context: SizeContext) {
+pub fn apply_rectangle_rules<'i>(
+    ruleset: &Ruleset<'i>,
+    parent: &Rectangle,
+    rectangle: &mut Rectangle,
+    context: SizeContext,
+) {
     inherit(parent, rectangle);
     for property in &ruleset.style.declarations.declarations {
         match property {
@@ -86,32 +163,40 @@ pub fn apply_rectangle_rules<'i>(ruleset: &Ruleset<'i>, parent: &Rectangle, rect
                 rectangle.background.origin = background.origin.clone();
             }
             Property::BackgroundColor(color) => rectangle.background.color = color.clone(),
-            Property::BackgroundImage(image) => rectangle.background.image = match &image[0] {
-                Image::None => None,
-                Image::Url(url) => Some(url.url.to_string()),
-                image => {
-                    error!("background image {image:?} not supported");
-                    None
+            Property::BackgroundImage(image) => {
+                rectangle.background.image = match &image[0] {
+                    Image::None => None,
+                    Image::Url(url) => Some(url.url.to_string()),
+                    image => {
+                        error!("background image {image:?} not supported");
+                        None
+                    }
                 }
-            },
-            Property::BackgroundPosition(position) => rectangle.background.position = position[0].clone(),
-            Property::BackgroundPositionX(position) => rectangle.background.position.x = position[0].clone(),
-            Property::BackgroundPositionY(position) => rectangle.background.position.y = position[0].clone(),
+            }
+            Property::BackgroundPosition(position) => {
+                rectangle.background.position = position[0].clone()
+            }
+            Property::BackgroundPositionX(position) => {
+                rectangle.background.position.x = position[0].clone()
+            }
+            Property::BackgroundPositionY(position) => {
+                rectangle.background.position.y = position[0].clone()
+            }
             Property::BackgroundRepeat(repeat) => rectangle.background.repeat = repeat[0].clone(),
             Property::BackgroundSize(size) => rectangle.background.size = size[0].clone(),
-            Property::BackgroundAttachment(attach) => rectangle.background.attachment = attach[0].clone(),
+            Property::BackgroundAttachment(attach) => {
+                rectangle.background.attachment = attach[0].clone()
+            }
             Property::BackgroundClip(clip, _) => rectangle.background.clip = clip[0].clone(),
             Property::BackgroundOrigin(origin) => rectangle.background.origin = origin[0].clone(),
             Property::Color(color) => {
                 match color {
                     CssColor::RGBA(color) => rectangle.color = *color,
-                    color => error!("color {color:?} not supported")
+                    color => error!("color {color:?} not supported"),
                 };
             }
             Property::FontSize(size) => rectangle.font_size = resolve_font_size(size, context),
-            Property::Font(font) => {
-                rectangle.font_size = resolve_font_size(&font.size, context)
-            }
+            Property::Font(font) => rectangle.font_size = resolve_font_size(&font.size, context),
             _ => {}
         }
     }
@@ -126,22 +211,20 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
                     keyword => {
                         error!("display keyword {keyword:?} not supported")
                     }
-                }
-                Display::Pair(pair) => {
-                    match pair.outside {
-                        DisplayOutside::Block => match &pair.inside {
-                            DisplayInside::Flow => style.display = taffy::Display::Block,
-                            DisplayInside::Flex(_) => style.display = taffy::Display::Flex,
-                            DisplayInside::Grid => style.display = taffy::Display::Grid,
-                            inside => {
-                                error!("display block inside {inside:?} not supported")
-                            }
-                        },
-                        outside => {
-                            error!("display outside {outside:?} not supported")
+                },
+                Display::Pair(pair) => match pair.outside {
+                    DisplayOutside::Block => match &pair.inside {
+                        DisplayInside::Flow => style.display = taffy::Display::Block,
+                        DisplayInside::Flex(_) => style.display = taffy::Display::Flex,
+                        DisplayInside::Grid => style.display = taffy::Display::Grid,
+                        inside => {
+                            error!("display block inside {inside:?} not supported")
                         }
+                    },
+                    outside => {
+                        error!("display outside {outside:?} not supported")
                     }
-                }
+                },
             },
             Property::Overflow(overflow) => {
                 style.overflow.x = map_overflow(overflow.x);
@@ -159,7 +242,7 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
                 position => {
                     error!("position {position:?} not supported")
                 }
-            }
+            },
             Property::Inset(inset) => {
                 style.inset.left = inset.left.resolve(context);
                 style.inset.right = inset.right.resolve(context);
@@ -178,8 +261,8 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
             Property::MaxHeight(size) => style.max_size.height = size.resolve(context),
             Property::AspectRatio(ratio) => match &ratio.ratio {
                 None => style.aspect_ratio = None,
-                Some(ratio) => style.aspect_ratio = Some(ratio.0 / ratio.1)
-            }
+                Some(ratio) => style.aspect_ratio = Some(ratio.0 / ratio.1),
+            },
             Property::Margin(margin) => {
                 style.margin.left = margin.left.resolve(context);
                 style.margin.right = margin.right.resolve(context);
@@ -213,86 +296,130 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
             Property::AlignItems(align, _) => match align {
                 AlignItems::Normal => style.align_items = None,
                 AlignItems::Stretch => style.align_items = Some(taffy::AlignItems::Stretch),
-                AlignItems::BaselinePosition(_) => style.align_items = Some(taffy::AlignItems::Baseline),
-                AlignItems::SelfPosition { value, .. } => style.align_items = map_self_position(value),
+                AlignItems::BaselinePosition(_) => {
+                    style.align_items = Some(taffy::AlignItems::Baseline)
+                }
+                AlignItems::SelfPosition { value, .. } => {
+                    style.align_items = map_self_position(value)
+                }
                 // align => error!("align {align:?} not supported")
             },
             Property::AlignSelf(align, _) => match align {
                 AlignSelf::Auto => style.align_self = None,
                 AlignSelf::Normal => style.align_self = None,
                 AlignSelf::Stretch => style.align_self = Some(taffy::AlignSelf::Stretch),
-                AlignSelf::BaselinePosition(_) => style.align_self = Some(taffy::AlignSelf::Baseline),
-                AlignSelf::SelfPosition { value, .. } => style.align_self = map_self_position(value),
+                AlignSelf::BaselinePosition(_) => {
+                    style.align_self = Some(taffy::AlignSelf::Baseline)
+                }
+                AlignSelf::SelfPosition { value, .. } => {
+                    style.align_self = map_self_position(value)
+                }
                 // align => error!("align {align:?} not supported")
-            }
+            },
             Property::JustifyItems(justify) => match justify {
                 JustifyItems::Normal => style.justify_items = None,
                 JustifyItems::Stretch => style.justify_items = Some(taffy::JustifyItems::Stretch),
-                JustifyItems::BaselinePosition(_) => style.justify_items = Some(taffy::JustifyItems::Baseline),
-                JustifyItems::SelfPosition { value, .. } => style.justify_items = map_self_position(value),
-                justify => error!("justify {justify:?} not supported")
-            }
+                JustifyItems::BaselinePosition(_) => {
+                    style.justify_items = Some(taffy::JustifyItems::Baseline)
+                }
+                JustifyItems::SelfPosition { value, .. } => {
+                    style.justify_items = map_self_position(value)
+                }
+                justify => error!("justify {justify:?} not supported"),
+            },
             Property::JustifySelf(justify) => match justify {
                 JustifySelf::Auto => style.justify_self = None,
                 JustifySelf::Normal => style.justify_self = None,
                 JustifySelf::Stretch => style.justify_self = Some(taffy::JustifySelf::Stretch),
-                JustifySelf::BaselinePosition(_) => style.justify_self = Some(taffy::JustifySelf::Baseline),
-                JustifySelf::SelfPosition { value, .. } => style.justify_self = map_self_position(value),
-                justify => error!("justify {justify:?} not supported")
-            }
+                JustifySelf::BaselinePosition(_) => {
+                    style.justify_self = Some(taffy::JustifySelf::Baseline)
+                }
+                JustifySelf::SelfPosition { value, .. } => {
+                    style.justify_self = map_self_position(value)
+                }
+                justify => error!("justify {justify:?} not supported"),
+            },
             Property::AlignContent(align, _) => match align {
                 AlignContent::ContentDistribution(distribution) => match distribution {
-                    ContentDistribution::SpaceBetween => style.align_content = Some(taffy::AlignContent::SpaceBetween),
-                    ContentDistribution::SpaceAround => style.align_content = Some(taffy::AlignContent::SpaceAround),
-                    ContentDistribution::SpaceEvenly => style.align_content = Some(taffy::AlignContent::SpaceEvenly),
-                    ContentDistribution::Stretch => style.align_content = Some(taffy::AlignContent::Stretch),
+                    ContentDistribution::SpaceBetween => {
+                        style.align_content = Some(taffy::AlignContent::SpaceBetween)
+                    }
+                    ContentDistribution::SpaceAround => {
+                        style.align_content = Some(taffy::AlignContent::SpaceAround)
+                    }
+                    ContentDistribution::SpaceEvenly => {
+                        style.align_content = Some(taffy::AlignContent::SpaceEvenly)
+                    }
+                    ContentDistribution::Stretch => {
+                        style.align_content = Some(taffy::AlignContent::Stretch)
+                    }
                 },
-                AlignContent::ContentPosition { value, .. } => style.align_content = match value {
-                    ContentPosition::Center => Some(taffy::AlignContent::Center),
-                    ContentPosition::Start => Some(taffy::AlignContent::Start),
-                    ContentPosition::End => Some(taffy::AlignContent::End),
-                    ContentPosition::FlexStart => Some(taffy::AlignContent::FlexStart),
-                    ContentPosition::FlexEnd => Some(taffy::AlignContent::FlexEnd),
-                },
-                align => error!("align content {align:?} not supported")
-            }
+                AlignContent::ContentPosition { value, .. } => {
+                    style.align_content = match value {
+                        ContentPosition::Center => Some(taffy::AlignContent::Center),
+                        ContentPosition::Start => Some(taffy::AlignContent::Start),
+                        ContentPosition::End => Some(taffy::AlignContent::End),
+                        ContentPosition::FlexStart => Some(taffy::AlignContent::FlexStart),
+                        ContentPosition::FlexEnd => Some(taffy::AlignContent::FlexEnd),
+                    }
+                }
+                align => error!("align content {align:?} not supported"),
+            },
             Property::JustifyContent(justify, _) => match justify {
                 JustifyContent::ContentDistribution(distribution) => match distribution {
-                    ContentDistribution::SpaceBetween => style.justify_content = Some(taffy::JustifyContent::SpaceBetween),
-                    ContentDistribution::SpaceAround => style.justify_content = Some(taffy::JustifyContent::SpaceAround),
-                    ContentDistribution::SpaceEvenly => style.justify_content = Some(taffy::JustifyContent::SpaceEvenly),
-                    ContentDistribution::Stretch => style.justify_content = Some(taffy::JustifyContent::Stretch),
+                    ContentDistribution::SpaceBetween => {
+                        style.justify_content = Some(taffy::JustifyContent::SpaceBetween)
+                    }
+                    ContentDistribution::SpaceAround => {
+                        style.justify_content = Some(taffy::JustifyContent::SpaceAround)
+                    }
+                    ContentDistribution::SpaceEvenly => {
+                        style.justify_content = Some(taffy::JustifyContent::SpaceEvenly)
+                    }
+                    ContentDistribution::Stretch => {
+                        style.justify_content = Some(taffy::JustifyContent::Stretch)
+                    }
                 },
-                JustifyContent::ContentPosition { value, .. } => style.justify_content = match value {
-                    ContentPosition::Center => Some(taffy::JustifyContent::Center),
-                    ContentPosition::Start => Some(taffy::JustifyContent::Start),
-                    ContentPosition::End => Some(taffy::JustifyContent::End),
-                    ContentPosition::FlexStart => Some(taffy::JustifyContent::FlexStart),
-                    ContentPosition::FlexEnd => Some(taffy::JustifyContent::FlexEnd),
-                },
-                justify => error!("justify content {justify:?} not supported")
-            }
+                JustifyContent::ContentPosition { value, .. } => {
+                    style.justify_content = match value {
+                        ContentPosition::Center => Some(taffy::JustifyContent::Center),
+                        ContentPosition::Start => Some(taffy::JustifyContent::Start),
+                        ContentPosition::End => Some(taffy::JustifyContent::End),
+                        ContentPosition::FlexStart => Some(taffy::JustifyContent::FlexStart),
+                        ContentPosition::FlexEnd => Some(taffy::JustifyContent::FlexEnd),
+                    }
+                }
+                justify => error!("justify content {justify:?} not supported"),
+            },
             Property::Gap(gap) => {
                 style.gap.width = gap.column.resolve(context);
                 style.gap.height = gap.row.resolve(context);
             }
             Property::ColumnGap(value) => style.gap.width = value.resolve(context),
             Property::RowGap(value) => style.gap.height = value.resolve(context),
-            Property::FlexDirection(direction, _) => style.flex_direction = match direction {
-                FlexDirection::Row => taffy::FlexDirection::Row,
-                FlexDirection::RowReverse => taffy::FlexDirection::RowReverse,
-                FlexDirection::Column => taffy::FlexDirection::Column,
-                FlexDirection::ColumnReverse => taffy::FlexDirection::ColumnReverse,
-            },
-            Property::FlexWrap(wrap, _) => style.flex_wrap = match wrap {
-                FlexWrap::NoWrap => taffy::FlexWrap::NoWrap,
-                FlexWrap::Wrap => taffy::FlexWrap::Wrap,
-                FlexWrap::WrapReverse => taffy::FlexWrap::WrapReverse,
-            },
-            Property::FlexBasis(basis, _) => style.flex_basis = match basis {
-                LengthPercentageOrAuto::Auto => Dimension::Auto,
-                LengthPercentageOrAuto::LengthPercentage(value) => resolve_dimension(value, context)
-            },
+            Property::FlexDirection(direction, _) => {
+                style.flex_direction = match direction {
+                    FlexDirection::Row => taffy::FlexDirection::Row,
+                    FlexDirection::RowReverse => taffy::FlexDirection::RowReverse,
+                    FlexDirection::Column => taffy::FlexDirection::Column,
+                    FlexDirection::ColumnReverse => taffy::FlexDirection::ColumnReverse,
+                }
+            }
+            Property::FlexWrap(wrap, _) => {
+                style.flex_wrap = match wrap {
+                    FlexWrap::NoWrap => taffy::FlexWrap::NoWrap,
+                    FlexWrap::Wrap => taffy::FlexWrap::Wrap,
+                    FlexWrap::WrapReverse => taffy::FlexWrap::WrapReverse,
+                }
+            }
+            Property::FlexBasis(basis, _) => {
+                style.flex_basis = match basis {
+                    LengthPercentageOrAuto::Auto => Dimension::Auto,
+                    LengthPercentageOrAuto::LengthPercentage(value) => {
+                        resolve_dimension(value, context)
+                    }
+                }
+            }
             Property::FlexGrow(grow, _) => style.flex_grow = *grow,
             Property::FlexShrink(shrink, _) => style.flex_shrink = *shrink,
             Property::GridTemplate(template) => {
@@ -300,8 +427,12 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
                 style.grid_template_columns = map_track_sizing(&template.columns, context);
                 // template.areas
             }
-            Property::GridTemplateRows(rows) => style.grid_template_rows = map_track_sizing(rows, context),
-            Property::GridTemplateColumns(rows) => style.grid_template_columns = map_track_sizing(rows, context),
+            Property::GridTemplateRows(rows) => {
+                style.grid_template_rows = map_track_sizing(rows, context)
+            }
+            Property::GridTemplateColumns(rows) => {
+                style.grid_template_columns = map_track_sizing(rows, context)
+            }
             Property::GridAutoColumns(_columns) => {
                 error!("grid auto columns not supported");
             }
@@ -309,14 +440,16 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
                 error!("grid auto rows not supported");
                 // style.grid_auto_rows = map_track_sizing(rows, context);
             }
-            Property::GridAutoFlow(flow) => style.grid_auto_flow = match *flow {
-                GridAutoFlow::Row => taffy::GridAutoFlow::Row,
-                GridAutoFlow::Column => taffy::GridAutoFlow::Column,
-                flow => {
-                    error!("grid flow {flow:?} not supported");
-                    taffy::GridAutoFlow::default()
+            Property::GridAutoFlow(flow) => {
+                style.grid_auto_flow = match *flow {
+                    GridAutoFlow::Row => taffy::GridAutoFlow::Row,
+                    GridAutoFlow::Column => taffy::GridAutoFlow::Column,
+                    flow => {
+                        error!("grid flow {flow:?} not supported");
+                        taffy::GridAutoFlow::default()
+                    }
                 }
-            },
+            }
             Property::GridRow(row) => style.grid_row = row.resolve(context),
             Property::GridColumn(column) => style.grid_column = column.resolve(context),
             _ => {}
@@ -330,7 +463,7 @@ fn map_overflow(keyword: OverflowKeyword) -> Overflow {
         OverflowKeyword::Hidden => Overflow::Hidden,
         OverflowKeyword::Clip => Overflow::Clip,
         OverflowKeyword::Scroll => Overflow::Scroll,
-        OverflowKeyword::Auto => Overflow::Scroll
+        OverflowKeyword::Auto => Overflow::Scroll,
     }
 }
 
@@ -359,8 +492,10 @@ fn map_track_item(item: &TrackListItem, context: SizeContext) -> TrackSizingFunc
                             error!("length {length:?} not supported");
                             TrackSizingFunction::AUTO
                         }
+                    },
+                    LengthPercentage::Percentage(percentage) => {
+                        TrackSizingFunction::from_percent(percentage.0)
                     }
-                    LengthPercentage::Percentage(percentage) => TrackSizingFunction::from_percent(percentage.0),
                     LengthPercentage::Calc(calc) => {
                         error!("calc {calc:?} not supported");
                         TrackSizingFunction::AUTO
@@ -370,12 +505,14 @@ fn map_track_item(item: &TrackListItem, context: SizeContext) -> TrackSizingFunc
                 TrackBreadth::MinContent => TrackSizingFunction::MIN_CONTENT,
                 TrackBreadth::MaxContent => TrackSizingFunction::MAX_CONTENT,
                 TrackBreadth::Auto => TrackSizingFunction::AUTO,
-            }
+            },
             TrackSize::MinMax { .. } => {
                 error!("grid min max not supported yet");
                 TrackSizingFunction::AUTO
             }
-            TrackSize::FitContent(length) => TrackSizingFunction::fit_content(resolve_length(length, context))
+            TrackSize::FitContent(length) => {
+                TrackSizingFunction::fit_content(resolve_length(length, context))
+            }
         },
         TrackListItem::TrackRepeat(repeat) => {
             error!("grid repeat not supported yet");
@@ -383,7 +520,7 @@ fn map_track_item(item: &TrackListItem, context: SizeContext) -> TrackSizingFunc
                 match repeat.count {
                     RepeatCount::Number(count) => GridTrackRepetition::Count(count as u16),
                     RepeatCount::AutoFill => GridTrackRepetition::AutoFill,
-                    RepeatCount::AutoFit => GridTrackRepetition::AutoFit
+                    RepeatCount::AutoFit => GridTrackRepetition::AutoFit,
                 },
                 vec![],
             )
@@ -417,27 +554,26 @@ fn resolve_font_size(size: &FontSize, context: SizeContext) -> f32 {
                     error!("font size {size:?} not supported");
                     context.parent_font_size
                 }
-            }
+            },
             size => {
                 error!("font size {size:?} not supported");
                 context.parent_font_size
             }
-        }
+        },
         FontSize::Absolute(size) => match size {
             size => {
                 error!("font size {size:?} not supported");
                 context.parent_font_size
-            },
-        }
+            }
+        },
         FontSize::Relative(size) => match size {
             size => {
                 error!("font size {size:?} not supported");
                 context.parent_font_size
             }
-        }
+        },
     }
 }
-
 
 fn resolve_dimension(value: &LengthPercentage, _context: SizeContext) -> Dimension {
     match value {
@@ -447,7 +583,7 @@ fn resolve_dimension(value: &LengthPercentage, _context: SizeContext) -> Dimensi
                 error!("dimension {dimension:?} not supported");
                 Dimension::Length(0.0)
             }
-        }
+        },
         LengthPercentage::Percentage(percentage) => Dimension::Percent(percentage.0),
         LengthPercentage::Calc(calc) => {
             error!("calc {calc:?} not supported");
@@ -464,7 +600,7 @@ fn resolve_length(value: &LengthPercentage, _context: SizeContext) -> taffy::Len
                 error!("length {length:?} not supported");
                 taffy::LengthPercentage::Length(0.0)
             }
-        }
+        },
         LengthPercentage::Percentage(percentage) => taffy::LengthPercentage::Percent(percentage.0),
         LengthPercentage::Calc(calc) => {
             error!("calc {calc:?} not supported");
@@ -514,13 +650,15 @@ impl Resolver<LengthPercentageAuto> for LengthPercentageOrAuto {
                         error!("length {length:?} not supported");
                         LengthPercentageAuto::Length(0.0)
                     }
+                },
+                LengthPercentage::Percentage(percentage) => {
+                    LengthPercentageAuto::Percent(percentage.0)
                 }
-                LengthPercentage::Percentage(percentage) => LengthPercentageAuto::Percent(percentage.0),
                 LengthPercentage::Calc(calc) => {
                     error!("calc {calc:?} not supported");
                     LengthPercentageAuto::Length(0.0)
                 }
-            }
+            },
         }
     }
 }
@@ -529,7 +667,7 @@ impl Resolver<taffy::LengthPercentage> for LengthPercentageOrAuto {
     fn resolve(&self, context: SizeContext) -> taffy::LengthPercentage {
         match self {
             LengthPercentageOrAuto::Auto => taffy::LengthPercentage::Length(0.0),
-            LengthPercentageOrAuto::LengthPercentage(value) => resolve_length(value, context)
+            LengthPercentageOrAuto::LengthPercentage(value) => resolve_length(value, context),
         }
     }
 }
@@ -547,12 +685,12 @@ impl Resolver<taffy::LengthPercentage> for BorderSideWidth {
                         error!("length {length:?} not supported");
                         taffy::LengthPercentage::Length(0.0)
                     }
-                }
+                },
                 Length::Calc(calc) => {
                     error!("calc {calc:?} not supported");
                     taffy::LengthPercentage::Length(0.0)
                 }
-            }
+            },
         }
     }
 }
@@ -561,7 +699,7 @@ impl Resolver<taffy::LengthPercentage> for GapValue {
     fn resolve(&self, context: SizeContext) -> taffy::LengthPercentage {
         match self {
             GapValue::Normal => taffy::LengthPercentage::Length(0.0),
-            GapValue::LengthPercentage(value) => resolve_length(value, context)
+            GapValue::LengthPercentage(value) => resolve_length(value, context),
         }
     }
 }
@@ -572,9 +710,9 @@ fn map_grid_line(line: &GridLine) -> GridPlacement {
         GridLine::Area { .. } => {
             error!("grid area placement not supported");
             GridPlacement::Auto
-        },
+        }
         GridLine::Line { index, .. } => GridPlacement::Line((*index as i16).into()),
-        GridLine::Span { index, .. } => GridPlacement::Span(*index as u16)
+        GridLine::Span { index, .. } => GridPlacement::Span(*index as u16),
     }
 }
 
@@ -594,4 +732,32 @@ impl Resolver<Line<GridPlacement>> for GridColumn<'_> {
             end: map_grid_line(&self.end),
         }
     }
+}
+
+pub fn parse_presentation(code: &str) -> Presentation {
+    let sheet = StyleSheet::parse(code, ParserOptions::default()).unwrap();
+    let mut rules = vec![];
+    for rule in sheet.rules.0 {
+        match rule {
+            CssRule::Style(style) => {
+                let css_selector = style.selectors.to_string();
+                let css_selector = css_selector.replace(":", PSEUDO_CLASS_SELECTOR);
+                let selector = Selector::parse(&css_selector).expect("selector must be: ");
+                let style = Ruleset { selector, style };
+                rules.push(style);
+            }
+            _ => {}
+        }
+    }
+    Presentation { rules }
+}
+
+const PSEUDO_CLASS_PREFIX: &str = "__pseudo_";
+const PSEUDO_CLASS_SELECTOR: &str = ".__pseudo_";
+
+/// Tricky pre-processing to implement pseudo classes.
+/// Scraper Selector implements only simple CSS selectors.
+/// TODO: correct implementation of CSS matching with selectors crate or else
+pub fn pseudo(name: &str) -> String {
+    name.replace(":", PSEUDO_CLASS_PREFIX)
 }

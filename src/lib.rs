@@ -1,8 +1,11 @@
 mod html;
 mod styles;
+mod rendering;
+mod models;
+mod api;
 
 use crate::html::adjust;
-use crate::styles::{apply_rectangle_rules, apply_style_rules, inherit};
+use crate::styles::{apply_rectangle_rules, apply_style_rules, default_layout_style, default_rectangle_style, inherit, parse_presentation};
 use ego_tree::NodeRef;
 use lightningcss::printer::PrinterOptions;
 use lightningcss::properties::background::{
@@ -24,312 +27,8 @@ use taffy::{
     AvailableSpace, Dimension, Display, FlexDirection, FlexWrap, GridAutoFlow, GridPlacement, Line,
     NodeId, Overflow, Point, Position, PrintTree, Rect, Size, Style, TaffyResult, TaffyTree,
 };
-
-#[derive(Clone, Copy)]
-pub struct SizeContext {
-    level: usize,
-    root_font_size: f32,
-    parent_font_size: f32,
-    viewport_width: f32,
-    viewport_height: f32,
-}
-
-#[derive(Clone)]
-pub struct MyBackground {
-    /// The background image.
-    pub image: Option<String>,
-    /// The background color.
-    pub color: CssColor,
-    /// The background position.
-    pub position: BackgroundPosition,
-    /// How the background image should repeat.
-    pub repeat: BackgroundRepeat,
-    /// The size of the background image.
-    pub size: BackgroundSize,
-    /// The background attachment.
-    pub attachment: BackgroundAttachment,
-    /// The background origin.
-    pub origin: BackgroundOrigin,
-    /// How the background should be clipped.
-    pub clip: BackgroundClip,
-}
-
-#[derive(Clone)]
-pub struct Rectangle {
-    key: String,
-    background: MyBackground,
-    color: RGBA,
-    font_size: f32,
-    text: Option<String>,
-}
-
-impl Default for Rectangle {
-    fn default() -> Self {
-        Self {
-            key: "".to_string(),
-            background: MyBackground {
-                image: None,
-                color: Default::default(),
-                position: Default::default(),
-                repeat: Default::default(),
-                size: Default::default(),
-                attachment: Default::default(),
-                origin: BackgroundOrigin::PaddingBox,
-                clip: Default::default(),
-            },
-            color: RGBA::new(255, 255, 255, 1.0),
-            font_size: 16.0,
-            text: None,
-        }
-    }
-}
-
-pub fn default_layout_style() -> Style {
-    Style {
-        display: Display::Block,
-        overflow: Point {
-            x: Overflow::Visible,
-            y: Overflow::Visible,
-        },
-        scrollbar_width: 0.0,
-        position: Position::Relative,
-        inset: Rect::auto(),
-        margin: Rect::zero(),
-        padding: Rect::zero(),
-        border: Rect::zero(),
-        size: Size::auto(),
-        min_size: Size::auto(),
-        max_size: Size::auto(),
-        aspect_ratio: None,
-        gap: Size::zero(),
-        align_items: None,
-        align_self: None,
-        justify_items: None,
-        justify_self: None,
-        align_content: None,
-        justify_content: None,
-        flex_direction: FlexDirection::Row,
-        flex_wrap: FlexWrap::NoWrap,
-        flex_grow: 0.0,
-        flex_shrink: 1.0,
-        flex_basis: Dimension::Auto,
-        ..Default::default()
-    }
-}
-
-pub fn is_something(value: Option<&Value>) -> bool {
-    match value {
-        None => false,
-        Some(value) => match value {
-            Value::Null => false,
-            Value::Bool(value) => *value,
-            Value::Number(number) => number.as_f64() != Some(0.0),
-            Value::String(value) => !value.is_empty(),
-            Value::Array(value) => !value.is_empty(),
-            Value::Object(_) => true,
-        },
-    }
-}
-
-pub fn get_property<'v>(value: &'v Value, name: &str) -> Option<&'v Value> {
-    value.get(name)
-}
-
-pub fn as_array(value: Option<&Value>) -> Option<&Vec<Value>> {
-    match value {
-        None => None,
-        Some(value) => value.as_array()
-    }
-}
-
-pub fn as_string(value: Option<&Value>) -> String {
-    match value {
-        None => String::new(),
-        Some(value) => match value {
-            Value::Null => String::new(),
-            Value::Bool(value) => value.to_string(),
-            Value::Number(value) => value.to_string(),
-            Value::String(value) => value.clone(),
-            Value::Array(_) => String::from("[array]"),
-            Value::Object(_) => String::from("[object]"),
-        }
-    }
-}
-
-pub fn render_text(text: String, value: &Map<String, Value>) -> String {
-    let mut result = String::new();
-    let mut field = false;
-    let mut field_name = String::new();
-    for ch in text.chars() {
-        if field {
-            if ch == '}' {
-                result += &as_string(value.get(&field_name));
-                field = false;
-            } else {
-                field_name.push(ch);
-            }
-        } else {
-            if ch == '{' {
-                field = true;
-                field_name = String::new();
-            }
-            if !field {
-                result.push(ch);
-            }
-        }
-    }
-    result
-}
-
-struct RepeatContext {
-    
-}
-
-pub fn render_tree<'p>(
-    parent_id: NodeId,
-    current: NodeRef<Node>,
-    value: &mut Map<String, Value>,
-    context: SizeContext,
-    presentation: &'p Presentation,
-    layout: &mut TaffyTree<Rectangle>,
-) {
-    match current.value() {
-        Node::Text(text) => {
-            let text = text.text.trim().to_string();
-            let text = render_text(text, value);
-            if !text.is_empty() {
-                // fake text element
-                println!("{parent_id:?} t {}", text);
-                let style = default_layout_style();
-                let parent_rectangle = layout.get_node_context(parent_id).expect("context must be");
-                let mut rectangle = Rectangle::default();
-                rectangle.key = "text".to_string();
-                rectangle.text = Some(text);
-                inherit(&parent_rectangle, &mut rectangle);
-
-                let current_id = match layout.new_leaf_with_context(style, rectangle.clone()) {
-                    Ok(node_id) => node_id,
-                    Err(error) => {
-                        error!("unable to create rendering node, {}", error);
-                        return;
-                    }
-                };
-                if let Err(error) = layout.add_child(parent_id, current_id) {
-                    error!("unable to append rendering node, {}", error);
-                    return;
-                }
-            }
-        }
-        Node::Element(element) => {
-            // println!("{parent_id:?} {} {}", "-".repeat(context.level), element.name.local);
-
-            if let Some(ident) = element.attr("?") {
-                if !is_something(value.get(ident)) {
-                    return;
-                }
-            }
-            if let Some(ident) = element.attr("!") {
-                if is_something(value.get(ident)) {
-                    return;
-                }
-            }
-            let no_array = vec![Value::Null];
-            let no_array_key = String::new();
-            let repeat = if let Some(ident) = element.attr("*") {
-                match as_array(value.get(ident)) {
-                    None => return,
-                    Some(array) => (ident.to_string(), array.clone()) // TODO: remove clone
-                }
-            } else {
-                (no_array_key, no_array)
-            };
-            let (repeat_key, repeat_values) = repeat; 
-            
-            for repeat_value in repeat_values {
-                if !repeat_key.is_empty() {
-                    // TODO: replace value ?
-                    // TODO: remove clone ?
-                    value.insert(repeat_key.clone(), repeat_value.clone()); 
-                }
-
-                let mut style = default_layout_style();
-                let mut rectangle = Rectangle::default();
-                let parent_rectangle = layout.get_node_context(parent_id).expect("context must be");
-                rectangle.key = element.name.local.to_string();
-                for rule in &presentation.rules {
-                    if rule
-                        .selector
-                        .matches(&ElementRef::wrap(current).expect("node is element"))
-                    {
-                        apply_style_rules(rule, &mut style, context);
-                        apply_rectangle_rules(rule, &parent_rectangle, &mut rectangle, context);
-                    }
-                }
-                adjust(element, &mut rectangle, &mut style);
-
-                let current_id = match layout.new_leaf_with_context(style, rectangle.clone()) {
-                    Ok(node_id) => node_id,
-                    Err(error) => {
-                        error!("unable to create rendering node, {}", error);
-                        return;
-                    }
-                };
-                if let Err(error) = layout.add_child(parent_id, current_id) {
-                    error!("unable to append rendering node, {}", error);
-                    return;
-                }
-
-                for child in current.children() {
-                    if let Some(text) = child.value().as_text() {
-                        if !child.has_siblings() {
-                            let inner_text = render_text(text.text.to_string(), value);
-                            layout.get_node_context_mut(current_id).unwrap().text =
-                                Some(inner_text);
-                            break;
-                        }
-                    }
-                    let mut context = context;
-                    context.parent_font_size = rectangle.font_size;
-                    context.level += 1;
-                    render_tree(current_id, child, value, context, presentation, layout);
-                }
-                
-                if !repeat_key.is_empty() {
-                    value.remove(&repeat_key);
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-pub struct Ruleset<'i> {
-    pub selector: Selector,
-    pub style: StyleRule<'i>,
-}
-
-pub struct Presentation<'i> {
-    pub rules: Vec<Ruleset<'i>>,
-}
-
-impl Presentation<'_> {
-    pub fn parse(code: &str) -> Presentation {
-        let sheet = StyleSheet::parse(code, ParserOptions::default()).unwrap();
-        let mut rules = vec![];
-        for rule in sheet.rules.0 {
-            match rule {
-                CssRule::Style(style) => {
-                    let css_selector = style.selectors.to_string();
-                    let selector = Selector::parse(&css_selector).expect("selector must be: ");
-                    let style = Ruleset { selector, style };
-                    rules.push(style);
-                }
-                _ => {}
-            }
-        }
-        Presentation { rules }
-    }
-}
+use crate::models::{Presentation, Rectangle, SizeContext};
+use crate::rendering::{render_tree, State};
 
 pub fn do_something() {
     let mut value: Value = json!({
@@ -348,11 +47,13 @@ pub fn do_something() {
 
     let template = fs::read_to_string("./assets/index.html").expect("index.html");
     let presentation = fs::read_to_string("./assets/style.css").expect("style.css");
-    let presentation = Presentation::parse(&presentation);
+    let presentation = parse_presentation(&presentation);
 
     let html = Html::parse_document(&template);
     let body_selector = Selector::parse("body").expect("body selector");
     let body = html.select(&body_selector).next().expect("body element");
+    
+    
     let mut rendering = TaffyTree::new();
     let viewport = rendering
         .new_leaf_with_context(
@@ -363,7 +64,7 @@ pub fn do_something() {
                 },
                 ..Default::default()
             },
-            Rectangle::default(),
+            default_rectangle_style(),
         )
         .unwrap();
     let context = SizeContext {
@@ -373,7 +74,8 @@ pub fn do_something() {
         viewport_width: 800.0,
         viewport_height: 100.0,
     };
-    render_tree(viewport, *body, value.as_object_mut().expect("must be object"), context, &presentation, &mut rendering);
+    let mut state = State::new();
+    render_tree(viewport, *body, value.as_object_mut().expect("must be object"), context, &presentation, &mut rendering, &mut state);
     println!("rendering nodes: {}", rendering.total_node_count());
     struct FontSystem {
         letter_h: f32,

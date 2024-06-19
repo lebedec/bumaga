@@ -1,9 +1,7 @@
-use lightningcss::dependencies::Location;
-use lightningcss::values::image::Image;
-use lightningcss::values::url::Url;
-use crate::Rectangle;
+
 use scraper::node::Element;
 use taffy::Style;
+use crate::models::Rectangle;
 
 /// Configures the elements or adjust their behavior in various ways to meet HTML experience.
 /// 
