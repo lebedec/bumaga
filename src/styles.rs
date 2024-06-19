@@ -5,7 +5,6 @@ use lightningcss::properties::align::{
 };
 use lightningcss::properties::background::BackgroundOrigin;
 use lightningcss::properties::border::BorderSideWidth;
-use lightningcss::properties::custom::TokenList;
 use lightningcss::properties::display::{Display, DisplayInside, DisplayKeyword, DisplayOutside};
 use lightningcss::properties::flex::{FlexDirection, FlexWrap};
 use lightningcss::properties::font::FontSize;
@@ -18,18 +17,12 @@ use lightningcss::properties::position::Position;
 use lightningcss::properties::size::{MaxSize, Size};
 use lightningcss::properties::Property;
 use lightningcss::rules::CssRule;
-use lightningcss::selector::{Component, Direction, PseudoClass, PseudoElement, ViewTransitionPartName, WebKitScrollbarPseudoClass, WebKitScrollbarPseudoElement};
 use lightningcss::stylesheet::{ParserOptions, StyleSheet};
 use lightningcss::values::color::{CssColor, RGBA};
 use lightningcss::values::image::Image;
 use lightningcss::values::length::{Length, LengthPercentage, LengthPercentageOrAuto, LengthValue};
-use lightningcss::values::string::CowArcStr;
-use lightningcss::vendor_prefix::VendorPrefix;
 use log::error;
 use scraper::Selector;
-use std::collections::HashMap;
-use std::fmt;
-use std::marker::PhantomData;
 use taffy::prelude::FromLength;
 use taffy::prelude::TaffyAuto;
 use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
@@ -42,6 +35,7 @@ use static_self::IntoOwned;
 pub fn create_rectangle(id: ElementId) -> Rectangle {
     Rectangle {
         id,
+        element: None,
         key: "".to_string(),
         background: MyBackground {
             image: None,

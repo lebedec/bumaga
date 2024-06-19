@@ -1,8 +1,7 @@
 use lightningcss::properties::background::{BackgroundAttachment, BackgroundClip, BackgroundOrigin, BackgroundPosition, BackgroundRepeat, BackgroundSize};
-use lightningcss::rules::CssRule;
 use lightningcss::rules::style::StyleRule;
-use lightningcss::stylesheet::{ParserOptions, StyleSheet};
 use lightningcss::values::color::{CssColor, RGBA};
+use scraper::node::Element;
 use scraper::Selector;
 
 #[derive(Clone, Copy)]
@@ -44,6 +43,7 @@ pub struct ElementId {
 #[derive(Clone)]
 pub struct Rectangle {
     pub id: ElementId,
+    pub element: Option<Element>,
     pub key: String,
     pub background: MyBackground,
     pub color: RGBA,

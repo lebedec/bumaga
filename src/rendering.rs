@@ -1,18 +1,15 @@
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem;
-use std::ops::Deref;
-use std::ptr::hash;
-use ego_tree::{NodeMut, NodeRef};
+use ego_tree::{NodeRef};
 use log::error;
-use scraper::{ElementRef, Node, StrTendril};
-use scraper::node::Element;
+use scraper::{ElementRef, Node};
 use serde_json::{Map, Value};
 use taffy::{NodeId, TaffyTree};
 use crate::html::adjust;
 use crate::models::{ElementId, Presentation, Rectangle, SizeContext};
 use crate::styles::{apply_rectangle_rules, apply_style_rules, default_layout_style, create_rectangle, inherit, pseudo};
-use html5ever::{Attribute, LocalName, QualName, ns};
+use html5ever::{LocalName, QualName, ns};
 use html5ever::namespace_url;
 
 
@@ -39,6 +36,15 @@ impl State {
     pub fn set_pseudo_classes(&mut self, element_id: ElementId, classes: Vec<String>) {
         self.pseudo_classes.insert(element_id, classes);
     }
+
+    pub fn has_pseudo_class(&self, element_id: ElementId, target: &str) -> bool {
+        match self.pseudo_classes.get(&element_id) {
+            None => false,
+            Some(classes) => {
+                classes.iter().find(|class| class.as_str() == target).is_some()
+            }
+        }
+    }
 }
 
 pub fn render_tree<'p>(
@@ -62,7 +68,6 @@ pub fn render_tree<'p>(
                     hash: 0,
                 };
                 let text = interpolate_string(text, value);
-                println!("{parent_id:?} t {}", text);
                 let style = default_layout_style();
                 let parent_rectangle = layout.get_node_context(parent_id).expect("context must be");
                 let mut rectangle = create_rectangle(element_id);
@@ -128,15 +133,16 @@ pub fn render_tree<'p>(
                 let original_element = element.clone();
                 let mut element_mut = element.clone();
                 let class_attr = qual("class");
-                match element_mut.attrs.get(&class_attr) {
-                    None => {}
-                    Some(classes) => {
-                        let mut result = String::new();
-                        result += classes.trim();
-                        result += " ";
-                        result += &pseudo(":hover");
-                        element_mut.attrs.insert(class_attr, result.into());
-                    }
+                let pseudo_classes = state.get_pseudo_classes(element_id);
+                if !pseudo_classes.is_empty() {
+                    let defined = match element_mut.attrs.get(&class_attr) {
+                        None => String::new(),
+                        Some(classes) => classes.trim().to_string()
+                    };
+                    let mut pseudo_classes = pseudo_classes.clone();
+                    pseudo_classes.insert(0, defined);
+                    let result = pseudo_classes.join(" ");
+                    element_mut.attrs.insert(class_attr, result.into());
                 }
                 *current_mut = Node::Element(element_mut);
                 let element = current_mut.as_element().unwrap();
@@ -148,6 +154,7 @@ pub fn render_tree<'p>(
 
                 let mut style = default_layout_style();
                 let mut rectangle = create_rectangle(element_id);
+                rectangle.element = Some(original_element.clone());
                 let parent_rectangle = layout.get_node_context(parent_id).expect("context must be");
                 rectangle.key = element.name.local.to_string();
 
@@ -163,10 +170,8 @@ pub fn render_tree<'p>(
                 }
                 adjust(element, &mut rectangle, &mut style);
 
-                // if is_hover {
-                //     state.set_state(element_id, pseudo(":hover"))
-                // }
-
+                
+                
                 let current_id = match layout.new_leaf_with_context(style, rectangle.clone()) {
                     Ok(node_id) => node_id,
                     Err(error) => {
