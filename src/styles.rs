@@ -1,4 +1,4 @@
-use crate::models::{MyBackground, Presentation, Rectangle, Ruleset, SizeContext};
+use crate::models::{ElementId, MyBackground, Presentation, Rectangle, Ruleset, SizeContext};
 use lightningcss::properties::align::{
     AlignContent, AlignItems, AlignSelf, ContentDistribution, ContentPosition, GapValue,
     JustifyContent, JustifyItems, JustifySelf, SelfPosition,
@@ -37,9 +37,11 @@ use taffy::{
     Dimension, GridPlacement, GridTrackRepetition, LengthPercentageAuto, Line, Overflow, Point,
     Rect, Style, TrackSizingFunction,
 };
+use static_self::IntoOwned;
 
-pub fn default_rectangle_style() -> Rectangle {
+pub fn create_rectangle(id: ElementId) -> Rectangle {
     Rectangle {
+        id,
         key: "".to_string(),
         background: MyBackground {
             image: None,
@@ -740,6 +742,7 @@ pub fn parse_presentation(code: &str) -> Presentation {
     for rule in sheet.rules.0 {
         match rule {
             CssRule::Style(style) => {
+                let style = style.into_owned();
                 let css_selector = style.selectors.to_string();
                 let css_selector = css_selector.replace(":", PSEUDO_CLASS_SELECTOR);
                 let selector = Selector::parse(&css_selector).expect("selector must be: ");

@@ -34,8 +34,16 @@ pub struct MyBackground {
     pub clip: BackgroundClip,
 }
 
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ElementId {
+    pub element_n: usize,
+    pub hash: u64
+}
+
 #[derive(Clone)]
 pub struct Rectangle {
+    pub id: ElementId,
     pub key: String,
     pub background: MyBackground,
     pub color: RGBA,
@@ -48,7 +56,7 @@ pub struct Ruleset<'i> {
     pub style: StyleRule<'i>,
 }
 
-pub struct Presentation<'i> {
-    pub rules: Vec<Ruleset<'i>>,
+pub struct Presentation {
+    pub rules: Vec<Ruleset<'static>>,
 }
 

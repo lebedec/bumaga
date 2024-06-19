@@ -10,16 +10,11 @@ use scraper::node::Element;
 use serde_json::{Map, Value};
 use taffy::{NodeId, TaffyTree};
 use crate::html::adjust;
-use crate::models::{Presentation, Rectangle, SizeContext};
-use crate::styles::{apply_rectangle_rules, apply_style_rules, default_layout_style, default_rectangle_style, inherit, pseudo};
+use crate::models::{ElementId, Presentation, Rectangle, SizeContext};
+use crate::styles::{apply_rectangle_rules, apply_style_rules, default_layout_style, create_rectangle, inherit, pseudo};
 use html5ever::{Attribute, LocalName, QualName, ns};
 use html5ever::namespace_url;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ElementId {
-    pub element_n: usize,
-    pub hash: u64
-}
 
 pub struct State {
     pub element_n: usize,
@@ -59,13 +54,18 @@ pub fn render_tree<'p>(
     match current.value() {
         Node::Text(text) => {
             let text = text.text.trim().to_string();
-            let text = interpolate_string(text, value);
             if !text.is_empty() {
                 // fake text element
+                state.element_n += 1;
+                let element_id = ElementId {
+                    element_n: state.element_n,
+                    hash: 0,
+                };
+                let text = interpolate_string(text, value);
                 println!("{parent_id:?} t {}", text);
                 let style = default_layout_style();
                 let parent_rectangle = layout.get_node_context(parent_id).expect("context must be");
-                let mut rectangle = default_rectangle_style();
+                let mut rectangle = create_rectangle(element_id);
                 rectangle.key = "text".to_string();
                 rectangle.text = Some(text);
                 inherit(&parent_rectangle, &mut rectangle);
@@ -84,10 +84,7 @@ pub fn render_tree<'p>(
             }
         }
         Node::Element(element) => {
-            // println!("{parent_id:?} {} {}", "-".repeat(context.level), element.name.local);
-
             state.element_n += 1;
-
             if let Some(ident) = element.attr("?") {
                 if !is_something(value.get(ident)) {
                     return;
@@ -150,7 +147,7 @@ pub fn render_tree<'p>(
                 }
 
                 let mut style = default_layout_style();
-                let mut rectangle = default_rectangle_style();
+                let mut rectangle = create_rectangle(element_id);
                 let parent_rectangle = layout.get_node_context(parent_id).expect("context must be");
                 rectangle.key = element.name.local.to_string();
 
