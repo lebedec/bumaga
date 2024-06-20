@@ -1,9 +1,12 @@
 use std::fs;
 use std::time::Instant;
+use cosmic_text::{Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping, Stretch, Style, Weight, Wrap};
 use lightningcss::printer::PrinterOptions;
+use lightningcss::properties::font::{FontStretchKeyword, FontStyle};
+use lightningcss::properties::text::OverflowWrap;
 use lightningcss::traits::ToCss;
 use serde_json::{json, Value};
-use bumaga::{Component, Input};
+use bumaga::{Component, Fonts, Input, TextStyle};
 
 #[test]
 fn test_something() {
@@ -26,12 +29,20 @@ fn test_something() {
             {"value": "v2", "name": "value 2"},
         ]
     });
+
+    let fonts = &mut CosmicFonts::new();
+    
     let t = Instant::now();
 
-    let input = Input::new().value(value.clone()).mouse([15.0, 15.0], true);
+    let input = Input::new(fonts).value(value.clone()).mouse([15.0, 15.0], true);
     let frame = component.update(input);
+    
+    for i in 0..60 {
+        let input = Input::new(fonts).value(value.clone()).mouse([15.0, 15.0], true);
+        let frame = component.update(input);
+    }
 
-    let input = Input::new().value(value.clone()).mouse([15.0, 15.0], false);
+    let input = Input::new(fonts).value(value.clone()).mouse([15.0, 15.0], false);
     let frame = component.update(input);
     let t = t.elapsed().as_secs_f32();
     println!("elapsed: {t}");
@@ -55,7 +66,7 @@ fn test_something() {
         let w = layout.size.width;
         let h = layout.size.height;
         let empty = String::new();
-        let t = rectangle.text.as_ref().unwrap_or(&empty);
+        let t = rectangle.text.as_ref().map(|c| &c.text).unwrap_or(&empty);
         // println!(
         //     "{k} bg {:?} cs{:?} sc{:?} s{:?}",
         //     rectangle.background.color, layout.content_size, layout.scrollbar_size, layout.size
@@ -73,4 +84,70 @@ fn test_something() {
         result += &record;
     }
     fs::write("./assets/result.html", result).expect("result written");
+}
+
+
+pub struct CosmicFonts {
+    pub(crate) font_system: FontSystem
+}
+
+impl CosmicFonts {
+    pub fn new() -> Self {
+        let font_system = FontSystem::new();
+        Self { font_system }
+    }
+}
+
+impl Fonts for CosmicFonts {
+    fn measure(&mut self, text: &str, style: &TextStyle, max_width: Option<f32>) -> [f32; 2] {
+        let metrics = Metrics {
+            font_size: style.font_size,
+            line_height: style.line_height,
+        };
+        let mut buffer = Buffer::new_empty(metrics);
+        let font_system = &mut self.font_system;
+        buffer.set_size(font_system, max_width, None);
+        let wrap = match style.wrap {
+            OverflowWrap::Normal => Wrap::WordOrGlyph,
+            OverflowWrap::Anywhere => Wrap::Glyph,
+            OverflowWrap::BreakWord => Wrap::WordOrGlyph,
+        };
+        buffer.set_wrap(font_system, wrap);
+        let attrs = Attrs {
+            color_opt: None,
+            family: Family::Name(&style.font_family),
+            stretch: match style.font_stretch {
+                FontStretchKeyword::Normal => Stretch::Normal,
+                FontStretchKeyword::UltraCondensed => Stretch::UltraCondensed,
+                FontStretchKeyword::ExtraCondensed => Stretch::ExtraCondensed,
+                FontStretchKeyword::Condensed => Stretch::Condensed,
+                FontStretchKeyword::SemiCondensed => Stretch::SemiCondensed,
+                FontStretchKeyword::SemiExpanded => Stretch::SemiExpanded,
+                FontStretchKeyword::Expanded => Stretch::Expanded,
+                FontStretchKeyword::ExtraExpanded => Stretch::ExtraExpanded,
+                FontStretchKeyword::UltraExpanded => Stretch::UltraExpanded,
+            },
+            style: match style.font_style {
+                FontStyle::Normal => Style::Normal,
+                FontStyle::Italic => Style::Italic,
+                FontStyle::Oblique(_) => Style::Normal
+            },
+            weight: Weight(style.font_weight),
+            metadata: 0,
+            cache_key_flags: CacheKeyFlags::empty(),
+            metrics_opt: None,
+        };
+        buffer.set_text(font_system, text, attrs, Shaping::Advanced);
+
+        // Compute layout
+        buffer.shape_until_scroll(font_system, false);
+
+        // Determine measured size of text
+        let (width, total_lines) = buffer
+            .layout_runs()
+            .fold((0.0, 0usize), |(width, total_lines), run| (run.line_w.max(width), total_lines + 1));
+        let height = total_lines as f32 * buffer.metrics().line_height;
+
+        [width, height]
+    }
 }

@@ -1,4 +1,4 @@
-use crate::models::{ElementId, MyBackground, Presentation, Rectangle, Ruleset, SizeContext};
+use crate::models::{ElementId, MyBackground, Presentation, Rectangle, Ruleset, SizeContext, TextStyle};
 use lightningcss::properties::align::{
     AlignContent, AlignItems, AlignSelf, ContentDistribution, ContentPosition, GapValue,
     JustifyContent, JustifyItems, JustifySelf, SelfPosition,
@@ -7,7 +7,7 @@ use lightningcss::properties::background::BackgroundOrigin;
 use lightningcss::properties::border::BorderSideWidth;
 use lightningcss::properties::display::{Display, DisplayInside, DisplayKeyword, DisplayOutside};
 use lightningcss::properties::flex::{FlexDirection, FlexWrap};
-use lightningcss::properties::font::FontSize;
+use lightningcss::properties::font::{AbsoluteFontWeight, FontFamily, FontSize, FontStretch, FontStretchKeyword, FontStyle, FontWeight, LineHeight};
 use lightningcss::properties::grid::{
     GridAutoFlow, GridColumn, GridLine, GridRow, RepeatCount, TrackBreadth, TrackListItem,
     TrackSize, TrackSizing,
@@ -16,6 +16,7 @@ use lightningcss::properties::overflow::OverflowKeyword;
 use lightningcss::properties::position::Position;
 use lightningcss::properties::size::{MaxSize, Size};
 use lightningcss::properties::Property;
+use lightningcss::properties::text::OverflowWrap;
 use lightningcss::rules::CssRule;
 use lightningcss::stylesheet::{ParserOptions, StyleSheet};
 use lightningcss::values::color::{CssColor, RGBA};
@@ -31,6 +32,12 @@ use taffy::{
     Rect, Style, TrackSizingFunction,
 };
 use static_self::IntoOwned;
+
+impl TextStyle {
+    pub const DEFAULT_FONT_FAMILY: &'static str = "system-ui";
+    pub const DEFAULT_FONT_WEIGHT: u16 = 400;
+    pub const DEFAULT_FONT_STRETCH: FontStretchKeyword = FontStretchKeyword::Normal;
+}
 
 pub fn create_rectangle(id: ElementId) -> Rectangle {
     Rectangle {
@@ -48,8 +55,16 @@ pub fn create_rectangle(id: ElementId) -> Rectangle {
             clip: Default::default(),
         },
         color: RGBA::new(255, 255, 255, 1.0),
-        font_size: 16.0,
         text: None,
+        text_style: TextStyle {
+            font_family: TextStyle::DEFAULT_FONT_FAMILY.to_string(),
+            font_size: 16.0,
+            font_style: FontStyle::Normal,
+            font_weight: TextStyle::DEFAULT_FONT_WEIGHT,
+            font_stretch: TextStyle::DEFAULT_FONT_STRETCH,
+            line_height: 16.0,
+            wrap: OverflowWrap::Normal,
+        },
     }
 }
 
@@ -96,16 +111,21 @@ pub fn inherit<'i>(parent: &Rectangle, rectangle: &mut Rectangle) {
     // direction
     // empty-cells
     // font-family
+    rectangle.text_style.font_family = parent.text_style.font_family.clone();
     // font-size
-    rectangle.font_size = parent.font_size;
+    rectangle.text_style.font_size = parent.text_style.font_size;
     // font-style
+    rectangle.text_style.font_style = parent.text_style.font_style.clone();
     // font-variant
     // font-weight
+    rectangle.text_style.font_weight = parent.text_style.font_weight;
     // font-size-adjust
     // font-stretch
+    rectangle.text_style.font_stretch = parent.text_style.font_stretch.clone();
     // font
     // letter-spacing
     // line-height
+    rectangle.text_style.line_height = parent.text_style.line_height;
     // list-style-image
     // list-style-position
     // list-style-type
@@ -126,6 +146,7 @@ pub fn inherit<'i>(parent: &Rectangle, rectangle: &mut Rectangle) {
     // word-break
     // word-spacing
     // word-wrap
+    rectangle.text_style.wrap = parent.text_style.wrap;
 }
 
 pub fn apply_rectangle_rules<'i>(
@@ -191,8 +212,22 @@ pub fn apply_rectangle_rules<'i>(
                     color => error!("color {color:?} not supported"),
                 };
             }
-            Property::FontSize(size) => rectangle.font_size = resolve_font_size(size, context),
-            Property::Font(font) => rectangle.font_size = resolve_font_size(&font.size, context),
+            Property::FontFamily(family) => rectangle.text_style.font_family = resolve_font_family(family),
+            Property::FontSize(size) => rectangle.text_style.font_size = resolve_font_size(size, context),
+            Property::FontStyle(style) => rectangle.text_style.font_style = style.clone(),
+            Property::FontWeight(weight) => rectangle.text_style.font_weight = resolve_font_weight(weight),
+            Property::FontStretch(stretch) => rectangle.text_style.font_stretch = resolve_font_stretch(stretch),
+            Property::LineHeight(height) => rectangle.text_style.line_height = resolve_line_height(height, context, rectangle.text_style.font_size),
+            Property::Font(font) => {
+                rectangle.text_style.font_family = resolve_font_family(&font.family);
+                rectangle.text_style.font_size = resolve_font_size(&font.size, context);
+                rectangle.text_style.font_style = font.style.clone();
+                rectangle.text_style.font_weight = resolve_font_weight(&font.weight);
+                rectangle.text_style.font_stretch = resolve_font_stretch(&font.stretch);
+                rectangle.text_style.line_height = resolve_line_height(&font.line_height, context, rectangle.text_style.font_size);
+            },
+            Property::OverflowWrap(wrap) => rectangle.text_style.wrap = wrap.clone(),
+            Property::WordWrap(wrap) => rectangle.text_style.wrap = wrap.clone(),
             _ => {}
         }
     }
@@ -533,6 +568,75 @@ fn map_track_sizing(sizing: &TrackSizing, context: SizeContext) -> Vec<TrackSizi
                 result.push(map_track_item(item, context));
             }
             result
+        }
+    }
+}
+
+fn resolve_font_family(declaration: &Vec<FontFamily>) -> String {
+    match declaration.get(0) {
+        None => {
+            error!("empty font family declaration");
+            TextStyle::DEFAULT_FONT_FAMILY.to_string()
+        }
+        Some(family) => match family {
+            FontFamily::FamilyName(name) => name.to_string(),
+            family => {
+                error!("family {family:?} not supported");
+                TextStyle::DEFAULT_FONT_FAMILY.to_string()
+            }
+        }
+    }
+}
+
+fn resolve_font_stretch(stretch: &FontStretch) -> FontStretchKeyword {
+    match stretch {
+        FontStretch::Keyword(keyword) => keyword.clone(),
+        stretch => {
+            error!("stretch {stretch:?} not supported");
+            TextStyle::DEFAULT_FONT_STRETCH
+        }
+    }
+}
+
+fn resolve_font_weight(weight: &FontWeight) -> u16 {
+    match weight {
+        FontWeight::Absolute(weight) => match weight {
+            AbsoluteFontWeight::Weight(value) => if *value > 100.0 && *value < 1000.0 {
+                *value as u16
+            } else {
+                error!("weight {value} not supported");
+                TextStyle::DEFAULT_FONT_WEIGHT
+            }
+            AbsoluteFontWeight::Normal => 400,
+            AbsoluteFontWeight::Bold => 700
+        }
+        weight => {
+            error!("weight {weight:?} not supported");
+            TextStyle::DEFAULT_FONT_WEIGHT
+        }
+    }
+}
+
+fn resolve_line_height(height: &LineHeight, context: SizeContext, font_size: f32) -> f32 {
+    match height {
+        LineHeight::Normal => 1.2 * font_size,
+        LineHeight::Number(multiplier) => (multiplier * font_size).floor(),
+        LineHeight::Length(height) => match height {
+            LengthPercentage::Dimension(height) => match height {
+                LengthValue::Px(value) => *value,
+                LengthValue::Em(value) => context.parent_font_size * value,
+                LengthValue::Rem(value) => context.root_font_size * value,
+                LengthValue::Vw(value) => context.viewport_width * value / 100.0,
+                LengthValue::Vh(value) => context.viewport_height * value / 100.0,
+                height => {
+                    error!("line height {height:?} not supported");
+                    context.parent_font_size
+                }
+            },
+            height => {
+                error!("line height {height:?} not supported");
+                context.parent_font_size
+            }
         }
     }
 }

@@ -1,4 +1,6 @@
 use lightningcss::properties::background::{BackgroundAttachment, BackgroundClip, BackgroundOrigin, BackgroundPosition, BackgroundRepeat, BackgroundSize};
+use lightningcss::properties::font::{FontStretch, FontStretchKeyword, FontStyle, FontVariantCaps, FontWeight};
+use lightningcss::properties::text::OverflowWrap;
 use lightningcss::rules::style::StyleRule;
 use lightningcss::values::color::{CssColor, RGBA};
 use scraper::node::Element;
@@ -47,8 +49,37 @@ pub struct Rectangle {
     pub key: String,
     pub background: MyBackground,
     pub color: RGBA,
+    pub text: Option<TextContext>,
+    pub text_style: TextStyle,
+}
+
+#[derive(Clone)]
+pub struct TextContext {
+    pub text: String
+}
+
+impl TextContext {
+    pub fn new(text: &str) -> Self {
+        Self {text: text.to_string()}
+    }
+}
+
+#[derive(Clone)]
+pub struct TextStyle {
+    /// The font family.
+    pub font_family: String,
+    /// The font size.
     pub font_size: f32,
-    pub text: Option<String>,
+    /// The font style.
+    pub font_style: FontStyle,
+    /// The font weight.
+    pub font_weight: u16,
+    /// The font stretch.
+    pub font_stretch: FontStretchKeyword,
+    /// The line height.
+    pub line_height: f32,
+    /// The text overflow wrap.
+    pub wrap: OverflowWrap
 }
 
 pub struct Ruleset<'i> {

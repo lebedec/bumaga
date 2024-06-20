@@ -4,6 +4,7 @@ use serde_json::Value;
 use taffy::{Layout};
 use crate::models::{Presentation, Rectangle};
 use crate::rendering::{State};
+pub use crate::models::TextStyle;
 
 pub struct Component {
     pub(crate) presentation: Presentation,
@@ -11,7 +12,8 @@ pub struct Component {
     pub(crate) state: State,
 }
 
-pub struct Input {
+pub struct Input<'f> {
+    pub(crate) fonts: &'f mut dyn Fonts,
     pub(crate) value: Value,
     pub(crate) time: Duration,
     pub(crate) keys: Vec<String>,
@@ -36,5 +38,9 @@ pub struct Element {
 pub struct Frame {
     pub calls: Vec<Call>,
     pub elements: Vec<Element>
+}
+
+pub trait Fonts {
+    fn measure(&mut self, text: &str, style: &TextStyle, max_width: Option<f32>) -> [f32; 2];
 }
 

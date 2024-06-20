@@ -14,3 +14,6 @@ log = "0.4"
 selectors = "0.25"
 html5ever = "0.26"
 static-self = "0.1"
+
+[dev-dependencies]
+cosmic-text = {  version="0.12" }

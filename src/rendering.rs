@@ -7,7 +7,7 @@ use scraper::{ElementRef, Node};
 use serde_json::{Map, Value};
 use taffy::{NodeId, TaffyTree};
 use crate::html::adjust;
-use crate::models::{ElementId, Presentation, Rectangle, SizeContext};
+use crate::models::{ElementId, Presentation, Rectangle, SizeContext, TextContext};
 use crate::styles::{apply_rectangle_rules, apply_style_rules, default_layout_style, create_rectangle, inherit, pseudo};
 use html5ever::{LocalName, QualName, ns};
 use html5ever::namespace_url;
@@ -72,7 +72,7 @@ pub fn render_tree<'p>(
                 let parent_rectangle = layout.get_node_context(parent_id).expect("context must be");
                 let mut rectangle = create_rectangle(element_id);
                 rectangle.key = "text".to_string();
-                rectangle.text = Some(text);
+                rectangle.text = Some(TextContext::new(&text));
                 inherit(&parent_rectangle, &mut rectangle);
 
                 let current_id = match layout.new_leaf_with_context(style, rectangle.clone()) {
@@ -168,7 +168,7 @@ pub fn render_tree<'p>(
                         apply_rectangle_rules(rule, &parent_rectangle, &mut rectangle, context);
                     }
                 }
-                adjust(element, &mut rectangle, &mut style);
+                adjust(element, value, &mut rectangle, &mut style);
 
                 
                 
@@ -189,12 +189,12 @@ pub fn render_tree<'p>(
                         if !child.has_siblings() {
                             let inner_text = interpolate_string(text.text.to_string(), value);
                             layout.get_node_context_mut(current_id).unwrap().text =
-                                Some(inner_text);
+                                Some(TextContext::new(&inner_text));
                             break;
                         }
                     }
                     let mut context = context;
-                    context.parent_font_size = rectangle.font_size;
+                    context.parent_font_size = rectangle.text_style.font_size;
                     context.level += 1;
                     render_tree(current_id, child, value, context, presentation, layout, state);
                 }
