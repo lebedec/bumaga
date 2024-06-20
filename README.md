@@ -1,5 +1,36 @@
 # bumaga
 
+A Rust library for building user interfaces inspired by web development experience.
+You should use it if these features valuable to you:
+
++ UI declaration and styling language similar to HTML/CSS
++ Hot reloading of view, prototyping without recompilation Rust app
++ Simple view bindings and interoperability based on `serde_json`
++ Graphics API agnostic
++ Windowing API agnostic
++ (TODO) CSS animations
+
+```rust
+fn main() {
+    let mut engine = MyEngine::startup();
+    let mut name = String::from("Alice");
+    let component = Component::compile("index.html", "style.css");
+    loop {
+        let value = json!({"name": name});
+        let input = Input::from(engine.input)
+            .fonts(engine.fonts)
+            .value(value);
+        let frame = component.update(input);
+        if let Some(arg) = frame.calls.get("rename") {
+            name = arg.to_string()
+        }
+        for element in frame.elements {
+            engine.draw(element);
+        }
+    }
+}
+```
+
 ```html
 <div>
     <h1>Hello, {name}!</h1>
@@ -18,42 +49,10 @@ input {
 }
 ```
 
-```rust
-fn main() {
-    let mut fonts = MyFontsSystem::new();
-    let mut name = String::from("Alice");
-    let component = Component::compile("index.html", "style.css");
-    loop {
-        let value = json!({"name": name});
-        let input = Input::new(fonts).value(value);
-        let frame = component.update(input);
-        for call in frame.calls {
-            if call.function == "rename" {
-                name = call.args[0].to_string()
-            }
-        }
-        for element in frame.elements {
-            render_element(element);
-        }
-    }
-}
-```
-
-A Rust library for building user interfaces inspired by HTML/CSS web development experience.
-You should use it if these features important to you:
-
-+ UI declaration and styling language similar to HTML/CSS
-+ Ability to use any handy IDE to edit HTML
-+ Hot reloading of view, prototyping without recompilation Rust app
-+ CSS animations
-+ Simple view bindings and data management based on `serde_json`
-+ Graphics API agnostic
-+ Windowing API agnostic
-
 The development of this library possible thanks to work of Rust enthusiasts: 
-[scraper](https://github.com/causal-agent/scraper), 
+[servo](https://github.com/servo/servo), 
 [taffy](https://github.com/DioxusLabs/taffy), 
-[lightningcss](https://github.com/parcel-bundler/lightningcss)
+[lightningcss](https://github.com/parcel-bundler/lightningcss) and other 🔥 🚀
 
 ## What it is not
 

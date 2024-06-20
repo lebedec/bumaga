@@ -1,21 +1,23 @@
-use crate::models::{ElementId, MyBackground, Presentation, Rectangle, Ruleset, SizeContext, TextStyle};
 use lightningcss::properties::align::{
     AlignContent, AlignItems, AlignSelf, ContentDistribution, ContentPosition, GapValue,
     JustifyContent, JustifyItems, JustifySelf, SelfPosition,
 };
-use lightningcss::properties::background::BackgroundOrigin;
+use lightningcss::properties::background::{Background, BackgroundOrigin};
 use lightningcss::properties::border::BorderSideWidth;
 use lightningcss::properties::display::{Display, DisplayInside, DisplayKeyword, DisplayOutside};
 use lightningcss::properties::flex::{FlexDirection, FlexWrap};
-use lightningcss::properties::font::{AbsoluteFontWeight, FontFamily, FontSize, FontStretch, FontStretchKeyword, FontStyle, FontWeight, LineHeight};
+use lightningcss::properties::font::{
+    AbsoluteFontWeight, FontFamily, FontSize, FontStretch, FontStretchKeyword, FontStyle,
+    FontWeight, LineHeight,
+};
 use lightningcss::properties::grid::{
     GridAutoFlow, GridColumn, GridLine, GridRow, RepeatCount, TrackBreadth, TrackListItem,
     TrackSize, TrackSizing,
 };
 use lightningcss::properties::overflow::OverflowKeyword;
 use lightningcss::properties::position::Position;
-use lightningcss::properties::size::{MaxSize, Size};
 use lightningcss::properties::Property;
+use lightningcss::properties::size::{MaxSize, Size};
 use lightningcss::properties::text::OverflowWrap;
 use lightningcss::rules::CssRule;
 use lightningcss::stylesheet::{ParserOptions, StyleSheet};
@@ -24,14 +26,17 @@ use lightningcss::values::image::Image;
 use lightningcss::values::length::{Length, LengthPercentage, LengthPercentageOrAuto, LengthValue};
 use log::error;
 use scraper::Selector;
-use taffy::prelude::FromLength;
-use taffy::prelude::TaffyAuto;
-use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
+use static_self::IntoOwned;
 use taffy::{
     Dimension, GridPlacement, GridTrackRepetition, LengthPercentageAuto, Line, Overflow, Point,
     Rect, Style, TrackSizingFunction,
 };
-use static_self::IntoOwned;
+use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
+use taffy::prelude::FromLength;
+use taffy::prelude::TaffyAuto;
+
+use crate::{Element, MyBackground, TextStyle};
+use crate::models::{Presentation, Ruleset, SizeContext, ViewId};
 
 impl TextStyle {
     pub const DEFAULT_FONT_FAMILY: &'static str = "system-ui";
@@ -39,11 +44,11 @@ impl TextStyle {
     pub const DEFAULT_FONT_STRETCH: FontStretchKeyword = FontStretchKeyword::Normal;
 }
 
-pub fn create_rectangle(id: ElementId) -> Rectangle {
-    Rectangle {
+pub fn create_view(id: ViewId) -> Element {
+    Element {
+        layout: Default::default(),
         id,
-        element: None,
-        key: "".to_string(),
+        html_element: None,
         background: MyBackground {
             image: None,
             color: Default::default(),
@@ -62,7 +67,7 @@ pub fn create_rectangle(id: ElementId) -> Rectangle {
             font_style: FontStyle::Normal,
             font_weight: TextStyle::DEFAULT_FONT_WEIGHT,
             font_stretch: TextStyle::DEFAULT_FONT_STRETCH,
-            line_height: 16.0,
+            line_height: 18.0,
             wrap: OverflowWrap::Normal,
         },
     }
@@ -101,31 +106,31 @@ pub fn default_layout_style() -> Style {
     }
 }
 
-pub fn inherit<'i>(parent: &Rectangle, rectangle: &mut Rectangle) {
+pub fn inherit<'i>(parent: &Element, view: &mut Element) {
     // border-collapse
     // border-spacing
     // caption-side
     // color
-    rectangle.color = parent.color;
+    view.color = parent.color;
     // cursor
     // direction
     // empty-cells
     // font-family
-    rectangle.text_style.font_family = parent.text_style.font_family.clone();
+    view.text_style.font_family = parent.text_style.font_family.clone();
     // font-size
-    rectangle.text_style.font_size = parent.text_style.font_size;
+    view.text_style.font_size = parent.text_style.font_size;
     // font-style
-    rectangle.text_style.font_style = parent.text_style.font_style.clone();
+    view.text_style.font_style = parent.text_style.font_style.clone();
     // font-variant
     // font-weight
-    rectangle.text_style.font_weight = parent.text_style.font_weight;
+    view.text_style.font_weight = parent.text_style.font_weight;
     // font-size-adjust
     // font-stretch
-    rectangle.text_style.font_stretch = parent.text_style.font_stretch.clone();
+    view.text_style.font_stretch = parent.text_style.font_stretch.clone();
     // font
     // letter-spacing
     // line-height
-    rectangle.text_style.line_height = parent.text_style.line_height;
+    view.text_style.line_height = parent.text_style.line_height;
     // list-style-image
     // list-style-position
     // list-style-type
@@ -146,16 +151,16 @@ pub fn inherit<'i>(parent: &Rectangle, rectangle: &mut Rectangle) {
     // word-break
     // word-spacing
     // word-wrap
-    rectangle.text_style.wrap = parent.text_style.wrap;
+    view.text_style.wrap = parent.text_style.wrap;
 }
 
-pub fn apply_rectangle_rules<'i>(
+pub fn apply_view_rules<'i>(
     ruleset: &Ruleset<'i>,
-    parent: &Rectangle,
-    rectangle: &mut Rectangle,
+    parent: &Element,
+    view: &mut Element,
     context: SizeContext,
 ) {
-    inherit(parent, rectangle);
+    inherit(parent, view);
     for property in &ruleset.style.declarations.declarations {
         match property {
             Property::Background(background) => {
@@ -163,8 +168,8 @@ pub fn apply_rectangle_rules<'i>(
                     error!("multiple background not supported");
                 }
                 let background = &background[0];
-                rectangle.background.color = background.color.clone();
-                rectangle.background.image = match &background.image {
+                view.background.color = background.color.clone();
+                view.background.image = match &background.image {
                     Image::None => None,
                     Image::Url(url) => Some(url.url.to_string()),
                     image => {
@@ -172,16 +177,16 @@ pub fn apply_rectangle_rules<'i>(
                         None
                     }
                 };
-                rectangle.background.position = background.position.clone();
-                rectangle.background.repeat = background.repeat.clone();
-                rectangle.background.size = background.size.clone();
-                rectangle.background.attachment = background.attachment.clone();
-                rectangle.background.clip = background.clip.clone();
-                rectangle.background.origin = background.origin.clone();
+                view.background.position = background.position.clone();
+                view.background.repeat = background.repeat.clone();
+                view.background.size = background.size.clone();
+                view.background.attachment = background.attachment.clone();
+                view.background.clip = background.clip.clone();
+                view.background.origin = background.origin.clone();
             }
-            Property::BackgroundColor(color) => rectangle.background.color = color.clone(),
+            Property::BackgroundColor(color) => view.background.color = color.clone(),
             Property::BackgroundImage(image) => {
-                rectangle.background.image = match &image[0] {
+                view.background.image = match &image[0] {
                     Image::None => None,
                     Image::Url(url) => Some(url.url.to_string()),
                     image => {
@@ -191,49 +196,61 @@ pub fn apply_rectangle_rules<'i>(
                 }
             }
             Property::BackgroundPosition(position) => {
-                rectangle.background.position = position[0].clone()
+                view.background.position = position[0].clone()
             }
             Property::BackgroundPositionX(position) => {
-                rectangle.background.position.x = position[0].clone()
+                view.background.position.x = position[0].clone()
             }
             Property::BackgroundPositionY(position) => {
-                rectangle.background.position.y = position[0].clone()
+                view.background.position.y = position[0].clone()
             }
-            Property::BackgroundRepeat(repeat) => rectangle.background.repeat = repeat[0].clone(),
-            Property::BackgroundSize(size) => rectangle.background.size = size[0].clone(),
+            Property::BackgroundRepeat(repeat) => view.background.repeat = repeat[0].clone(),
+            Property::BackgroundSize(size) => view.background.size = size[0].clone(),
             Property::BackgroundAttachment(attach) => {
-                rectangle.background.attachment = attach[0].clone()
+                view.background.attachment = attach[0].clone()
             }
-            Property::BackgroundClip(clip, _) => rectangle.background.clip = clip[0].clone(),
-            Property::BackgroundOrigin(origin) => rectangle.background.origin = origin[0].clone(),
+            Property::BackgroundClip(clip, _) => view.background.clip = clip[0].clone(),
+            Property::BackgroundOrigin(origin) => view.background.origin = origin[0].clone(),
             Property::Color(color) => {
                 match color {
-                    CssColor::RGBA(color) => rectangle.color = *color,
+                    CssColor::RGBA(color) => view.color = *color,
                     color => error!("color {color:?} not supported"),
                 };
             }
-            Property::FontFamily(family) => rectangle.text_style.font_family = resolve_font_family(family),
-            Property::FontSize(size) => rectangle.text_style.font_size = resolve_font_size(size, context),
-            Property::FontStyle(style) => rectangle.text_style.font_style = style.clone(),
-            Property::FontWeight(weight) => rectangle.text_style.font_weight = resolve_font_weight(weight),
-            Property::FontStretch(stretch) => rectangle.text_style.font_stretch = resolve_font_stretch(stretch),
-            Property::LineHeight(height) => rectangle.text_style.line_height = resolve_line_height(height, context, rectangle.text_style.font_size),
+            Property::FontFamily(family) => {
+                view.text_style.font_family = resolve_font_family(family)
+            }
+            Property::FontSize(size) => {
+                view.text_style.font_size = resolve_font_size(size, context)
+            }
+            Property::FontStyle(style) => view.text_style.font_style = style.clone(),
+            Property::FontWeight(weight) => {
+                view.text_style.font_weight = resolve_font_weight(weight)
+            }
+            Property::FontStretch(stretch) => {
+                view.text_style.font_stretch = resolve_font_stretch(stretch)
+            }
+            Property::LineHeight(height) => {
+                view.text_style.line_height =
+                    resolve_line_height(height, context, view.text_style.font_size)
+            }
             Property::Font(font) => {
-                rectangle.text_style.font_family = resolve_font_family(&font.family);
-                rectangle.text_style.font_size = resolve_font_size(&font.size, context);
-                rectangle.text_style.font_style = font.style.clone();
-                rectangle.text_style.font_weight = resolve_font_weight(&font.weight);
-                rectangle.text_style.font_stretch = resolve_font_stretch(&font.stretch);
-                rectangle.text_style.line_height = resolve_line_height(&font.line_height, context, rectangle.text_style.font_size);
-            },
-            Property::OverflowWrap(wrap) => rectangle.text_style.wrap = wrap.clone(),
-            Property::WordWrap(wrap) => rectangle.text_style.wrap = wrap.clone(),
+                view.text_style.font_family = resolve_font_family(&font.family);
+                view.text_style.font_size = resolve_font_size(&font.size, context);
+                view.text_style.font_style = font.style.clone();
+                view.text_style.font_weight = resolve_font_weight(&font.weight);
+                view.text_style.font_stretch = resolve_font_stretch(&font.stretch);
+                view.text_style.line_height =
+                    resolve_line_height(&font.line_height, context, view.text_style.font_size);
+            }
+            Property::OverflowWrap(wrap) => view.text_style.wrap = wrap.clone(),
+            Property::WordWrap(wrap) => view.text_style.wrap = wrap.clone(),
             _ => {}
         }
     }
 }
 
-pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeContext) {
+pub fn apply_layout_rules(ruleset: &Ruleset, style: &mut Style, context: SizeContext) {
     for property in &ruleset.style.declarations.declarations {
         match property {
             Property::Display(value) => match value {
@@ -332,8 +349,7 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
                 }
                 AlignItems::SelfPosition { value, .. } => {
                     style.align_items = map_self_position(value)
-                }
-                // align => error!("align {align:?} not supported")
+                } // align => error!("align {align:?} not supported")
             },
             Property::AlignSelf(align, _) => match align {
                 AlignSelf::Auto => style.align_self = None,
@@ -344,8 +360,7 @@ pub fn apply_style_rules(ruleset: &Ruleset, style: &mut Style, context: SizeCont
                 }
                 AlignSelf::SelfPosition { value, .. } => {
                     style.align_self = map_self_position(value)
-                }
-                // align => error!("align {align:?} not supported")
+                } // align => error!("align {align:?} not supported")
             },
             Property::JustifyItems(justify) => match justify {
                 JustifyItems::Normal => style.justify_items = None,
@@ -584,7 +599,7 @@ fn resolve_font_family(declaration: &Vec<FontFamily>) -> String {
                 error!("family {family:?} not supported");
                 TextStyle::DEFAULT_FONT_FAMILY.to_string()
             }
-        }
+        },
     }
 }
 
@@ -601,15 +616,17 @@ fn resolve_font_stretch(stretch: &FontStretch) -> FontStretchKeyword {
 fn resolve_font_weight(weight: &FontWeight) -> u16 {
     match weight {
         FontWeight::Absolute(weight) => match weight {
-            AbsoluteFontWeight::Weight(value) => if *value > 100.0 && *value < 1000.0 {
-                *value as u16
-            } else {
-                error!("weight {value} not supported");
-                TextStyle::DEFAULT_FONT_WEIGHT
+            AbsoluteFontWeight::Weight(value) => {
+                if *value > 100.0 && *value < 1000.0 {
+                    *value as u16
+                } else {
+                    error!("weight {value} not supported");
+                    TextStyle::DEFAULT_FONT_WEIGHT
+                }
             }
             AbsoluteFontWeight::Normal => 400,
-            AbsoluteFontWeight::Bold => 700
-        }
+            AbsoluteFontWeight::Bold => 700,
+        },
         weight => {
             error!("weight {weight:?} not supported");
             TextStyle::DEFAULT_FONT_WEIGHT
@@ -637,7 +654,7 @@ fn resolve_line_height(height: &LineHeight, context: SizeContext, font_size: f32
                 error!("line height {height:?} not supported");
                 context.parent_font_size
             }
-        }
+        },
     }
 }
 

@@ -1,48 +1,54 @@
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem;
-use ego_tree::{NodeRef};
+
+use ego_tree::NodeRef;
+use html5ever::{LocalName, ns, QualName};
+use html5ever::namespace_url;
 use log::error;
 use scraper::{ElementRef, Node};
 use serde_json::{Map, Value};
 use taffy::{NodeId, TaffyTree};
-use crate::html::adjust;
-use crate::models::{ElementId, Presentation, Rectangle, SizeContext, TextContext};
-use crate::styles::{apply_rectangle_rules, apply_style_rules, default_layout_style, create_rectangle, inherit, pseudo};
-use html5ever::{LocalName, QualName, ns};
-use html5ever::namespace_url;
 
+use crate::Element;
+use crate::html::apply_html_attributes;
+use crate::models::{Presentation, SizeContext, ViewId};
+use crate::styles::{
+    apply_layout_rules, apply_view_rules, create_view, default_layout_style, inherit, pseudo,
+};
 
 pub struct State {
     pub element_n: usize,
-    pub pseudo_classes: HashMap<ElementId, Vec<String>>
+    pub pseudo_classes: HashMap<ViewId, Vec<String>>,
 }
 
 static NO_PSEUDO_CLASSES: Vec<String> = vec![];
 
 impl State {
-    
     pub fn new() -> Self {
         State {
             element_n: 0,
             pseudo_classes: HashMap::new(),
         }
     }
-    
-    pub fn get_pseudo_classes(&self, element_id: ElementId) -> &Vec<String> {
-        self.pseudo_classes.get(&element_id).unwrap_or(&NO_PSEUDO_CLASSES)
+
+    pub fn get_pseudo_classes(&self, element_id: ViewId) -> &Vec<String> {
+        self.pseudo_classes
+            .get(&element_id)
+            .unwrap_or(&NO_PSEUDO_CLASSES)
     }
-    
-    pub fn set_pseudo_classes(&mut self, element_id: ElementId, classes: Vec<String>) {
+
+    pub fn set_pseudo_classes(&mut self, element_id: ViewId, classes: Vec<String>) {
         self.pseudo_classes.insert(element_id, classes);
     }
 
-    pub fn has_pseudo_class(&self, element_id: ElementId, target: &str) -> bool {
+    pub fn has_pseudo_class(&self, element_id: ViewId, target: &str) -> bool {
         match self.pseudo_classes.get(&element_id) {
             None => false,
-            Some(classes) => {
-                classes.iter().find(|class| class.as_str() == target).is_some()
-            }
+            Some(classes) => classes
+                .iter()
+                .find(|class| class.as_str() == target)
+                .is_some(),
         }
     }
 }
@@ -53,29 +59,27 @@ pub fn render_tree<'p>(
     value: &mut Map<String, Value>,
     context: SizeContext,
     presentation: &'p Presentation,
-    layout: &mut TaffyTree<Rectangle>,
-    state: &mut State
+    layout: &mut TaffyTree<Element>,
+    state: &mut State,
 ) {
-
     match current.value() {
         Node::Text(text) => {
             let text = text.text.trim().to_string();
             if !text.is_empty() {
                 // fake text element
                 state.element_n += 1;
-                let element_id = ElementId {
+                let element_id = ViewId {
                     element_n: state.element_n,
                     hash: 0,
                 };
                 let text = interpolate_string(text, value);
                 let style = default_layout_style();
-                let parent_rectangle = layout.get_node_context(parent_id).expect("context must be");
-                let mut rectangle = create_rectangle(element_id);
-                rectangle.key = "text".to_string();
-                rectangle.text = Some(TextContext::new(&text));
-                inherit(&parent_rectangle, &mut rectangle);
+                let parent = layout.get_node_context(parent_id).expect("context must be");
+                let mut view = create_view(element_id);
+                view.text = Some(text);
+                inherit(&parent, &mut view);
 
-                let current_id = match layout.new_leaf_with_context(style, rectangle.clone()) {
+                let current_id = match layout.new_leaf_with_context(style, view.clone()) {
                     Ok(node_id) => node_id,
                     Err(error) => {
                         error!("unable to create rendering node, {}", error);
@@ -105,7 +109,7 @@ pub fn render_tree<'p>(
             let repeat = if let Some(ident) = element.attr("*") {
                 match as_array(value.get(ident)) {
                     None => return,
-                    Some(array) => (ident.to_string(), array.clone()) // TODO: remove clone
+                    Some(array) => (ident.to_string(), array.clone()), // TODO: remove clone
                 }
             } else {
                 (no_array_key, no_array)
@@ -121,14 +125,13 @@ pub fn render_tree<'p>(
             };
 
             for repeat_value in repeat_values {
-                let element_id = ElementId {
+                let element_id = ViewId {
                     element_n: state.element_n,
                     // array of object (especially big objects) can reduce performance
                     // TODO: use key attribute like React
                     hash: hash_value(&repeat_value),
                 };
 
-                
                 // PUSH STATE
                 let original_element = element.clone();
                 let mut element_mut = element.clone();
@@ -137,7 +140,7 @@ pub fn render_tree<'p>(
                 if !pseudo_classes.is_empty() {
                     let defined = match element_mut.attrs.get(&class_attr) {
                         None => String::new(),
-                        Some(classes) => classes.trim().to_string()
+                        Some(classes) => classes.trim().to_string(),
                     };
                     let mut pseudo_classes = pseudo_classes.clone();
                     pseudo_classes.insert(0, defined);
@@ -153,26 +156,19 @@ pub fn render_tree<'p>(
                 }
 
                 let mut style = default_layout_style();
-                let mut rectangle = create_rectangle(element_id);
-                rectangle.element = Some(original_element.clone());
-                let parent_rectangle = layout.get_node_context(parent_id).expect("context must be");
-                rectangle.key = element.name.local.to_string();
-
-
+                let mut view = create_view(element_id);
+                view.html_element = Some(original_element.clone());
+                let parent = layout.get_node_context(parent_id).expect("context must be");
+                let matching_element = &ElementRef::wrap(current).expect("node is element");
                 for rule in &presentation.rules {
-                    if rule
-                        .selector
-                        .matches(&ElementRef::wrap(current).expect("node is element"))
-                    {
-                        apply_style_rules(rule, &mut style, context);
-                        apply_rectangle_rules(rule, &parent_rectangle, &mut rectangle, context);
+                    if rule.selector.matches(matching_element) {
+                        apply_layout_rules(rule, &mut style, context);
+                        apply_view_rules(rule, &parent, &mut view, context);
                     }
                 }
-                adjust(element, value, &mut rectangle, &mut style);
+                apply_html_attributes(element, value, &mut view, &mut style);
 
-                
-                
-                let current_id = match layout.new_leaf_with_context(style, rectangle.clone()) {
+                let current_id = match layout.new_leaf_with_context(style, view.clone()) {
                     Ok(node_id) => node_id,
                     Err(error) => {
                         error!("unable to create rendering node, {}", error);
@@ -189,14 +185,21 @@ pub fn render_tree<'p>(
                         if !child.has_siblings() {
                             let inner_text = interpolate_string(text.text.to_string(), value);
                             layout.get_node_context_mut(current_id).unwrap().text =
-                                Some(TextContext::new(&inner_text));
+                                Some(inner_text);
                             break;
                         }
                     }
                     let mut context = context;
-                    context.parent_font_size = rectangle.text_style.font_size;
-                    context.level += 1;
-                    render_tree(current_id, child, value, context, presentation, layout, state);
+                    context.parent_font_size = view.text_style.font_size;
+                    render_tree(
+                        current_id,
+                        child,
+                        value,
+                        context,
+                        presentation,
+                        layout,
+                        state,
+                    );
                 }
 
                 // POP STATE
@@ -227,10 +230,9 @@ pub fn is_something(value: Option<&Value>) -> bool {
 pub fn as_array(value: Option<&Value>) -> Option<&Vec<Value>> {
     match value {
         None => None,
-        Some(value) => value.as_array()
+        Some(value) => value.as_array(),
     }
 }
-
 
 pub fn as_string(value: Option<&Value>) -> String {
     match value {
@@ -242,7 +244,7 @@ pub fn as_string(value: Option<&Value>) -> String {
             Value::String(value) => value.clone(),
             Value::Array(_) => String::from("[array]"),
             Value::Object(_) => String::from("[object]"),
-        }
+        },
     }
 }
 
@@ -250,21 +252,27 @@ pub fn hash_value(value: &Value) -> u64 {
     let mut hasher = DefaultHasher::new();
     match value {
         Value::Null => 0,
-        Value::Bool(value) => if *value { 1 } else { 0 },
+        Value::Bool(value) => {
+            if *value {
+                1
+            } else {
+                0
+            }
+        }
         Value::Number(value) => {
             let value = value.as_f64().unwrap_or(0.0);
             integer_decode(value).hash(&mut hasher);
             hasher.finish()
-        },
+        }
         Value::String(value) => {
             value.hash(&mut hasher);
             hasher.finish()
-        },
+        }
         Value::Array(array) => {
             let hashes: Vec<u64> = array.iter().map(hash_value).collect();
             hashes.hash(&mut hasher);
             hasher.finish()
-        },
+        }
         Value::Object(object) => {
             let mut hashes: Vec<(String, u64)> = vec![];
             for (key, value) in object {
@@ -314,11 +322,6 @@ pub fn interpolate_string(string: String, value: &Map<String, Value>) -> String 
     result
 }
 
-
 pub fn qual(name: &str) -> QualName {
-    QualName::new(
-        None,
-        ns!(),
-        LocalName::from(name)
-    )
+    QualName::new(None, ns!(), LocalName::from(name))
 }

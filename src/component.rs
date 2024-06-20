@@ -1,59 +1,80 @@
 use log::error;
 use scraper::{Html, Selector};
 use serde_json::{Error, Map, Value};
-use taffy::{AvailableSpace, Layout, NodeId, PrintTree, Size, Style, TaffyTree};
+use taffy::{
+    AvailableSpace, Layout, NodeId, PrintTree, Size, Style, TaffyResult, TaffyTree,
+    TraversePartialTree,
+};
 use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
-use crate::api::{Call, Component, Element, Frame, Input};
-use crate::models::{ElementId, Rectangle, SizeContext};
+
+use crate::{Element, Fonts};
+use crate::api::{Call, Component, Frame, Input};
+use crate::input::FakeFonts;
+use crate::models::{SizeContext, ViewId};
 use crate::rendering::{as_string, render_tree, State};
-use crate::styles::{create_rectangle, parse_presentation, pseudo};
+use crate::styles::{create_view, parse_presentation, pseudo};
 
 impl Component {
     pub fn compile(html: &str, css: &str) -> Self {
         let presentation = parse_presentation(css);
         let html = Html::parse_document(html);
         let state = State::new();
+        let body_selector = Selector::parse("body").expect("body selector must be parsed");
         Self {
             presentation,
             html,
-            state
+            state,
+            body_selector,
         }
     }
 
-    pub fn update(&mut self, mut interop: Input) -> Frame {
-        let body_selector = Selector::parse("body").expect("body selector");
-        let body = self.html.select(&body_selector).next().expect("body element");
-
-        // reset each update
+    pub fn update(&mut self, mut input: Input) -> Frame {
         self.state.element_n = 0;
-
-        let root_element_id = ElementId {
+        let mut frame = Frame::new();
+        let value = match input.value.as_object_mut() {
+            Some(value) => value,
+            None => {
+                error!("input value must be object");
+                return frame;
+            }
+        };
+        let mut rendering = TaffyTree::new();
+        let [viewport_width, viewport_height] = input.viewport;
+        let viewport_id = ViewId {
             element_n: self.state.element_n,
             hash: 0,
         };
-        let mut rendering = TaffyTree::new();
-        let viewport = rendering
-            .new_leaf_with_context(
-                Style {
-                    size: Size {
-                        width: length(800.0),
-                        height: length(100.0),
-                    },
-                    ..Default::default()
-                },
-                create_rectangle(root_element_id),
-            )
-            .unwrap();
-        let context = SizeContext {
-            level: 0,
-            root_font_size: 16.0,
-            parent_font_size: 16.0,
-            viewport_width: 800.0,
-            viewport_height: 100.0,
+        let viewport_layout = Style {
+            size: Size {
+                width: length(viewport_width),
+                height: length(viewport_height),
+            },
+            ..Default::default()
         };
-
-        let value = interop.value.as_object_mut().expect("must be object");
+        let viewport_view = create_view(viewport_id);
+        let context = SizeContext {
+            root_font_size: viewport_view.text_style.font_size,
+            parent_font_size: viewport_view.text_style.font_size,
+            viewport_width,
+            viewport_height,
+        };
+        let viewport = rendering.new_leaf_with_context(viewport_layout, viewport_view);
+        let viewport = match viewport {
+            Ok(viewport) => viewport,
+            Err(error) => {
+                error!("unable to create viewport, {error:?}");
+                return frame;
+            }
+        };
+        let body = self.html.select(&self.body_selector).next();
+        let body = match body {
+            Some(body) => body,
+            None => {
+                error!("unable to update component, body not found");
+                return frame;
+            }
+        };
         render_tree(
             viewport,
             *body,
@@ -61,50 +82,31 @@ impl Component {
             context,
             &self.presentation,
             &mut rendering,
-            &mut self.state
+            &mut self.state,
         );
-        
-        let measure_fn = |size: Size<Option<f32>>, available_space: Size<AvailableSpace>, _node_id: NodeId, rectangle: Option<&mut Rectangle>, _style: &Style| {
-            if let Size {
-                width: Some(width),
-                height: Some(height),
-            } = size
-            {
-                return Size { width, height };
-            }
-            match rectangle {
-                None => {}
-                Some(rectangle) => {
-                    if let Some(text) = rectangle.text.as_ref() {
-
-                        let width_constraint = size.width.map(Some).unwrap_or_else(|| match available_space.width {
-                            AvailableSpace::MinContent => Some(0.0),
-                            AvailableSpace::MaxContent => None,
-                            AvailableSpace::Definite(width) => Some(width),
-                        });
-                        
-                        let m = interop.fonts.measure(&text.text, &rectangle.text_style, width_constraint);
-                        return Size {width: m[0], height: m[1]};
-                    }
-                }
-            }
-            Size::ZERO
+        let result = rendering.compute_layout_with_measure(
+            viewport,
+            Size::MAX_CONTENT,
+            |size, space, _, view, _| input.measure_text(size, space, view),
+        );
+        if let Err(error) = result {
+            error!("unable to layout component, {error:?}");
+            return frame;
         };
-        rendering
-            .compute_layout_with_measure(viewport, Size::MAX_CONTENT, measure_fn)
-            .unwrap();
-        let mut frame = Frame {
-            calls: vec![],
-            elements: vec![],
-        };
-        fn traverse(tree: &TaffyTree<Rectangle>, node: NodeId, input: &Input, frame: &mut Frame, state: &mut State) {
+        fn process(
+            tree: &TaffyTree<Element>,
+            node: NodeId,
+            input: &Input,
+            frame: &mut Frame,
+            state: &mut State,
+        ) {
             let layout = tree.get_final_layout(node);
-            let rectangle = match tree.get_node_context(node) {
+            let view = match tree.get_node_context(node) {
                 None => {
                     error!("unable to traverse node {node:?} has no context");
                     return;
                 }
-                Some(rectangle) => rectangle,
+                Some(view) => view,
             };
 
             // interaction
@@ -113,24 +115,23 @@ impl Component {
                 pseudo_classes.push(pseudo(":hover"));
                 if input.mouse_button_down {
                     pseudo_classes.push(pseudo(":active"));
-                } else if state.has_pseudo_class(rectangle.id, &pseudo(":active")) {
-                    if let Some(element) = rectangle.element.as_ref() {
+                } else if state.has_pseudo_class(view.id, &pseudo(":active")) {
+                    if let Some(element) = view.html_element.as_ref() {
                         if let Some(repr) = element.attr("onclick") {
                             frame.calls.push(parse_call(repr, &input.value));
                         }
                     }
                 }
             }
-            state.set_pseudo_classes(rectangle.id, pseudo_classes);
+            state.set_pseudo_classes(view.id, pseudo_classes);
 
-            frame.elements.push(Element {
-                rectangle: rectangle.clone(),
-                layout: *layout
-            });
+            let mut view = view.clone();
+            view.layout = *layout;
+            frame.elements.push(view);
             match tree.children(node) {
                 Ok(children) => {
                     for child in children {
-                        traverse(tree, child, input, frame, state);
+                        process(tree, child, input, frame, state);
                     }
                 }
                 Err(error) => {
@@ -138,7 +139,8 @@ impl Component {
                 }
             }
         }
-        traverse(&rendering, viewport, &interop, &mut frame, &mut self.state);
+        let body = rendering.child_ids(viewport).next().expect("must be");
+        process(&rendering, body, &input, &mut frame, &mut self.state);
         frame
     }
 }
@@ -148,7 +150,6 @@ fn is_element_contains(layout: &Layout, point: [f32; 2]) -> bool {
     let y = point[1] >= layout.location.y && point[1] <= layout.location.y + layout.size.height;
     x && y
 }
-
 
 fn parse_call(repr: &str, global_value: &Value) -> Call {
     let mut function = String::new();
@@ -167,9 +168,7 @@ fn parse_call(repr: &str, global_value: &Value) -> Call {
                 let value = arg.trim().replace("'", "\"");
                 let value: Value = match serde_json::from_str(&value) {
                     Ok(value) => value,
-                    Err(_) => {
-                        global_value.get(&value).cloned().unwrap_or(Value::Null)
-                    }
+                    Err(_) => global_value.get(&value).cloned().unwrap_or(Value::Null),
                 };
                 arguments.push(value);
                 arg = String::new();
@@ -181,5 +180,48 @@ fn parse_call(repr: &str, global_value: &Value) -> Call {
     Call {
         function,
         arguments,
+    }
+}
+
+impl Frame {
+    fn new() -> Self {
+        Self {
+            calls: vec![],
+            elements: vec![],
+        }
+    }
+}
+
+impl<'f> Input<'f> {
+    fn measure_text(
+        &mut self,
+        size: Size<Option<f32>>,
+        space: Size<AvailableSpace>,
+        element: Option<&mut Element>,
+    ) -> Size<f32> {
+        if let Size {
+            width: Some(width),
+            height: Some(height),
+        } = size
+        {
+            return Size { width, height };
+        }
+        let element = match element {
+            None => return Size::ZERO,
+            Some(element) => element,
+        };
+        if let Some(text) = element.text.as_ref() {
+            let max_width = size.width.map(Some).unwrap_or_else(|| match space.width {
+                AvailableSpace::MinContent => Some(0.0),
+                AvailableSpace::MaxContent => None,
+                AvailableSpace::Definite(width) => Some(width),
+            });
+            let [width, height] = match self.fonts.as_mut() {
+                None => FakeFonts.measure(&text, &element.text_style, max_width),
+                Some(fonts) => fonts.measure(&text, &element.text_style, max_width),
+            };
+            return Size { width, height };
+        }
+        Size::ZERO
     }
 }
