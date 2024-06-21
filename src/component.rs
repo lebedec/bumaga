@@ -12,7 +12,7 @@ use taffy::{
 use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
 
-use crate::{Element, Fonts};
+use crate::{Element, Fonts, Keys, LEFT_MOUSE_BUTTON};
 use crate::api::{Call, Component, Input, Output};
 use crate::input::FakeFonts;
 use crate::models::{SizeContext, ViewId};
@@ -138,12 +138,42 @@ impl Component {
             let mut pseudo_classes = vec![];
             if is_element_contains(&layout, input.mouse_position) {
                 pseudo_classes.push(pseudo(":hover"));
-                if input.mouse_button_down {
+                if input.is_mouse_down() {
                     pseudo_classes.push(pseudo(":active"));
+                    state.set_focus(view.id);
                 } else if state.has_pseudo_class(view.id, &pseudo(":active")) {
-                    if let Some(element) = view.html_element.as_ref() {
-                        if let Some(repr) = element.attr("onclick") {
-                            frame.calls.push(parse_call(repr, &input.value));
+                    if let Some(call) = view.listeners.get("onclick") {
+                        frame.calls.push(call.clone());
+                    }
+                }
+            }
+            if state.focus == Some(view.id) {
+                pseudo_classes.push(pseudo(":focus"));
+
+                if view.tag == "input" {
+                    let mut value = view.text.clone().unwrap_or_default();
+                    let mut has_changes = false;
+                    if !input.characters.is_empty() {
+                        has_changes = true;
+                        for char in &input.characters {
+                            if char != &'\r' {
+                                value.push(*char);
+                            }
+                        }
+                    }
+
+                    if input.is_key_pressed(Keys::Backspace) && value.len() > 0 {
+                        println!("input ch {:?}", input.characters);
+                        has_changes = true;
+                        value.pop();
+                    }
+                    if has_changes {
+                        if let Some(call) = view.listeners.get("onchange") {
+                            let mut call = call.clone();
+                            if call.arguments.len() == 0 {
+                                call.arguments.push(Value::String(value));
+                            }
+                            frame.calls.push(call);
                         }
                     }
                 }
@@ -184,38 +214,6 @@ fn is_element_contains(layout: &Layout, point: [f32; 2]) -> bool {
     x && y
 }
 
-fn parse_call(repr: &str, global_value: &Value) -> Call {
-    let mut function = String::new();
-    let mut arguments = vec![];
-    let mut is_function = true;
-    let mut arg = String::new();
-    for ch in repr.chars() {
-        if is_function {
-            if ch == '(' {
-                is_function = false;
-            } else {
-                function.push(ch);
-            }
-        } else {
-            if ch == ',' || ch == ')' {
-                let value = arg.trim().replace("'", "\"");
-                let value: Value = match serde_json::from_str(&value) {
-                    Ok(value) => value,
-                    Err(_) => global_value.get(&value).cloned().unwrap_or(Value::Null),
-                };
-                arguments.push(value);
-                arg = String::new();
-            } else {
-                arg.push(ch);
-            }
-        }
-    }
-    Call {
-        function,
-        arguments,
-    }
-}
-
 impl Output {
     fn new() -> Self {
         Self {
@@ -226,6 +224,24 @@ impl Output {
 }
 
 impl<'f> Input<'f> {
+    fn is_mouse_down(&self) -> bool {
+        self.mouse_buttons_down.contains(&LEFT_MOUSE_BUTTON)
+    }
+
+    fn is_key_down(&self, key: Keys) -> bool {
+        self.keys_down
+            .iter()
+            .position(|key_down| key_down == &key)
+            .is_some()
+    }
+
+    fn is_key_pressed(&self, key: Keys) -> bool {
+        self.keys_pressed
+            .iter()
+            .position(|key_down| key_down == &key)
+            .is_some()
+    }
+
     fn measure_text(
         &mut self,
         size: Size<Option<f32>>,

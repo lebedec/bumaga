@@ -31,6 +31,10 @@ header > span {
     align-items: center;
 }
 
+.todo:hover {
+    background-color: rgba(255, 255, 255, 0.4);
+}
+
 .todo > span {
     flex-grow: 1;
 }
@@ -38,4 +42,10 @@ header > span {
 input {
     background: #394651;
     height: 3rem;
+    outline: none;
+}
+
+input:focus {
+    border: 1px solid red;
+
 }

@@ -1,5 +1,5 @@
 use serde_json::{Map, Value};
-use taffy::{Dimension, Style};
+use taffy::Style;
 
 use crate::Element;
 use crate::rendering::as_string;
@@ -30,9 +30,9 @@ pub fn apply_html_attributes(
                 let value = as_string(value.get(binding));
                 view.text = Some(value);
             }
-            if style.size.width == Dimension::Auto {
-                style.size.width = Dimension::Length(150.0);
-            }
+            // if style.size.width == Dimension::Auto {
+            //     style.size.width = Dimension::Length(150.0);
+            // }
         }
         _ => {}
     }

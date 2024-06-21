@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use crate::{Keys, MouseButton, TextStyle};
 use crate::api::{Fonts, Input};
-use crate::TextStyle;
 
 impl<'f> Input<'f> {
     pub fn new() -> Input<'f> {
@@ -14,7 +14,12 @@ impl<'f> Input<'f> {
             keys: vec![],
             viewport: [800.0, 600.0],
             mouse_position: [0.0, 0.0],
-            mouse_button_down: false,
+            mouse_buttons_down: vec![],
+            mouse_buttons_up: vec![],
+            keys_down: vec![],
+            keys_up: vec![],
+            keys_pressed: vec![],
+            characters: vec![],
         }
     }
 
@@ -38,9 +43,38 @@ impl<'f> Input<'f> {
         self
     }
 
-    pub fn mouse(mut self, mouse_position: [f32; 2], down: bool) -> Input<'f> {
+    pub fn mouse_buttons_down(mut self, mouse_buttons_down: Vec<MouseButton>) -> Input<'f> {
+        self.mouse_buttons_down = mouse_buttons_down;
+        self
+    }
+
+    pub fn mouse_buttons_up(mut self, mouse_buttons_up: Vec<MouseButton>) -> Input<'f> {
+        self.mouse_buttons_up = mouse_buttons_up;
+        self
+    }
+
+    pub fn mouse_position(mut self, mouse_position: [f32; 2]) -> Input<'f> {
         self.mouse_position = mouse_position;
-        self.mouse_button_down = down;
+        self
+    }
+
+    pub fn keys_down(mut self, keys_down: Vec<Keys>) -> Input<'f> {
+        self.keys_down = keys_down;
+        self
+    }
+
+    pub fn keys_up(mut self, keys_up: Vec<Keys>) -> Input<'f> {
+        self.keys_up = keys_up;
+        self
+    }
+
+    pub fn keys_pressed(mut self, keys_pressed: Vec<Keys>) -> Input<'f> {
+        self.keys_pressed = keys_pressed;
+        self
+    }
+
+    pub fn characters(mut self, characters: Vec<char>) -> Input<'f> {
+        self.characters = characters;
         self
     }
 }

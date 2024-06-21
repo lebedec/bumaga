@@ -1,6 +1,6 @@
 ![.readme/header.png](.readme/header.png)
 
-A Rust-native library for building user interfaces inspired by web development experience.
+A Rust-native library for building user interfaces using web development experience.
 You should use it if these features valuable to you:
 
 + UI declaration and styling language similar to HTML and CSS

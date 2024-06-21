@@ -1,8 +1,11 @@
-use macroquad::miniquad::window::screen_size;
-use macroquad::prelude::*;
-use serde_json::json;
+use std::collections::HashSet;
 
-use bumaga::{Borders, Component, CssColor, Element, Fonts, Input, Layout, MyBorder, TextStyle};
+use macroquad::prelude::*;
+use serde_json::{json, Value};
+
+use bumaga::{
+    Borders, Component, CssColor, Element, Fonts, Input, Keys, Layout, MyBorder, TextStyle,
+};
 
 #[macroquad::main("macroquad bumaga example")]
 async fn main() {
@@ -12,45 +15,62 @@ async fn main() {
         .unwrap();
     let mut fonts = FontSystem { font };
     let mut component = Component::compile_files("../shared/index.html", "../shared/style.css");
-    let mut todos = vec![
-        "learn bumaga".to_string(),
-        "create UI using HTML".to_string(),
-        "implement engine".to_string(),
+    let todos = [
+        "learn bumaga documentation",
+        "create UI using HTML",
+        "implement engine",
     ];
+    let mut todos = HashSet::from(todos.map(&str::to_string));
     let mut todo = "Enter a todo".to_string();
     loop {
         clear_background(WHITE);
         let value = json!({"todos": todos, "todo": todo});
-        let input = Input::new()
-            .fonts(&mut fonts)
-            .value(value)
-            .viewport(screen_size().into());
+        let input = user_input().fonts(&mut fonts).value(value);
         let output = component.update(input);
         for element in output.elements {
-            draw_rectangle(
-                element.layout.location.x,
-                element.layout.location.y,
-                element.layout.size.width,
-                element.layout.size.height,
-                color(&element.background.color),
-            );
-            draw_borders(&element);
-            // draw_line()
-            if let Some(text) = element.text {
-                let text_params = TextParams {
-                    font_size: element.text_style.font_size as u16,
-                    font: Some(&fonts.font),
-                    ..Default::default()
-                };
-                draw_text_ex(
-                    &text,
-                    element.layout.location.x,
-                    element.layout.location.y + fonts.offset_y(&text, &element.text_style),
-                    text_params,
-                );
-            }
+            draw_element(&element, &fonts);
+        }
+        for call in output.calls {
+            println!("CALL {call:?}");
+            match call.describe() {
+                ("append", [todo]) => {
+                    todos.insert(todo.as_str().unwrap().to_string());
+                }
+                ("edit", [value]) => {
+                    todo = value.as_str().unwrap().to_string();
+                }
+                ("remove", [todo]) => {
+                    todos.remove(todo.as_str().unwrap());
+                }
+                _ => {}
+            };
         }
         next_frame().await
+    }
+}
+
+fn draw_element(element: &Element, fonts: &FontSystem) {
+    draw_rectangle(
+        element.layout.location.x,
+        element.layout.location.y,
+        element.layout.size.width,
+        element.layout.size.height,
+        color(&element.background.color),
+    );
+    draw_borders(&element);
+    // draw_line()
+    if let Some(text) = element.text.as_ref() {
+        let text_params = TextParams {
+            font_size: element.text_style.font_size as u16,
+            font: Some(&fonts.font),
+            ..Default::default()
+        };
+        draw_text_ex(
+            &text,
+            element.layout.location.x,
+            element.layout.location.y + fonts.offset_y(&text, &element.text_style),
+            text_params,
+        );
     }
 }
 
@@ -99,5 +119,81 @@ impl Fonts for FontSystem {
         // only single line text will be rendered correctly
         let size = measure_text(text, Some(&self.font), style.font_size as u16, 1.0);
         [size.width, size.height]
+    }
+}
+
+pub fn user_input<'f>() -> Input<'f> {
+    let viewport = [screen_width(), screen_height()];
+    let mut characters = vec![];
+    while let Some(character) = get_char_pressed() {
+        if character == ' '
+            || character.is_alphabetic()
+            || character.is_alphanumeric()
+            || character.is_ascii()
+        {
+            println!("char [{}]", character);
+            characters.push(character);
+        }
+    }
+    let keys_down = get_keys_down().into_iter().map(map_keycode).collect();
+    let keys_up = get_keys_released().into_iter().map(map_keycode).collect();
+    let keys_pressed = get_keys_pressed().into_iter().map(map_keycode).collect();
+    let mouse_position = mouse_position().into();
+    let mut buttons_down = vec![];
+    let mut buttons_up = vec![];
+    let buttons = [
+        (MouseButton::Left, 0),
+        (MouseButton::Right, 1),
+        (MouseButton::Middle, 2),
+    ];
+    for (button, code) in buttons {
+        if is_mouse_button_down(button) {
+            buttons_down.push(code);
+        }
+        if is_mouse_button_released(button) {
+            buttons_up.push(code);
+        }
+    }
+    Input::new()
+        .viewport(viewport)
+        .mouse_position(mouse_position)
+        .mouse_buttons_down(buttons_down)
+        .mouse_buttons_up(buttons_up)
+        .characters(characters)
+        .keys_down(keys_down)
+        .keys_up(keys_up)
+        .keys_pressed(keys_pressed)
+}
+
+pub fn map_keycode(code: KeyCode) -> Keys {
+    match code {
+        // UI keys
+        KeyCode::Escape => Keys::Escape,
+        // Editing keys
+        KeyCode::Backspace => Keys::Backspace,
+        KeyCode::Delete => Keys::Delete,
+        KeyCode::Insert => Keys::Insert,
+        // Whitespace keys
+        KeyCode::Enter => Keys::Enter,
+        KeyCode::Tab => Keys::Tab,
+        // Navigation keys
+        KeyCode::Up => Keys::ArrowUp,
+        KeyCode::Down => Keys::ArrowDown,
+        KeyCode::Left => Keys::ArrowLeft,
+        KeyCode::Right => Keys::ArrowRight,
+        KeyCode::End => Keys::End,
+        KeyCode::Home => Keys::Home,
+        KeyCode::PageDown => Keys::PageDown,
+        KeyCode::PageUp => Keys::PageUp,
+        // Modifier keys
+        KeyCode::LeftAlt => Keys::Alt,
+        KeyCode::RightAlt => Keys::Alt,
+        KeyCode::CapsLock => Keys::CapsLock,
+        KeyCode::LeftControl => Keys::Ctrl,
+        KeyCode::RightControl => Keys::Ctrl,
+        KeyCode::NumLock => Keys::NumLock,
+        KeyCode::LeftShift => Keys::Shift,
+        KeyCode::RightShift => Keys::Shift,
+        _ => Keys::Unknown,
     }
 }

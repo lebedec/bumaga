@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use lightningcss::properties::align::{
     AlignContent, AlignItems, AlignSelf, ContentDistribution, ContentPosition, GapValue,
     JustifyContent, JustifyItems, JustifySelf, SelfPosition,
@@ -49,6 +51,7 @@ pub fn create_view(id: ViewId) -> Element {
         layout: Default::default(),
         id,
         html_element: None,
+        tag: "".to_string(),
         background: MyBackground {
             image: None,
             color: Default::default(),
@@ -76,6 +79,7 @@ pub fn create_view(id: ViewId) -> Element {
             line_height: 16.0,
             wrap: OverflowWrap::Normal,
         },
+        listeners: HashMap::new(),
     }
 }
 

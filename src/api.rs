@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 pub use lightningcss::properties::background::{
@@ -31,7 +32,12 @@ pub struct Input<'f> {
     pub(crate) keys: Vec<String>,
     pub(crate) viewport: [f32; 2],
     pub(crate) mouse_position: [f32; 2],
-    pub(crate) mouse_button_down: bool,
+    pub(crate) mouse_buttons_down: Vec<MouseButton>,
+    pub(crate) mouse_buttons_up: Vec<MouseButton>,
+    pub(crate) keys_down: Vec<Keys>,
+    pub(crate) keys_up: Vec<Keys>,
+    pub(crate) keys_pressed: Vec<Keys>,
+    pub(crate) characters: Vec<char>,
 }
 
 pub struct Output {
@@ -41,11 +47,24 @@ pub struct Output {
 
 /// It is a mechanism that allows a Bumaga component to request
 /// interaction event handling in application.
+#[derive(Debug, Clone)]
 pub struct Call {
     /// The identifier of event handler (function name probably).
     pub function: String,
     /// The JSON-like arguments.
     pub arguments: Vec<Value>,
+}
+
+impl Call {
+    pub fn describe(&self) -> (&str, &[Value]) {
+        let name = self.function.as_str();
+        let args = self.arguments.as_slice();
+        (name, args)
+    }
+
+    pub fn get_str(&self, index: usize) -> Option<&str> {
+        self.arguments.get(index).and_then(Value::as_str)
+    }
 }
 
 /// The most fundamental object for building a UI, Element contains layout and appearance.
@@ -57,6 +76,8 @@ pub struct Element {
     pub layout: Layout,
     pub id: ViewId,
     pub html_element: Option<scraper::node::Element>,
+    /// The HTML tag used for creating element.
+    pub tag: String,
     pub background: MyBackground,
     pub borders: Borders,
     /// The foreground color of element (most often text color).
@@ -65,6 +86,7 @@ pub struct Element {
     pub text: Option<String>,
     /// The different properties of an element's text font.
     pub text_style: TextStyle,
+    pub listeners: HashMap<String, Call>,
 }
 
 #[derive(Clone)]
@@ -123,3 +145,43 @@ pub struct TextStyle {
 pub trait Fonts {
     fn measure(&mut self, text: &str, style: &TextStyle, max_width: Option<f32>) -> [f32; 2];
 }
+
+/// It's hard to full match scancode or keycode from different platforms or windowing frameworks.
+/// Bumaga encodes only most usable "control" keys which are responsible for application logic or text editing.
+/// Any other "printable" keys must be passed as unicode characters in context of the current keyboard layout.
+///
+/// see for details: https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Keys {
+    Unknown,
+    // UI keys
+    Escape,
+    // Editing keys
+    Backspace,
+    Delete,
+    Insert,
+    // Whitespace keys
+    Enter,
+    Tab,
+    // Navigation keys
+    ArrowUp,
+    ArrowDown,
+    ArrowLeft,
+    ArrowRight,
+    End,
+    Home,
+    PageDown,
+    PageUp,
+    // Modifier keys
+    Alt,
+    CapsLock,
+    Ctrl,
+    NumLock,
+    Shift,
+}
+
+pub type MouseButton = u16;
+
+pub const LEFT_MOUSE_BUTTON: MouseButton = 0;
+
+pub const RIGHT_MOUSE_BUTTON: MouseButton = 1;

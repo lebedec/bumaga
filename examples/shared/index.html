@@ -6,10 +6,10 @@
         Bumaga Todo
         <span>Streamline Your Day, the Bumaga Way!</span>
     </header>
-    <div *="todos" class="todo">
+    <div *="todos" class="todo" onclick="remove(todos)">
         <span>{todos}</span>
         <div>×</div>
     </div>
-    <input value="todo"/>
+    <input value="todo" onchange="edit"/>
 </div>
 </body>

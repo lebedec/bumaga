@@ -10,7 +10,7 @@ use scraper::{ElementRef, Node};
 use serde_json::{Map, Value};
 use taffy::{NodeId, TaffyTree};
 
-use crate::Element;
+use crate::{Call, Element};
 use crate::html::apply_html_attributes;
 use crate::models::{Presentation, SizeContext, ViewId};
 use crate::styles::{
@@ -20,6 +20,7 @@ use crate::styles::{
 pub struct State {
     pub element_n: usize,
     pub pseudo_classes: HashMap<ViewId, Vec<String>>,
+    pub focus: Option<ViewId>,
 }
 
 static NO_PSEUDO_CLASSES: Vec<String> = vec![];
@@ -29,7 +30,16 @@ impl State {
         State {
             element_n: 0,
             pseudo_classes: HashMap::new(),
+            focus: None,
         }
+    }
+
+    pub fn reset_focus(&mut self) {
+        self.focus = None;
+    }
+
+    pub fn set_focus(&mut self, element_id: ViewId) {
+        self.focus = Some(element_id)
     }
 
     pub fn get_pseudo_classes(&self, element_id: ViewId) -> &Vec<String> {
@@ -77,6 +87,7 @@ pub fn render_tree<'p>(
                 let parent = layout.get_node_context(parent_id).expect("context must be");
                 let mut view = create_view(element_id);
                 view.text = Some(text);
+                view.tag = "".to_string();
                 inherit(&parent, &mut view);
 
                 let current_id = match layout.new_leaf_with_context(style, view.clone()) {
@@ -158,6 +169,7 @@ pub fn render_tree<'p>(
                 let mut style = default_layout_style();
                 let mut view = create_view(element_id);
                 view.html_element = Some(original_element.clone());
+                view.tag = element.name.local.to_string();
                 let parent = layout.get_node_context(parent_id).expect("context must be");
                 let matching_element = &ElementRef::wrap(current).expect("node is element");
                 for rule in &presentation.rules {
@@ -167,6 +179,25 @@ pub fn render_tree<'p>(
                     }
                 }
                 apply_html_attributes(element, value, &mut view, &mut style);
+
+                // parse output binding
+                // NOTE: must be in rendering cycle because scope contains repeated values
+                // TODO: analyze performance issues (skip call render if no events)
+                match view.tag.as_ref() {
+                    "input" => {
+                        if let Some(expr) = element.attr("onchange") {
+                            view.listeners
+                                .insert("onchange".to_string(), render_call(expr, value));
+                        }
+                    }
+                    _ => {
+                        if let Some(expr) = element.attr("onclick") {
+                            view.listeners
+                                .insert("onclick".to_string(), render_call(expr, value));
+                        }
+                    }
+                }
+                //
 
                 let current_id = match layout.new_leaf_with_context(style, view.clone()) {
                     Ok(node_id) => node_id,
@@ -324,4 +355,36 @@ pub fn interpolate_string(string: String, value: &Map<String, Value>) -> String 
 
 pub fn qual(name: &str) -> QualName {
     QualName::new(None, ns!(), LocalName::from(name))
+}
+
+fn render_call(expression: &str, global_value: &Map<String, Value>) -> Call {
+    let mut function = String::new();
+    let mut arguments = vec![];
+    let mut is_function = true;
+    let mut arg = String::new();
+    for ch in expression.chars() {
+        if is_function {
+            if ch == '(' {
+                is_function = false;
+            } else {
+                function.push(ch);
+            }
+        } else {
+            if ch == ',' || ch == ')' {
+                let value = arg.trim().replace("'", "\"");
+                let value: Value = match serde_json::from_str(&value) {
+                    Ok(value) => value,
+                    Err(_) => global_value.get(&value).cloned().unwrap_or(Value::Null),
+                };
+                arguments.push(value);
+                arg = String::new();
+            } else {
+                arg.push(ch);
+            }
+        }
+    }
+    Call {
+        function,
+        arguments,
+    }
 }
