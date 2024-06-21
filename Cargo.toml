@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-scraper="0.19.0"
+scraper = "0.19.0"
 ego-tree = "0.6.2"
 lightningcss = { version = "1.0.0-alpha.57", default-features = false, features = ["grid", "into_owned"] }
 taffy = "0.5.1"
@@ -16,4 +16,4 @@ html5ever = "0.26"
 static-self = "0.1"
 
 [dev-dependencies]
-cosmic-text = {  version="0.12" }
+cosmic-text = "0.12"

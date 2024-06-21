@@ -1,14 +1,30 @@
-# bumaga
+![.readme/header.png](.readme/header.png)
 
-A Rust library for building user interfaces inspired by web development experience.
+A Rust-native library for building user interfaces inspired by web development experience.
 You should use it if these features valuable to you:
 
-+ UI declaration and styling language similar to HTML/CSS
++ UI declaration and styling language similar to HTML and CSS
 + Hot reloading of view, prototyping without recompilation Rust app
-+ Simple view bindings and interoperability based on `serde_json`
++ Simple view bindings and interoperability based on JSON values
 + Graphics API agnostic
 + Windowing API agnostic
 + (TODO) CSS animations
+
+The development of this library possible thanks to work of Rust enthusiasts:
+[servo](https://github.com/servo/servo),
+[taffy](https://github.com/DioxusLabs/taffy),
+[lightningcss](https://github.com/parcel-bundler/lightningcss), other 🔥 🚀
+
+## What it is not
+
++ Not a HTML/CSS/script engine or full spec implemenation (look [sciter](https://github.com/sciter-sdk/rust-sciter) if
+  you need)
++ Not a drawing solution, just abstract drawing instructions in result
++ Not a text rendering engine (actually you should provide one for correct work)
+
+## Example
+
+TODO: short description of architecture and real code example
 
 ```rust
 fn main() {
@@ -32,9 +48,10 @@ fn main() {
 ```
 
 ```html
+
 <div>
     <h1>Hello, {name}!</h1>
-    <input value="name" onchange="rename" />
+    <input value="name" onchange="rename"/>
 </div>
 ```
 
@@ -49,13 +66,11 @@ input {
 }
 ```
 
-The development of this library possible thanks to work of Rust enthusiasts: 
-[servo](https://github.com/servo/servo), 
-[taffy](https://github.com/DioxusLabs/taffy), 
-[lightningcss](https://github.com/parcel-bundler/lightningcss) and other 🔥 🚀
+# More examples
 
-## What it is not
+* [macroquad](examples/macroquad-app) 
 
-+ Not a HTML/CSS/script engine (look [sciter](https://github.com/sciter-sdk/rust-sciter) if you need)
-+ Not a drawing solution, just abstract drawing instructions in result
-+ Not a text rendering engine (actually you should provide one for correct work)
+
+
+
+

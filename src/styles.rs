@@ -3,7 +3,7 @@ use lightningcss::properties::align::{
     JustifyContent, JustifyItems, JustifySelf, SelfPosition,
 };
 use lightningcss::properties::background::{Background, BackgroundOrigin};
-use lightningcss::properties::border::BorderSideWidth;
+use lightningcss::properties::border::{Border, BorderSideWidth, LineStyle};
 use lightningcss::properties::display::{Display, DisplayInside, DisplayKeyword, DisplayOutside};
 use lightningcss::properties::flex::{FlexDirection, FlexWrap};
 use lightningcss::properties::font::{
@@ -35,7 +35,7 @@ use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, Ta
 use taffy::prelude::FromLength;
 use taffy::prelude::TaffyAuto;
 
-use crate::{Element, MyBackground, TextStyle};
+use crate::{Borders, Element, MyBackground, MyBorder, TextStyle};
 use crate::models::{Presentation, Ruleset, SizeContext, ViewId};
 
 impl TextStyle {
@@ -59,6 +59,12 @@ pub fn create_view(id: ViewId) -> Element {
             origin: BackgroundOrigin::PaddingBox,
             clip: Default::default(),
         },
+        borders: Borders {
+            top: None,
+            bottom: None,
+            right: None,
+            left: None,
+        },
         color: RGBA::new(255, 255, 255, 1.0),
         text: None,
         text_style: TextStyle {
@@ -67,7 +73,7 @@ pub fn create_view(id: ViewId) -> Element {
             font_style: FontStyle::Normal,
             font_weight: TextStyle::DEFAULT_FONT_WEIGHT,
             font_stretch: TextStyle::DEFAULT_FONT_STRETCH,
-            line_height: 18.0,
+            line_height: 16.0,
             wrap: OverflowWrap::Normal,
         },
     }
@@ -211,6 +217,64 @@ pub fn apply_view_rules<'i>(
             }
             Property::BackgroundClip(clip, _) => view.background.clip = clip[0].clone(),
             Property::BackgroundOrigin(origin) => view.background.origin = origin[0].clone(),
+            Property::BorderTop(border) => {
+                view.borders.top = Some(resolve_border(
+                    &border.width,
+                    border.style,
+                    &border.color,
+                    context,
+                ))
+            }
+            Property::BorderBottom(border) => {
+                view.borders.bottom = Some(resolve_border(
+                    &border.width,
+                    border.style,
+                    &border.color,
+                    context,
+                ))
+            }
+            Property::BorderLeft(border) => {
+                view.borders.left = Some(resolve_border(
+                    &border.width,
+                    border.style,
+                    &border.color,
+                    context,
+                ))
+            }
+            Property::BorderRight(border) => {
+                view.borders.right = Some(resolve_border(
+                    &border.width,
+                    border.style,
+                    &border.color,
+                    context,
+                ))
+            }
+            Property::Border(border) => {
+                view.borders.top = Some(resolve_border(
+                    &border.width,
+                    border.style,
+                    &border.color,
+                    context,
+                ));
+                view.borders.bottom = Some(resolve_border(
+                    &border.width,
+                    border.style,
+                    &border.color,
+                    context,
+                ));
+                view.borders.left = Some(resolve_border(
+                    &border.width,
+                    border.style,
+                    &border.color,
+                    context,
+                ));
+                view.borders.right = Some(resolve_border(
+                    &border.width,
+                    border.style,
+                    &border.color,
+                    context,
+                ));
+            }
             Property::Color(color) => {
                 match color {
                     CssColor::RGBA(color) => view.color = *color,
@@ -557,7 +621,7 @@ fn map_track_item(item: &TrackListItem, context: SizeContext) -> TrackSizingFunc
                 TrackSizingFunction::AUTO
             }
             TrackSize::FitContent(length) => {
-                TrackSizingFunction::fit_content(resolve_length(length, context))
+                TrackSizingFunction::fit_content(resolve_length_percentage(length, context))
             }
         },
         TrackListItem::TrackRepeat(repeat) => {
@@ -584,6 +648,31 @@ fn map_track_sizing(sizing: &TrackSizing, context: SizeContext) -> Vec<TrackSizi
             }
             result
         }
+    }
+}
+
+fn resolve_border(
+    width: &BorderSideWidth,
+    style: LineStyle,
+    color: &CssColor,
+    context: SizeContext,
+) -> MyBorder {
+    MyBorder {
+        width: match width {
+            BorderSideWidth::Length(length) => match length {
+                Length::Value(length) => resolve_length(length, context),
+                width => {
+                    error!("border width {width:?} not supported");
+                    1.0
+                }
+            },
+            width => {
+                error!("border width {width:?} not supported");
+                1.0
+            }
+        },
+        style,
+        color: color.clone(),
     }
 }
 
@@ -639,17 +728,7 @@ fn resolve_line_height(height: &LineHeight, context: SizeContext, font_size: f32
         LineHeight::Normal => 1.2 * font_size,
         LineHeight::Number(multiplier) => (multiplier * font_size).floor(),
         LineHeight::Length(height) => match height {
-            LengthPercentage::Dimension(height) => match height {
-                LengthValue::Px(value) => *value,
-                LengthValue::Em(value) => context.parent_font_size * value,
-                LengthValue::Rem(value) => context.root_font_size * value,
-                LengthValue::Vw(value) => context.viewport_width * value / 100.0,
-                LengthValue::Vh(value) => context.viewport_height * value / 100.0,
-                height => {
-                    error!("line height {height:?} not supported");
-                    context.parent_font_size
-                }
-            },
+            LengthPercentage::Dimension(height) => resolve_length(height, context),
             height => {
                 error!("line height {height:?} not supported");
                 context.parent_font_size
@@ -661,17 +740,7 @@ fn resolve_line_height(height: &LineHeight, context: SizeContext, font_size: f32
 fn resolve_font_size(size: &FontSize, context: SizeContext) -> f32 {
     match size {
         FontSize::Length(size) => match size {
-            LengthPercentage::Dimension(size) => match size {
-                LengthValue::Px(value) => *value,
-                LengthValue::Em(value) => context.parent_font_size * value,
-                LengthValue::Rem(value) => context.root_font_size * value,
-                LengthValue::Vw(value) => context.viewport_width * value / 100.0,
-                LengthValue::Vh(value) => context.viewport_height * value / 100.0,
-                size => {
-                    error!("font size {size:?} not supported");
-                    context.parent_font_size
-                }
-            },
+            LengthPercentage::Dimension(size) => resolve_length(size, context),
             size => {
                 error!("font size {size:?} not supported");
                 context.parent_font_size
@@ -692,15 +761,9 @@ fn resolve_font_size(size: &FontSize, context: SizeContext) -> f32 {
     }
 }
 
-fn resolve_dimension(value: &LengthPercentage, _context: SizeContext) -> Dimension {
+fn resolve_dimension(value: &LengthPercentage, context: SizeContext) -> Dimension {
     match value {
-        LengthPercentage::Dimension(value) => match value {
-            LengthValue::Px(px) => Dimension::Length(*px),
-            dimension => {
-                error!("dimension {dimension:?} not supported");
-                Dimension::Length(0.0)
-            }
-        },
+        LengthPercentage::Dimension(value) => Dimension::Length(resolve_length(value, context)),
         LengthPercentage::Percentage(percentage) => Dimension::Percent(percentage.0),
         LengthPercentage::Calc(calc) => {
             error!("calc {calc:?} not supported");
@@ -709,19 +772,32 @@ fn resolve_dimension(value: &LengthPercentage, _context: SizeContext) -> Dimensi
     }
 }
 
-fn resolve_length(value: &LengthPercentage, _context: SizeContext) -> taffy::LengthPercentage {
+fn resolve_length_percentage(
+    value: &LengthPercentage,
+    context: SizeContext,
+) -> taffy::LengthPercentage {
     match value {
-        LengthPercentage::Dimension(length) => match length {
-            LengthValue::Px(length) => taffy::LengthPercentage::Length(*length),
-            length => {
-                error!("length {length:?} not supported");
-                taffy::LengthPercentage::Length(0.0)
-            }
-        },
+        LengthPercentage::Dimension(length) => {
+            taffy::LengthPercentage::Length(resolve_length(length, context))
+        }
         LengthPercentage::Percentage(percentage) => taffy::LengthPercentage::Percent(percentage.0),
         LengthPercentage::Calc(calc) => {
             error!("calc {calc:?} not supported");
             taffy::LengthPercentage::Length(0.0)
+        }
+    }
+}
+
+fn resolve_length(value: &LengthValue, context: SizeContext) -> f32 {
+    match value {
+        LengthValue::Px(value) => *value,
+        LengthValue::Em(value) => context.parent_font_size * value,
+        LengthValue::Rem(value) => context.root_font_size * value,
+        LengthValue::Vw(value) => context.viewport_width * value / 100.0,
+        LengthValue::Vh(value) => context.viewport_height * value / 100.0,
+        value => {
+            error!("length value {value:?} not supported");
+            context.parent_font_size
         }
     }
 }
@@ -757,17 +833,13 @@ impl Resolver<Dimension> for Size {
 }
 
 impl Resolver<LengthPercentageAuto> for LengthPercentageOrAuto {
-    fn resolve(&self, _context: SizeContext) -> LengthPercentageAuto {
+    fn resolve(&self, context: SizeContext) -> LengthPercentageAuto {
         match self {
             LengthPercentageOrAuto::Auto => LengthPercentageAuto::Auto,
             LengthPercentageOrAuto::LengthPercentage(value) => match value {
-                LengthPercentage::Dimension(length) => match length {
-                    LengthValue::Px(length) => LengthPercentageAuto::Length(*length),
-                    length => {
-                        error!("length {length:?} not supported");
-                        LengthPercentageAuto::Length(0.0)
-                    }
-                },
+                LengthPercentage::Dimension(length) => {
+                    LengthPercentageAuto::Length(resolve_length(length, context))
+                }
                 LengthPercentage::Percentage(percentage) => {
                     LengthPercentageAuto::Percent(percentage.0)
                 }
@@ -784,25 +856,23 @@ impl Resolver<taffy::LengthPercentage> for LengthPercentageOrAuto {
     fn resolve(&self, context: SizeContext) -> taffy::LengthPercentage {
         match self {
             LengthPercentageOrAuto::Auto => taffy::LengthPercentage::Length(0.0),
-            LengthPercentageOrAuto::LengthPercentage(value) => resolve_length(value, context),
+            LengthPercentageOrAuto::LengthPercentage(value) => {
+                resolve_length_percentage(value, context)
+            }
         }
     }
 }
 
 impl Resolver<taffy::LengthPercentage> for BorderSideWidth {
-    fn resolve(&self, _context: SizeContext) -> taffy::LengthPercentage {
+    fn resolve(&self, context: SizeContext) -> taffy::LengthPercentage {
         match self {
             BorderSideWidth::Thin => taffy::LengthPercentage::Length(1.0),
             BorderSideWidth::Medium => taffy::LengthPercentage::Length(2.0),
             BorderSideWidth::Thick => taffy::LengthPercentage::Length(3.0),
             BorderSideWidth::Length(length) => match length {
-                Length::Value(length) => match length {
-                    LengthValue::Px(length) => taffy::LengthPercentage::Length(*length),
-                    length => {
-                        error!("length {length:?} not supported");
-                        taffy::LengthPercentage::Length(0.0)
-                    }
-                },
+                Length::Value(length) => {
+                    taffy::LengthPercentage::Length(resolve_length(length, context))
+                }
                 Length::Calc(calc) => {
                     error!("calc {calc:?} not supported");
                     taffy::LengthPercentage::Length(0.0)
@@ -816,7 +886,7 @@ impl Resolver<taffy::LengthPercentage> for GapValue {
     fn resolve(&self, context: SizeContext) -> taffy::LengthPercentage {
         match self {
             GapValue::Normal => taffy::LengthPercentage::Length(0.0),
-            GapValue::LengthPercentage(value) => resolve_length(value, context),
+            GapValue::LengthPercentage(value) => resolve_length_percentage(value, context),
         }
     }
 }

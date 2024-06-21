@@ -181,14 +181,14 @@ pub fn render_tree<'p>(
                 }
 
                 for child in current.children() {
-                    if let Some(text) = child.value().as_text() {
-                        if !child.has_siblings() {
-                            let inner_text = interpolate_string(text.text.to_string(), value);
-                            layout.get_node_context_mut(current_id).unwrap().text =
-                                Some(inner_text);
-                            break;
-                        }
-                    }
+                    // if let Some(text) = child.value().as_text() {
+                    //     if !child.has_siblings() {
+                    //         let inner_text = interpolate_string(text.text.to_string(), value);
+                    //         layout.get_node_context_mut(current_id).unwrap().text =
+                    //             Some(inner_text);
+                    //         break;
+                    //     }
+                    // }
                     let mut context = context;
                     context.parent_font_size = view.text_style.font_size;
                     render_tree(

@@ -1,0 +1,41 @@
+body {
+    font-family: "Roboto Regular", sans-serif;
+}
+
+.panel {
+    padding: 16px;
+    background-color: #437FB5;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 24rem;
+}
+
+header {
+    font-size: 2.5rem;
+    border-bottom: 1px solid #ffffff4d;
+}
+
+header > span {
+    display: block;
+    font-size: .8rem;
+    margin-top: .5rem;
+    margin-bottom: 1.0rem;
+}
+
+.todo {
+    display: flex;
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 1rem;
+    align-items: center;
+}
+
+.todo > span {
+    flex-grow: 1;
+}
+
+input {
+    background: #394651;
+    height: 3rem;
+}

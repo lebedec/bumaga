@@ -1,21 +1,33 @@
+use std::fs;
+use std::ops::Add;
+use std::path::Path;
+
 use log::error;
 use scraper::{Html, Selector};
 use serde_json::{Error, Map, Value};
 use taffy::{
-    AvailableSpace, Layout, NodeId, PrintTree, Size, Style, TaffyResult, TaffyTree,
-    TraversePartialTree,
+    AvailableSpace, Layout, NodeId, Point, Position, PrintTree, Size, Style, TaffyResult,
+    TaffyTree, TraversePartialTree,
 };
 use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
 
 use crate::{Element, Fonts};
-use crate::api::{Call, Component, Frame, Input};
+use crate::api::{Call, Component, Input, Output};
 use crate::input::FakeFonts;
 use crate::models::{SizeContext, ViewId};
 use crate::rendering::{as_string, render_tree, State};
 use crate::styles::{create_view, parse_presentation, pseudo};
 
 impl Component {
+    pub fn compile_files<P: AsRef<Path>>(html: P, css: P) -> Self {
+        let html_error = format!("unable to read html file {:?}", html.as_ref());
+        let html = fs::read_to_string(html).expect(&html_error);
+        let css_error = format!("unable to read css file {:?}", css.as_ref());
+        let css = fs::read_to_string(css).expect(&css_error);
+        Self::compile(&html, &css)
+    }
+
     pub fn compile(html: &str, css: &str) -> Self {
         let presentation = parse_presentation(css);
         let html = Html::parse_document(html);
@@ -29,9 +41,9 @@ impl Component {
         }
     }
 
-    pub fn update(&mut self, mut input: Input) -> Frame {
+    pub fn update(&mut self, mut input: Input) -> Output {
         self.state.element_n = 0;
-        let mut frame = Frame::new();
+        let mut frame = Output::new();
         let value = match input.value.as_object_mut() {
             Some(value) => value,
             None => {
@@ -93,14 +105,16 @@ impl Component {
             error!("unable to layout component, {error:?}");
             return frame;
         };
+
         fn process(
             tree: &TaffyTree<Element>,
             node: NodeId,
             input: &Input,
-            frame: &mut Frame,
+            frame: &mut Output,
             state: &mut State,
+            mut location: Point<f32>,
         ) {
-            let layout = tree.get_final_layout(node);
+            let mut layout = *tree.get_final_layout(node);
             let view = match tree.get_node_context(node) {
                 None => {
                     error!("unable to traverse node {node:?} has no context");
@@ -108,10 +122,21 @@ impl Component {
                 }
                 Some(view) => view,
             };
+            let style = match tree.style(node) {
+                Ok(style) => style,
+                Err(error) => {
+                    error!("unable to traverse node {node:?}, {error:?}");
+                    return;
+                }
+            };
+
+            if style.position == Position::Relative {
+                layout.location = layout.location.add(location)
+            }
 
             // interaction
             let mut pseudo_classes = vec![];
-            if is_element_contains(layout, input.mouse_position) {
+            if is_element_contains(&layout, input.mouse_position) {
                 pseudo_classes.push(pseudo(":hover"));
                 if input.mouse_button_down {
                     pseudo_classes.push(pseudo(":active"));
@@ -126,12 +151,13 @@ impl Component {
             state.set_pseudo_classes(view.id, pseudo_classes);
 
             let mut view = view.clone();
-            view.layout = *layout;
+            view.layout = layout;
             frame.elements.push(view);
+            location = layout.location;
             match tree.children(node) {
                 Ok(children) => {
                     for child in children {
-                        process(tree, child, input, frame, state);
+                        process(tree, child, input, frame, state, location);
                     }
                 }
                 Err(error) => {
@@ -140,7 +166,14 @@ impl Component {
             }
         }
         let body = rendering.child_ids(viewport).next().expect("must be");
-        process(&rendering, body, &input, &mut frame, &mut self.state);
+        process(
+            &rendering,
+            body,
+            &input,
+            &mut frame,
+            &mut self.state,
+            Point::ZERO,
+        );
         frame
     }
 }
@@ -183,7 +216,7 @@ fn parse_call(repr: &str, global_value: &Value) -> Call {
     }
 }
 
-impl Frame {
+impl Output {
     fn new() -> Self {
         Self {
             calls: vec![],

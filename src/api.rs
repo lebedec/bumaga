@@ -1,15 +1,16 @@
 use std::time::Duration;
 
-use lightningcss::properties::background::{
+pub use lightningcss::properties::background::{
     BackgroundAttachment, BackgroundClip, BackgroundOrigin, BackgroundPosition, BackgroundRepeat,
     BackgroundSize,
 };
-use lightningcss::properties::font::{FontStretchKeyword, FontStyle};
-use lightningcss::properties::text::OverflowWrap;
-use lightningcss::values::color::{CssColor, RGBA};
+pub use lightningcss::properties::border::LineStyle;
+pub use lightningcss::properties::font::{FontStretchKeyword, FontStyle};
+pub use lightningcss::properties::text::OverflowWrap;
+pub use lightningcss::values::color::{CssColor, RGBA};
 use scraper::{Html, Selector};
 use serde_json::Value;
-use taffy::Layout;
+pub use taffy::Layout;
 
 use crate::models::{Presentation, ViewId};
 use crate::rendering::State;
@@ -33,7 +34,7 @@ pub struct Input<'f> {
     pub(crate) mouse_button_down: bool,
 }
 
-pub struct Frame {
+pub struct Output {
     pub calls: Vec<Call>,
     pub elements: Vec<Element>,
 }
@@ -57,12 +58,28 @@ pub struct Element {
     pub id: ViewId,
     pub html_element: Option<scraper::node::Element>,
     pub background: MyBackground,
+    pub borders: Borders,
     /// The foreground color of element (most often text color).
     pub color: RGBA,
     /// The text inside an element.
     pub text: Option<String>,
     /// The different properties of an element's text font.
     pub text_style: TextStyle,
+}
+
+#[derive(Clone)]
+pub struct Borders {
+    pub top: Option<MyBorder>,
+    pub bottom: Option<MyBorder>,
+    pub right: Option<MyBorder>,
+    pub left: Option<MyBorder>,
+}
+
+#[derive(Clone)]
+pub struct MyBorder {
+    pub width: f32,
+    pub style: LineStyle,
+    pub color: CssColor,
 }
 
 #[derive(Clone)]
