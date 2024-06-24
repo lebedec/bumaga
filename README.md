@@ -68,7 +68,16 @@ input {
 
 # More examples
 
-* [macroquad](examples/macroquad-app) 
+Bumaga doesn't implement drawing, doesn't limit your application
+with any details of concrete graphics API.
+But here few examples with popular graphics solutions witch
+should help to understand how it works:
+
+* WIP: [Skia+Metal+Winit](examples/skia-metal-winit-app)
+* [SDL2](examples/sdl2-app)
+* TODO: Vulkan
+* [macroquad](examples/macroquad-app)
+
 
 
 

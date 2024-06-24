@@ -176,7 +176,6 @@ pub enum Keys {
     Alt,
     CapsLock,
     Ctrl,
-    NumLock,
     Shift,
 }
 

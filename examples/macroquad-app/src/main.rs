@@ -24,6 +24,7 @@ async fn main() {
     let mut todo = "Enter a todo".to_string();
     loop {
         clear_background(WHITE);
+        draw_scene();
         let value = json!({"todos": todos, "todo": todo});
         let input = user_input().fonts(&mut fonts).value(value);
         let output = component.update(input);
@@ -126,12 +127,7 @@ pub fn user_input<'f>() -> Input<'f> {
     let viewport = [screen_width(), screen_height()];
     let mut characters = vec![];
     while let Some(character) = get_char_pressed() {
-        if character == ' '
-            || character.is_alphabetic()
-            || character.is_alphanumeric()
-            || character.is_ascii()
-        {
-            println!("char [{}]", character);
+        if character == ' ' || !character.is_whitespace() && character != '\u{7f}' {
             characters.push(character);
         }
     }
@@ -191,9 +187,24 @@ pub fn map_keycode(code: KeyCode) -> Keys {
         KeyCode::CapsLock => Keys::CapsLock,
         KeyCode::LeftControl => Keys::Ctrl,
         KeyCode::RightControl => Keys::Ctrl,
-        KeyCode::NumLock => Keys::NumLock,
         KeyCode::LeftShift => Keys::Shift,
         KeyCode::RightShift => Keys::Shift,
         _ => Keys::Unknown,
     }
+}
+
+fn draw_scene() {
+    set_camera(&Camera3D {
+        position: vec3(-10., 10., 0.),
+        up: vec3(0., 1., 0.),
+        target: vec3(0., 0., 0.),
+        ..Default::default()
+    });
+    draw_grid(20, 1., BLACK, GRAY);
+    draw_cube_wires(vec3(0., 1., -6.), vec3(2., 2., 2.), DARKGREEN);
+    draw_cube_wires(vec3(0., 1., 6.), vec3(2., 2., 2.), DARKBLUE);
+    draw_cube_wires(vec3(2., 1., 2.), vec3(2., 2., 2.), YELLOW);
+    draw_cube(vec3(2., 0., -2.), vec3(0.4, 0.4, 0.4), None, BLACK);
+    draw_sphere(vec3(-8., 0., 0.), 1., None, BLUE);
+    set_default_camera();
 }
