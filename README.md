@@ -51,8 +51,8 @@ fn main() {
 }
 ```
 
-<div style="display: flex">
-<div>
+<table>
+<td>
 
 ```html 
 
@@ -70,13 +70,13 @@ fn main() {
 </div>
 ```
 
-</div>
-<div>
+</td>
+<td>
 
 ![.readme/example.avif](.readme/example.avif)
 
-</div>
-</div>
+</td>
+</table>
 
 # Using
 
