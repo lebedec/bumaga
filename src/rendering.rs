@@ -281,38 +281,41 @@ pub fn as_string(value: Option<&Value>) -> String {
 
 pub fn hash_value(value: &Value) -> u64 {
     let mut hasher = DefaultHasher::new();
-    match value {
-        Value::Null => 0,
-        Value::Bool(value) => {
-            if *value {
-                1
-            } else {
-                0
-            }
-        }
-        Value::Number(value) => {
-            let value = value.as_f64().unwrap_or(0.0);
-            integer_decode(value).hash(&mut hasher);
-            hasher.finish()
-        }
-        Value::String(value) => {
-            value.hash(&mut hasher);
-            hasher.finish()
-        }
-        Value::Array(array) => {
-            let hashes: Vec<u64> = array.iter().map(hash_value).collect();
-            hashes.hash(&mut hasher);
-            hasher.finish()
-        }
-        Value::Object(object) => {
-            let mut hashes: Vec<(String, u64)> = vec![];
-            for (key, value) in object {
-                hashes.push((key.to_string(), hash_value(value)));
-            }
-            hashes.hash(&mut hasher);
-            hasher.finish()
-        }
-    }
+    // available since v1.0.118
+    value.hash(&mut hasher);
+    hasher.finish()
+    // match value {
+    //     Value::Null => 0,
+    //     Value::Bool(value) => {
+    //         if *value {
+    //             1
+    //         } else {
+    //             0
+    //         }
+    //     }
+    //     Value::Number(value) => {
+    //         let value = value.as_f64().unwrap_or(0.0);
+    //         integer_decode(value).hash(&mut hasher);
+    //         hasher.finish()
+    //     }
+    //     Value::String(value) => {
+    //         value.hash(&mut hasher);
+    //         hasher.finish()
+    //     }
+    //     Value::Array(array) => {
+    //         let hashes: Vec<u64> = array.iter().map(hash_value).collect();
+    //         hashes.hash(&mut hasher);
+    //         hasher.finish()
+    //     }
+    //     Value::Object(object) => {
+    //         let mut hashes: Vec<(String, u64)> = vec![];
+    //         for (key, value) in object {
+    //             hashes.push((key.to_string(), hash_value(value)));
+    //         }
+    //         hashes.hash(&mut hasher);
+    //         hasher.finish()
+    //     }
+    // }
 }
 
 fn integer_decode(val: f64) -> (u64, i16, i8) {

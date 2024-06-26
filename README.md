@@ -22,6 +22,10 @@ The development of this library possible thanks to work of Rust enthusiasts:
 + Not a drawing solution, just abstract drawing instructions in result
 + Not a text rendering engine (actually you should provide one for correct work)
 
+## WARNING
+
+Bumaga is still in the early stages of development. Important features are missing. Documentation is sparse.
+
 ## Example
 
 TODO: short description of architecture and real code example
@@ -49,24 +53,22 @@ fn main() {
 
 ```html
 
-<div>
-    <h1>Hello, {name}!</h1>
-    <input value="name" onchange="rename"/>
+<div class="panel">
+    <header>
+        Bumaga Todo
+        <span>Streamline Your Day, the Bumaga Way!</span>
+    </header>
+    <div *="todos" class="todo" onclick="remove(todos)">
+        <span>{todos}</span>
+        <div>×</div>
+    </div>
+    <input value="todo" onchange="edit"/>
 </div>
 ```
 
-```css
-h1 {
-    font-size: 20px;
-    color: #2c2c2c;
-}
+![.readme/example.avif](.readme/example.avif)
 
-input {
-
-}
-```
-
-# More examples
+# Using
 
 Bumaga doesn't implement drawing, doesn't limit your application
 with any details of concrete graphics API.
@@ -76,6 +78,7 @@ should help to understand how it works:
 * WIP: [Skia+Metal+Winit](examples/skia-metal-winit-app)
 * [SDL2](examples/sdl2-app)
 * TODO: Vulkan
+* TODO: bevy
 * [macroquad](examples/macroquad-app)
 
 
