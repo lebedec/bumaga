@@ -1,11 +1,13 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use lightningcss::properties::align::{
     AlignContent, AlignItems, AlignSelf, ContentDistribution, ContentPosition, GapValue,
     JustifyContent, JustifyItems, JustifySelf, SelfPosition,
 };
-use lightningcss::properties::background::{Background, BackgroundOrigin};
+use lightningcss::properties::background::BackgroundOrigin;
 use lightningcss::properties::border::{Border, BorderSideWidth, LineStyle};
+use lightningcss::properties::custom::{CustomPropertyName, Token, TokenOrValue};
 use lightningcss::properties::display::{Display, DisplayInside, DisplayKeyword, DisplayOutside};
 use lightningcss::properties::flex::{FlexDirection, FlexWrap};
 use lightningcss::properties::font::{
@@ -37,8 +39,8 @@ use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, Ta
 use taffy::prelude::FromLength;
 use taffy::prelude::TaffyAuto;
 
-use crate::{Borders, Element, MyBackground, MyBorder, TextStyle};
-use crate::models::{Presentation, Ruleset, SizeContext, ViewId};
+use crate::{Background, Borders, Element, MyBorder, ObjectFit, Rgba, TextStyle};
+use crate::models::{ElementId, Presentation, Ruleset, SizeContext};
 
 impl TextStyle {
     pub const DEFAULT_FONT_FAMILY: &'static str = "system-ui";
@@ -46,13 +48,14 @@ impl TextStyle {
     pub const DEFAULT_FONT_STRETCH: FontStretchKeyword = FontStretchKeyword::Normal;
 }
 
-pub fn create_view(id: ViewId) -> Element {
+pub fn create_view(id: ElementId) -> Element {
     Element {
         layout: Default::default(),
         id,
         html_element: None,
         tag: "".to_string(),
-        background: MyBackground {
+        object_fit: ObjectFit::Fill,
+        background: Background {
             image: None,
             color: Default::default(),
             position: Default::default(),
@@ -68,7 +71,7 @@ pub fn create_view(id: ViewId) -> Element {
             right: None,
             left: None,
         },
-        color: RGBA::new(255, 255, 255, 1.0),
+        color: [255, 255, 255, 255],
         text: None,
         text_style: TextStyle {
             font_family: TextStyle::DEFAULT_FONT_FAMILY.to_string(),
@@ -169,6 +172,7 @@ pub fn apply_view_rules<'i>(
     parent: &Element,
     view: &mut Element,
     context: SizeContext,
+    resources: &str,
 ) {
     inherit(parent, view);
     for property in &ruleset.style.declarations.declarations {
@@ -178,10 +182,10 @@ pub fn apply_view_rules<'i>(
                     error!("multiple background not supported");
                 }
                 let background = &background[0];
-                view.background.color = background.color.clone();
+                view.background.color = resolve_css_color(&background.color);
                 view.background.image = match &background.image {
                     Image::None => None,
-                    Image::Url(url) => Some(url.url.to_string()),
+                    Image::Url(url) => Some(format!("{resources}{}", url.url)),
                     image => {
                         error!("background image {image:?} not supported");
                         None
@@ -194,11 +198,11 @@ pub fn apply_view_rules<'i>(
                 view.background.clip = background.clip.clone();
                 view.background.origin = background.origin.clone();
             }
-            Property::BackgroundColor(color) => view.background.color = color.clone(),
+            Property::BackgroundColor(color) => view.background.color = resolve_css_color(color),
             Property::BackgroundImage(image) => {
                 view.background.image = match &image[0] {
                     Image::None => None,
-                    Image::Url(url) => Some(url.url.to_string()),
+                    Image::Url(url) => Some(format!("{resources}{}", url.url)),
                     image => {
                         error!("background image {image:?} not supported");
                         None
@@ -279,12 +283,7 @@ pub fn apply_view_rules<'i>(
                     context,
                 ));
             }
-            Property::Color(color) => {
-                match color {
-                    CssColor::RGBA(color) => view.color = *color,
-                    color => error!("color {color:?} not supported"),
-                };
-            }
+            Property::Color(color) => view.color = resolve_css_color(color),
             Property::FontFamily(family) => {
                 view.text_style.font_family = resolve_font_family(family)
             }
@@ -313,6 +312,34 @@ pub fn apply_view_rules<'i>(
             }
             Property::OverflowWrap(wrap) => view.text_style.wrap = wrap.clone(),
             Property::WordWrap(wrap) => view.text_style.wrap = wrap.clone(),
+            Property::Custom(custom) => match &custom.name {
+                CustomPropertyName::Unknown(ident) => match ident.0.as_ref() {
+                    "object-fit" => {
+                        let value = custom.value.0.get(0).map(|token| match token {
+                            TokenOrValue::Token(token) => match token {
+                                Token::Ident(ident) => ident.as_ref(),
+                                _ => "",
+                            },
+                            _ => "",
+                        });
+                        view.object_fit = match value {
+                            Some("contain") => ObjectFit::Contain,
+                            Some("cover") => ObjectFit::Cover,
+                            Some("fill") => ObjectFit::Fill,
+                            Some("none") => ObjectFit::None,
+                            Some("scale-down") => ObjectFit::ScaleDown,
+                            _ => {
+                                error!("object-fit value {:?} not supported", value);
+                                ObjectFit::Fill
+                            }
+                        }
+                    }
+                    _ => {
+                        error!("css property {:?} not supported", ident)
+                    }
+                },
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -676,7 +703,17 @@ fn resolve_border(
             }
         },
         style,
-        color: color.clone(),
+        color: resolve_css_color(color),
+    }
+}
+
+fn resolve_css_color(color: &CssColor) -> Rgba {
+    match color {
+        CssColor::RGBA(rgba) => [rgba.red, rgba.green, rgba.blue, rgba.alpha],
+        _ => {
+            error!("color {color:?} not supported");
+            [0; 4]
+        }
     }
 }
 

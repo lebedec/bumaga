@@ -10,7 +10,7 @@ pub struct SizeContext {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ViewId {
+pub struct ElementId {
     pub element_n: usize,
     pub hash: u64,
 }

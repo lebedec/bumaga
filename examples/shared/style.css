@@ -1,5 +1,15 @@
 body {
     font-family: "Roboto Regular", sans-serif;
+    display: flex;
+    align-items: flex-start;
+    padding: 16px;
+}
+
+img {
+    background-color: red;
+    object-fit: none;
+    width: 426px;
+    height: 191px;
 }
 
 .panel {
@@ -46,5 +56,5 @@ input {
 }
 
 input:focus {
-    border: 1px solid red;
+    border: 2px solid white;
 }

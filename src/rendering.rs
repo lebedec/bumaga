@@ -5,242 +5,244 @@ use std::mem;
 use ego_tree::NodeRef;
 use html5ever::{LocalName, ns, QualName};
 use html5ever::namespace_url;
+use lightningcss::values::color::{CssColor, RGBA};
 use log::error;
 use scraper::{ElementRef, Node};
 use serde_json::{Map, Value};
-use taffy::{NodeId, TaffyTree};
+use taffy::{Dimension, NodeId, Size, Style, TaffyTree};
 
-use crate::{Call, Element};
+use crate::{Call, Component, Element};
 use crate::html::apply_html_attributes;
-use crate::models::{Presentation, SizeContext, ViewId};
+use crate::models::{ElementId, Presentation, SizeContext};
+use crate::state::State;
 use crate::styles::{
     apply_layout_rules, apply_view_rules, create_view, default_layout_style, inherit, pseudo,
 };
 
-pub struct State {
-    pub element_n: usize,
-    pub pseudo_classes: HashMap<ViewId, Vec<String>>,
-    pub focus: Option<ViewId>,
-}
-
-static NO_PSEUDO_CLASSES: Vec<String> = vec![];
-
-impl State {
-    pub fn new() -> Self {
-        State {
-            element_n: 0,
-            pseudo_classes: HashMap::new(),
-            focus: None,
-        }
-    }
-
-    pub fn reset_focus(&mut self) {
-        self.focus = None;
-    }
-
-    pub fn set_focus(&mut self, element_id: ViewId) {
-        self.focus = Some(element_id)
-    }
-
-    pub fn get_pseudo_classes(&self, element_id: ViewId) -> &Vec<String> {
-        self.pseudo_classes
-            .get(&element_id)
-            .unwrap_or(&NO_PSEUDO_CLASSES)
-    }
-
-    pub fn set_pseudo_classes(&mut self, element_id: ViewId, classes: Vec<String>) {
-        self.pseudo_classes.insert(element_id, classes);
-    }
-
-    pub fn has_pseudo_class(&self, element_id: ViewId, target: &str) -> bool {
-        match self.pseudo_classes.get(&element_id) {
-            None => false,
-            Some(classes) => classes
-                .iter()
-                .find(|class| class.as_str() == target)
-                .is_some(),
-        }
-    }
-}
-
-pub fn render_tree<'p>(
-    parent_id: NodeId,
-    current: NodeRef<Node>,
-    value: &mut Map<String, Value>,
-    context: SizeContext,
-    presentation: &'p Presentation,
-    layout: &mut TaffyTree<Element>,
-    state: &mut State,
-) {
-    match current.value() {
-        Node::Text(text) => {
-            let text = text.text.trim().to_string();
-            if !text.is_empty() {
-                // fake text element
-                state.element_n += 1;
-                let element_id = ViewId {
-                    element_n: state.element_n,
-                    hash: 0,
-                };
-                let text = interpolate_string(text, value);
-                let style = default_layout_style();
-                let parent = layout.get_node_context(parent_id).expect("context must be");
-                let mut view = create_view(element_id);
-                view.text = Some(text);
-                view.tag = "".to_string();
-                inherit(&parent, &mut view);
-
-                let current_id = match layout.new_leaf_with_context(style, view.clone()) {
-                    Ok(node_id) => node_id,
-                    Err(error) => {
-                        error!("unable to create rendering node, {}", error);
-                        return;
-                    }
-                };
-                if let Err(error) = layout.add_child(parent_id, current_id) {
-                    error!("unable to append rendering node, {}", error);
-                    return;
-                }
-            }
-        }
-        Node::Element(element) => {
-            state.element_n += 1;
-            if let Some(ident) = element.attr("?") {
-                if !is_something(value.get(ident)) {
-                    return;
-                }
-            }
-            if let Some(ident) = element.attr("!") {
-                if is_something(value.get(ident)) {
-                    return;
-                }
-            }
-            let no_array = vec![Value::Null];
-            let no_array_key = String::new();
-            let repeat = if let Some(ident) = element.attr("*") {
-                match as_array(value.get(ident)) {
-                    None => return,
-                    Some(array) => (ident.to_string(), array.clone()), // TODO: remove clone
-                }
-            } else {
-                (no_array_key, no_array)
-            };
-            let (repeat_key, repeat_values) = repeat;
-
-            // pointer need to in-place modification of DOM element attributes via instantiation
-            // NOTE: safe implementation requires rework scrapy HTML parsing and this render
-            #[allow(invalid_reference_casting)]
-            let current_mut = unsafe {
-                let ptr = current.value() as *const Node as *mut Node;
-                &mut *ptr
-            };
-
-            for repeat_value in repeat_values {
-                let element_id = ViewId {
-                    element_n: state.element_n,
-                    // array of object (especially big objects) can reduce performance
-                    // TODO: use key attribute like React
-                    hash: hash_value(&repeat_value),
-                };
-
-                // PUSH STATE
-                let original_element = element.clone();
-                let mut element_mut = element.clone();
-                let class_attr = qual("class");
-                let pseudo_classes = state.get_pseudo_classes(element_id);
-                if !pseudo_classes.is_empty() {
-                    let defined = match element_mut.attrs.get(&class_attr) {
-                        None => String::new(),
-                        Some(classes) => classes.trim().to_string(),
+impl Component {
+    pub fn render_tree<'a, 'b>(
+        &'a mut self,
+        parent_id: NodeId,
+        current: NodeRef<'b, Node>,
+        value: &mut Map<String, Value>,
+        context: SizeContext,
+        layout: &mut TaffyTree<Element>,
+    ) {
+        match current.value() {
+            Node::Text(text) => {
+                let text = text.text.trim().to_string();
+                if !text.is_empty() {
+                    // fake text element
+                    self.state.element_n += 1;
+                    let element_id = ElementId {
+                        element_n: self.state.element_n,
+                        hash: 0,
                     };
-                    let mut pseudo_classes = pseudo_classes.clone();
-                    pseudo_classes.insert(0, defined);
-                    let result = pseudo_classes.join(" ");
-                    element_mut.attrs.insert(class_attr, result.into());
-                }
-                *current_mut = Node::Element(element_mut);
-                let element = current_mut.as_element().unwrap();
-                if !repeat_key.is_empty() {
-                    // TODO: replace value ?
-                    // TODO: remove clone ?
-                    value.insert(repeat_key.clone(), repeat_value.clone());
-                }
+                    let text = interpolate_string(text, value);
+                    let style = default_layout_style();
+                    let parent = layout.get_node_context(parent_id).expect("context must be");
+                    let mut view = create_view(element_id);
+                    view.text = Some(text);
+                    view.tag = "".to_string();
+                    inherit(&parent, &mut view);
 
-                let mut style = default_layout_style();
-                let mut view = create_view(element_id);
-                view.html_element = Some(original_element.clone());
-                view.tag = element.name.local.to_string();
-                let parent = layout.get_node_context(parent_id).expect("context must be");
-                let matching_element = &ElementRef::wrap(current).expect("node is element");
-                for rule in &presentation.rules {
-                    if rule.selector.matches(matching_element) {
-                        apply_layout_rules(rule, &mut style, context);
-                        apply_view_rules(rule, &parent, &mut view, context);
-                    }
-                }
-                apply_html_attributes(element, value, &mut view, &mut style);
-
-                // parse output binding
-                // NOTE: must be in rendering cycle because scope contains repeated values
-                // TODO: analyze performance issues (skip call render if no events)
-                match view.tag.as_ref() {
-                    "input" => {
-                        if let Some(expr) = element.attr("onchange") {
-                            view.listeners
-                                .insert("onchange".to_string(), render_call(expr, value));
-                        }
-                    }
-                    _ => {
-                        if let Some(expr) = element.attr("onclick") {
-                            view.listeners
-                                .insert("onclick".to_string(), render_call(expr, value));
-                        }
-                    }
-                }
-                //
-
-                let current_id = match layout.new_leaf_with_context(style, view.clone()) {
-                    Ok(node_id) => node_id,
-                    Err(error) => {
-                        error!("unable to create rendering node, {}", error);
-                        return;
-                    }
-                };
-                if let Err(error) = layout.add_child(parent_id, current_id) {
-                    error!("unable to append rendering node, {}", error);
-                    return;
-                }
-
-                for child in current.children() {
-                    // if let Some(text) = child.value().as_text() {
-                    //     if !child.has_siblings() {
-                    //         let inner_text = interpolate_string(text.text.to_string(), value);
-                    //         layout.get_node_context_mut(current_id).unwrap().text =
-                    //             Some(inner_text);
-                    //         break;
-                    //     }
-                    // }
-                    let mut context = context;
-                    context.parent_font_size = view.text_style.font_size;
-                    render_tree(
-                        current_id,
-                        child,
-                        value,
-                        context,
-                        presentation,
-                        layout,
-                        state,
-                    );
-                }
-
-                // POP STATE
-                *current_mut = Node::Element(original_element.clone());
-                if !repeat_key.is_empty() {
-                    value.remove(&repeat_key);
+                    layout.new_child_of(parent_id, style, view.clone());
                 }
             }
+            Node::Element(element) => {
+                self.state.element_n += 1;
+                if let Some(ident) = element.attr("?") {
+                    if !is_something(value.get(ident)) {
+                        return;
+                    }
+                }
+                if let Some(ident) = element.attr("!") {
+                    if is_something(value.get(ident)) {
+                        return;
+                    }
+                }
+                let no_array = vec![Value::Null];
+                let no_array_key = String::new();
+                let repeat = if let Some(ident) = element.attr("*") {
+                    match as_array(value.get(ident)) {
+                        None => return,
+                        Some(array) => (ident.to_string(), array.clone()), // TODO: remove clone
+                    }
+                } else {
+                    (no_array_key, no_array)
+                };
+                let (repeat_key, repeat_values) = repeat;
+
+                // pointer need to in-place modification of DOM element attributes via instantiation
+                // NOTE: safe implementation requires rework scrapy HTML parsing and this render
+                #[allow(invalid_reference_casting)]
+                let current_mut = unsafe {
+                    let ptr = current.value() as *const Node as *mut Node;
+                    &mut *ptr
+                };
+
+                for repeat_value in repeat_values {
+                    let element_id = ElementId {
+                        element_n: self.state.element_n,
+                        // array of object (especially big objects) can reduce performance
+                        // TODO: use key attribute like React
+                        hash: hash_value(&repeat_value),
+                    };
+
+                    // PUSH STATE
+                    let original_element = element.clone();
+                    let mut element_mut = element.clone();
+                    let class_attr = qual("class");
+                    let pseudo_classes = self.state.get_pseudo_classes(element_id);
+                    if !pseudo_classes.is_empty() {
+                        let defined = match element_mut.attrs.get(&class_attr) {
+                            None => String::new(),
+                            Some(classes) => classes.trim().to_string(),
+                        };
+                        let mut pseudo_classes = pseudo_classes.clone();
+                        pseudo_classes.insert(0, defined);
+                        let result = pseudo_classes.join(" ");
+                        element_mut.attrs.insert(class_attr, result.into());
+                    }
+                    *current_mut = Node::Element(element_mut);
+                    let element = current_mut.as_element().unwrap();
+                    if !repeat_key.is_empty() {
+                        // TODO: replace value ?
+                        // TODO: remove clone ?
+                        value.insert(repeat_key.clone(), repeat_value.clone());
+                    }
+
+                    let mut style = default_layout_style();
+                    let mut view = create_view(element_id);
+                    view.html_element = Some(original_element.clone());
+                    view.tag = element.name.local.to_string();
+                    let parent = layout.get_node_context(parent_id).expect("context must be");
+                    let matching_element = &ElementRef::wrap(current).expect("node is element");
+                    for rule in &self.presentation.rules {
+                        if rule.selector.matches(matching_element) {
+                            apply_layout_rules(rule, &mut style, context);
+                            apply_view_rules(rule, &parent, &mut view, context, &self.resources);
+                        }
+                    }
+                    apply_html_attributes(element, value, &mut view, &mut style);
+
+                    // parse output binding
+                    // NOTE: must be in rendering cycle because scope contains repeated values
+                    // TODO: analyze performance issues (skip call render if no events)
+                    match view.tag.as_ref() {
+                        "input" => {
+                            if let Some(expr) = element.attr("oninput") {
+                                view.listeners
+                                    .insert("oninput".to_string(), render_call(expr, value));
+                            }
+                            if let Some(expr) = element.attr("onchange") {
+                                view.listeners
+                                    .insert("onchange".to_string(), render_call(expr, value));
+                            }
+                        }
+                        _ => {
+                            if let Some(expr) = element.attr("onclick") {
+                                view.listeners
+                                    .insert("onclick".to_string(), render_call(expr, value));
+                            }
+                        }
+                    }
+                    //
+
+                    let current_id = match layout.new_child_of(parent_id, style, view.clone()) {
+                        None => return,
+                        Some(current_id) => current_id,
+                    };
+
+                    // special rendering
+
+                    match view.tag.as_str() {
+                        "img" => {
+                            self.state.element_n += 1;
+                            let object_element_id = ElementId {
+                                element_n: self.state.element_n,
+                                hash: 0,
+                            };
+                            let empty = "undefined.png";
+                            let src = element.attr("src").unwrap_or(empty);
+                            let src = format!("{}{}", self.resources, src);
+                            let mut object_style = default_layout_style();
+                            let mut object_element = create_view(object_element_id);
+                            object_element.background.image = Some(src);
+                            object_style.size = Size {
+                                width: Dimension::Percent(1.0),
+                                height: Dimension::Percent(1.0),
+                            };
+                            // object element size width, height
+                            // object element position
+                            layout.new_child_of(current_id, object_style, object_element);
+                        }
+                        "input" => {
+                            // inner text elements
+                            // self.state.element_n += 1;
+                            // let text = match element.attr("value") {
+                            //     None => "".to_string(),
+                            //     Some(binding) => as_string(value.get(binding)),
+                            // };
+                            // let element_id = ElementId {
+                            //     element_n: self.state.element_n,
+                            //     hash: 0,
+                            // };
+                            // let text = interpolate_string(text, value);
+                            // let style = default_layout_style();
+                            // let parent =
+                            //     layout.get_node_context(parent_id).expect("context must be");
+                            // let mut view = create_view(element_id);
+                            // view.text = Some(text);
+                            // view.tag = "".to_string();
+                            // inherit(&parent, &mut view);
+                            // layout.new_child_of(parent_id, style, view.clone());
+                        }
+                        _ => {
+                            for child in current.children() {
+                                let mut context = context;
+                                context.parent_font_size = view.text_style.font_size;
+                                self.render_tree(current_id, child, value, context, layout);
+                            }
+                        }
+                    }
+
+                    // POP STATE
+                    *current_mut = Node::Element(original_element.clone());
+                    if !repeat_key.is_empty() {
+                        value.remove(&repeat_key);
+                    }
+                }
+            }
+            _ => {}
         }
-        _ => {}
+    }
+}
+
+trait TaffyTreeExtensions {
+    fn new_child_of(&mut self, parent_id: NodeId, style: Style, element: Element)
+        -> Option<NodeId>;
+}
+
+impl TaffyTreeExtensions for TaffyTree<Element> {
+    fn new_child_of(
+        &mut self,
+        parent_id: NodeId,
+        style: Style,
+        element: Element,
+    ) -> Option<NodeId> {
+        let node_id = match self.new_leaf_with_context(style, element) {
+            Ok(node_id) => node_id,
+            Err(error) => {
+                error!("unable to create child node, {}", error);
+                return None;
+            }
+        };
+        if let Err(error) = self.add_child(parent_id, node_id) {
+            error!("unable to add child node, {}", error);
+            return None;
+        }
+        Some(node_id)
     }
 }
 

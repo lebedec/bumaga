@@ -15,20 +15,26 @@ use taffy::style_helpers::TaffyMaxContent;
 use crate::{Element, Fonts, Keys, LEFT_MOUSE_BUTTON};
 use crate::api::{Call, Component, Input, Output};
 use crate::input::FakeFonts;
-use crate::models::{SizeContext, ViewId};
-use crate::rendering::{as_string, render_tree, State};
+use crate::models::{ElementId, SizeContext};
+use crate::rendering::as_string;
+use crate::state::State;
 use crate::styles::{create_view, parse_presentation, pseudo};
 
 impl Component {
-    pub fn compile_files<P: AsRef<Path>>(html: P, css: P) -> Self {
+    pub fn watch_files<P: AsRef<Path>>(html: P, css: P, resources: P) -> Self {
+        unimplemented!()
+    }
+
+    pub fn compile_files<P: AsRef<Path>>(html: P, css: P, resources: P) -> Self {
         let html_error = format!("unable to read html file {:?}", html.as_ref());
         let html = fs::read_to_string(html).expect(&html_error);
         let css_error = format!("unable to read css file {:?}", css.as_ref());
         let css = fs::read_to_string(css).expect(&css_error);
-        Self::compile(&html, &css)
+
+        Self::compile(&html, &css, &resources.as_ref().display().to_string())
     }
 
-    pub fn compile(html: &str, css: &str) -> Self {
+    pub fn compile(html: &str, css: &str, resources: &str) -> Self {
         let presentation = parse_presentation(css);
         let html = Html::parse_document(html);
         let state = State::new();
@@ -38,7 +44,13 @@ impl Component {
             html,
             state,
             body_selector,
+            resources: resources.to_string(),
         }
+    }
+
+    pub fn resources(mut self, resources: &str) -> Self {
+        self.resources = resources.to_string();
+        self
     }
 
     pub fn update(&mut self, mut input: Input) -> Output {
@@ -53,7 +65,7 @@ impl Component {
         };
         let mut rendering = TaffyTree::new();
         let [viewport_width, viewport_height] = input.viewport;
-        let viewport_id = ViewId {
+        let viewport_id = ElementId {
             element_n: self.state.element_n,
             hash: 0,
         };
@@ -79,23 +91,16 @@ impl Component {
                 return frame;
             }
         };
-        let body = self.html.select(&self.body_selector).next();
+        let html = self.html.clone();
+        let body = html.select(&self.body_selector).next();
         let body = match body {
-            Some(body) => body,
+            Some(body) => *body,
             None => {
                 error!("unable to update component, body not found");
                 return frame;
             }
         };
-        render_tree(
-            viewport,
-            *body,
-            value,
-            context,
-            &self.presentation,
-            &mut rendering,
-            &mut self.state,
-        );
+        self.render_tree(viewport, body, value, context, &mut rendering);
         let result = rendering.compute_layout_with_measure(
             viewport,
             Size::MAX_CONTENT,
@@ -161,14 +166,22 @@ impl Component {
                             }
                         }
                     }
-
                     if input.is_key_pressed(Keys::Backspace) && value.len() > 0 {
                         println!("input ch {:?}", input.characters);
                         has_changes = true;
                         value.pop();
                     }
-                    if has_changes {
+                    if input.is_key_pressed(Keys::Enter) {
                         if let Some(call) = view.listeners.get("onchange") {
+                            let mut call = call.clone();
+                            if call.arguments.len() == 0 {
+                                call.arguments.push(Value::String(value.clone()));
+                            }
+                            frame.calls.push(call);
+                        }
+                    }
+                    if has_changes {
+                        if let Some(call) = view.listeners.get("oninput") {
                             let mut call = call.clone();
                             if call.arguments.len() == 0 {
                                 call.arguments.push(Value::String(value));

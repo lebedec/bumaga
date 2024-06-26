@@ -34,7 +34,7 @@ TODO: short description of architecture and real code example
 fn main() {
     let mut engine = MyEngine::startup();
     let mut name = String::from("Alice");
-    let component = Component::compile("index.html", "style.css");
+    let component = Component::compile("component.html", "component.css");
     loop {
         let value = json!({"name": name});
         let input = Input::from(engine.input)
@@ -51,8 +51,12 @@ fn main() {
 }
 ```
 
-```html
+<div style="display: flex">
+<div>
 
+```html 
+
+<body>
 <div class="panel">
     <header>
         Bumaga Todo
@@ -62,11 +66,17 @@ fn main() {
         <span>{todos}</span>
         <div>×</div>
     </div>
-    <input value="todo" onchange="edit"/>
+    <input value="todo" oninput="edit" onchange="append"/>
 </div>
 ```
 
+</div>
+<div>
+
 ![.readme/example.avif](.readme/example.avif)
+
+</div>
+</div>
 
 # Using
 

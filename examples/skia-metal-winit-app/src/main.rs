@@ -1,11 +1,13 @@
 use std::{fs, process};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::mem::take;
 
 use core_graphics_types::geometry::CGSize;
 use objc::rc::autoreleasepool;
 use serde_json::json;
-use skia_safe::{Canvas, Color4f, Font, FontMgr, Paint, Point, Rect, Size, Typeface};
+use skia_safe::{
+    Canvas, Color4f, Data, Font, FontMgr, Image, Paint, Picture, Point, Rect, Size, Typeface,
+};
 use skia_safe::utils::text_utils::Align;
 use winit::{
     dpi::LogicalSize,
@@ -16,7 +18,7 @@ use winit::{
 use winit::event::{DeviceEvent, ElementState, KeyEvent, MouseButton};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use bumaga::{Component, CssColor, Element, Fonts, Input, Keys, TextStyle};
+use bumaga::{Component, Element, Fonts, Input, Keys, Rgba, TextStyle};
 
 use crate::metal::create_metal_layer;
 
@@ -40,14 +42,15 @@ fn main() {
     let mut metal = create_metal_layer(&window);
 
     let mut fonts = FontSystem::new();
+    let mut images = ImageSystem::new();
 
-    let mut component = Component::compile_files("../shared/index.html", "../shared/style.css");
-    let todos = [
-        "learn bumaga documentation",
-        "create UI using HTML",
-        "implement engine",
+    let mut component =
+        Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/");
+    let mut todos = vec![
+        "learn bumaga documentation".to_string(),
+        "create UI using HTML".to_string(),
+        "implement engine".to_string(),
     ];
-    let mut todos = HashSet::from(todos.map(&str::to_string));
     let mut todo = "Enter a todo".to_string();
     let mut events = vec![];
     let mut mouse_position = [0.0, 0.0];
@@ -71,22 +74,23 @@ fn main() {
                         .value(value);
                     let output = component.update(input);
                     for element in output.elements {
-                        draw_element(canvas, &element, &fonts);
+                        draw_element(canvas, &element, &fonts, &mut images);
                     }
                     for call in output.calls {
                         println!("CALL {call:?}");
                         match call.describe() {
                             ("append", [todo]) => {
-                                todos.insert(todo.as_str().unwrap().to_string());
+                                todos.push(todo.as_str().unwrap().to_string());
                             }
                             ("edit", [value]) => {
                                 todo = value.as_str().unwrap().to_string();
                             }
                             ("remove", [todo]) => {
-                                todos.remove(todo.as_str().unwrap());
+                                todos.retain(|record| record != todo);
                             }
                             _ => {}
                         };
+                        window.request_redraw();
                     }
                 });
             }
@@ -103,16 +107,17 @@ fn main() {
         .expect("run() failed");
 }
 
-fn draw_element(canvas: &Canvas, element: &Element, fonts: &FontSystem) {
+fn draw_element(canvas: &Canvas, element: &Element, fonts: &FontSystem, images: &mut ImageSystem) {
     let rect = Rect::from_xywh(
         element.layout.location.x,
         element.layout.location.y,
         element.layout.size.width,
         element.layout.size.height,
     );
-    canvas.draw_rect(rect, &Paint::new(color(&element.background.color), None));
+    canvas.draw_rect(rect, &Paint::new(color(element.background.color), None));
+    draw_borders(canvas, element);
     if let Some(text) = element.text.as_ref() {
-        let paint = Paint::new(color(&CssColor::RGBA(element.color)), None);
+        let paint = Paint::new(color(element.color), None);
         canvas.draw_text_align(
             text,
             Point::new(
@@ -124,17 +129,75 @@ fn draw_element(canvas: &Canvas, element: &Element, fonts: &FontSystem) {
             Align::Left,
         );
     }
+    if let Some(image) = element.background.image.as_ref() {
+        if let Some(image) = images.load(&image) {
+            let paint = Paint::default();
+            canvas.draw_image_rect(image, None, &rect, &paint);
+        }
+    }
 }
 
-fn color(value: &CssColor) -> Color4f {
-    match value {
-        CssColor::RGBA(rgba) => Color4f::new(
-            rgba.red_f32(),
-            rgba.green_f32(),
-            rgba.blue_f32(),
-            rgba.alpha_f32(),
-        ),
-        _ => Color4f::new(1.0, 0.0, 0.0, 1.0),
+fn draw_borders(canvas: &Canvas, element: &Element) -> Result<(), String> {
+    let borders = &element.borders;
+    let layout = &element.layout;
+    let x = layout.location.x as f32;
+    let y = layout.location.y as f32;
+    let w = layout.size.width as f32;
+    let h = layout.size.height as f32;
+    let paint = &mut Paint::new(Color4f::new(0.0, 0.0, 0.0, 0.0), None);
+
+    if let Some(border) = borders.top.as_ref() {
+        paint.set_color4f(color(border.color), None);
+        paint.set_stroke_width(border.width);
+        canvas.draw_line((x, y), (x + w, y), paint);
+    }
+    if let Some(border) = borders.bottom.as_ref() {
+        paint.set_color4f(color(border.color), None);
+        paint.set_stroke_width(border.width);
+        canvas.draw_line((x, y + h), (x + w, y + h), paint);
+    }
+    if let Some(border) = borders.left.as_ref() {
+        paint.set_color4f(color(border.color), None);
+        paint.set_stroke_width(border.width);
+        canvas.draw_line((x, y), (x, y + h), paint);
+    }
+    if let Some(border) = borders.left.as_ref() {
+        paint.set_color4f(color(border.color), None);
+        paint.set_stroke_width(border.width);
+        canvas.draw_line((x + w, y), (x + w, y + h), paint);
+    }
+    Ok(())
+}
+
+fn color(value: Rgba) -> Color4f {
+    let [r, g, b, a] = value;
+    Color4f::new(
+        r as f32 / 255.0,
+        g as f32 / 255.0,
+        b as f32 / 255.0,
+        a as f32 / 255.0,
+    )
+}
+
+struct ImageSystem {
+    images: HashMap<String, Image>,
+}
+
+impl ImageSystem {
+    fn new() -> Self {
+        Self {
+            images: HashMap::new(),
+        }
+    }
+
+    pub fn load(&mut self, absolute_path: &str) -> Option<&Image> {
+        if !self.images.contains_key(absolute_path) {
+            let data =
+                Data::from_filename(absolute_path).expect("failed to read image data from file");
+            let image = Image::from_encoded(data).expect("failed to load iamge from data");
+            self.images.insert(absolute_path.to_string(), image);
+        }
+        self.images.get(absolute_path)
     }
 }
 
@@ -195,7 +258,12 @@ fn user_input<'f>(events: Vec<WindowEvent>, mouse_position: &mut [f32; 2]) -> In
             },
             WindowEvent::KeyboardInput { event, .. } => {
                 if let Some(text) = event.text {
-                    characters.extend(text.chars());
+                    for char in text.chars() {
+                        println!("CHAR {char:?}");
+                        if char != '\u{8}' {
+                            characters.push(char);
+                        }
+                    }
                 }
                 match event.state {
                     ElementState::Pressed => {}

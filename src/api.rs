@@ -8,13 +8,12 @@ pub use lightningcss::properties::background::{
 pub use lightningcss::properties::border::LineStyle;
 pub use lightningcss::properties::font::{FontStretchKeyword, FontStyle};
 pub use lightningcss::properties::text::OverflowWrap;
-pub use lightningcss::values::color::{CssColor, RGBA};
 use scraper::{Html, Selector};
 use serde_json::Value;
 pub use taffy::Layout;
 
-use crate::models::{Presentation, ViewId};
-use crate::rendering::State;
+use crate::models::{ElementId, Presentation};
+use crate::state::State;
 
 /// Components are reusable parts of UI that define views,
 /// handle user input and store UI state between interactions.
@@ -23,6 +22,7 @@ pub struct Component {
     pub(crate) html: Html,
     pub(crate) state: State,
     pub(crate) body_selector: Selector,
+    pub(crate) resources: String,
 }
 
 pub struct Input<'f> {
@@ -74,20 +74,23 @@ impl Call {
 pub struct Element {
     /// The final result of a layout algorithm, describes size and position of element.
     pub layout: Layout,
-    pub id: ViewId,
+    pub id: ElementId,
     pub html_element: Option<scraper::node::Element>,
     /// The HTML tag used for creating element.
     pub tag: String,
-    pub background: MyBackground,
+    pub object_fit: ObjectFit,
+    pub background: Background,
     pub borders: Borders,
     /// The foreground color of element (most often text color).
-    pub color: RGBA,
+    pub color: Rgba,
     /// The text inside an element.
     pub text: Option<String>,
     /// The different properties of an element's text font.
     pub text_style: TextStyle,
     pub listeners: HashMap<String, Call>,
 }
+
+pub type Rgba = [u8; 4];
 
 #[derive(Clone)]
 pub struct Borders {
@@ -101,15 +104,15 @@ pub struct Borders {
 pub struct MyBorder {
     pub width: f32,
     pub style: LineStyle,
-    pub color: CssColor,
+    pub color: Rgba,
 }
 
 #[derive(Clone)]
-pub struct MyBackground {
+pub struct Background {
     /// The background image.
     pub image: Option<String>,
     /// The background color.
-    pub color: CssColor,
+    pub color: Rgba,
     /// The background position.
     pub position: BackgroundPosition,
     /// How the background image should repeat.
@@ -122,6 +125,15 @@ pub struct MyBackground {
     pub origin: BackgroundOrigin,
     /// How the background should be clipped.
     pub clip: BackgroundClip,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ObjectFit {
+    Contain,
+    Cover,
+    Fill,
+    None,
+    ScaleDown,
 }
 
 #[derive(Clone)]

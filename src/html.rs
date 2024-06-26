@@ -21,9 +21,6 @@ pub fn apply_html_attributes(
             if let Some(height) = element.attr("height") {
                 // style.size.height = parse() ?!
             }
-            if let Some(src) = element.attr("src") {
-                view.background.image = Some(src.to_string());
-            }
         }
         "input" => {
             if let Some(binding) = element.attr("value") {
