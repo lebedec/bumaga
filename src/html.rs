@@ -2,11 +2,7 @@ use serde_json::{Map, Value};
 use taffy::Style;
 
 use crate::Element;
-use crate::rendering::as_string;
 
-/// Configures the elements or adjust their behavior in various ways to meet HTML experience.
-///
-/// see details: https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes
 pub fn apply_html_attributes(
     element: &scraper::node::Element,
     value: &Map<String, Value>,
@@ -23,10 +19,10 @@ pub fn apply_html_attributes(
             }
         }
         "input" => {
-            if let Some(binding) = element.attr("value") {
-                let value = as_string(value.get(binding));
-                view.text = Some(value);
-            }
+            // if let Some(binding) = element.attr("value") {
+            //     let value = as_string(value.get(binding));
+            //     view.text = Some(value);
+            // }
             // if style.size.width == Dimension::Auto {
             //     style.size.width = Dimension::Length(150.0);
             // }

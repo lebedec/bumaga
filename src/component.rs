@@ -34,11 +34,12 @@ impl Component {
         Self::compile(&html, &css, &resources.as_ref().display().to_string())
     }
 
-    pub fn compile(html: &str, css: &str, resources: &str) -> Self {
+    pub fn compile(html: &str, css: &str, resources: &str) -> Component {
         let presentation = parse_presentation(css);
         let html = Html::parse_document(html);
         let state = State::new();
         let body_selector = Selector::parse("body").expect("body selector must be parsed");
+
         Self {
             presentation,
             html,
@@ -156,7 +157,13 @@ impl Component {
                 pseudo_classes.push(pseudo(":focus"));
 
                 if view.tag == "input" {
-                    let mut value = view.text.clone().unwrap_or_default();
+                    let value_node = tree
+                        .children(node)
+                        .expect("input must contain value element")[0];
+                    let value_view = tree
+                        .get_node_context(value_node)
+                        .expect("input value must contain context");
+                    let mut value = value_view.text.clone().unwrap_or_default();
                     let mut has_changes = false;
                     if !input.characters.is_empty() {
                         has_changes = true;

@@ -12,8 +12,11 @@ use scraper::{Html, Selector};
 use serde_json::Value;
 pub use taffy::Layout;
 
+pub use value::ValueExtensions;
+
 use crate::models::{ElementId, Presentation};
 use crate::state::State;
+use crate::value;
 
 /// Components are reusable parts of UI that define views,
 /// handle user input and store UI state between interactions.
@@ -38,6 +41,7 @@ pub struct Input<'f> {
     pub(crate) keys_up: Vec<Keys>,
     pub(crate) keys_pressed: Vec<Keys>,
     pub(crate) characters: Vec<char>,
+    pub(crate) transformers: HashMap<String, Box<dyn Fn(Value) -> Value>>,
 }
 
 pub struct Output {
@@ -56,7 +60,7 @@ pub struct Call {
 }
 
 impl Call {
-    pub fn describe(&self) -> (&str, &[Value]) {
+    pub fn signature(&self) -> (&str, &[Value]) {
         let name = self.function.as_str();
         let args = self.arguments.as_slice();
         (name, args)

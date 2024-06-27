@@ -62,7 +62,7 @@ fn run() -> Result<(), String> {
         }
         for call in output.calls {
             println!("CALL {call:?}");
-            match call.describe() {
+            match call.signature() {
                 ("append", [todo]) => {
                     todos.insert(todo.as_str().unwrap().to_string());
                 }

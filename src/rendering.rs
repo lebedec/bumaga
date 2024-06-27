@@ -9,7 +9,7 @@ use lightningcss::values::color::{CssColor, RGBA};
 use log::error;
 use scraper::{ElementRef, Node};
 use serde_json::{Map, Value};
-use taffy::{Dimension, NodeId, Size, Style, TaffyTree};
+use taffy::{AlignItems, Dimension, Display, JustifyContent, NodeId, Size, Style, TaffyTree};
 
 use crate::{Call, Component, Element};
 use crate::html::apply_html_attributes;
@@ -94,6 +94,11 @@ impl Component {
                     let mut element_mut = element.clone();
                     let class_attr = qual("class");
                     let pseudo_classes = self.state.get_pseudo_classes(element_id);
+                    for key in element.attrs.keys() {
+                        if key.local.starts_with("data-") {
+                            element_mut.attrs.insert(key.clone(), "true".into());
+                        }
+                    }
                     if !pseudo_classes.is_empty() {
                         let defined = match element_mut.attrs.get(&class_attr) {
                             None => String::new(),
@@ -129,6 +134,9 @@ impl Component {
                     // parse output binding
                     // NOTE: must be in rendering cycle because scope contains repeated values
                     // TODO: analyze performance issues (skip call render if no events)
+                    // Configures the elements or adjust their behavior in various ways to meet HTML experience.
+                    //
+                    // see details: https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes
                     match view.tag.as_ref() {
                         "input" => {
                             if let Some(expr) = element.attr("oninput") {
@@ -139,6 +147,12 @@ impl Component {
                                 view.listeners
                                     .insert("onchange".to_string(), render_call(expr, value));
                             }
+                            // if let Some(binding) = element.attr("value") {
+                            //     let value = as_string(value.get(binding));
+                            //     view.text = Some(value);
+                            // }
+                            style.display = Display::Flex;
+                            style.align_items = Some(AlignItems::Center);
                         }
                         _ => {
                             if let Some(expr) = element.attr("onclick") {
@@ -155,7 +169,6 @@ impl Component {
                     };
 
                     // special rendering
-
                     match view.tag.as_str() {
                         "img" => {
                             self.state.element_n += 1;
@@ -179,24 +192,36 @@ impl Component {
                         }
                         "input" => {
                             // inner text elements
-                            // self.state.element_n += 1;
-                            // let text = match element.attr("value") {
-                            //     None => "".to_string(),
-                            //     Some(binding) => as_string(value.get(binding)),
-                            // };
-                            // let element_id = ElementId {
-                            //     element_n: self.state.element_n,
-                            //     hash: 0,
-                            // };
-                            // let text = interpolate_string(text, value);
-                            // let style = default_layout_style();
-                            // let parent =
-                            //     layout.get_node_context(parent_id).expect("context must be");
-                            // let mut view = create_view(element_id);
-                            // view.text = Some(text);
-                            // view.tag = "".to_string();
-                            // inherit(&parent, &mut view);
-                            // layout.new_child_of(parent_id, style, view.clone());
+                            self.state.element_n += 1;
+                            let text = match element.attr("value") {
+                                None => "".to_string(),
+                                Some(binding) => as_string(value.get(binding)),
+                            };
+                            let value_element_id = ElementId {
+                                element_n: self.state.element_n,
+                                hash: 0,
+                            };
+                            let value_style = default_layout_style();
+                            let mut value_view = create_view(value_element_id);
+                            value_view.text = Some(text);
+                            value_view.tag = "".to_string();
+                            inherit(&view, &mut value_view);
+                            layout.new_child_of(current_id, value_style, value_view.clone());
+
+                            self.state.element_n += 1;
+                            let caret_element_id = ElementId {
+                                element_n: self.state.element_n,
+                                hash: 0,
+                            };
+                            if self.state.has_pseudo_class(view.id, &pseudo(":focus")) {
+                                let mut caret_style = default_layout_style();
+                                let mut caret_view = create_view(caret_element_id);
+                                caret_style.size.width = Dimension::Length(1.0);
+                                caret_style.size.height =
+                                    Dimension::Length(value_view.text_style.font_size);
+                                caret_view.background.color = value_view.color;
+                                layout.new_child_of(current_id, caret_style, caret_view.clone());
+                            }
                         }
                         _ => {
                             for child in current.children() {

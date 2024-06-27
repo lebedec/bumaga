@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use serde_json::Value;
@@ -20,60 +21,65 @@ impl<'f> Input<'f> {
             keys_up: vec![],
             keys_pressed: vec![],
             characters: vec![],
+            transformers: HashMap::new(),
         }
     }
 
-    pub fn fonts(mut self, fonts: &'f mut dyn Fonts) -> Input<'f> {
+    pub fn pipe(mut self, name: &str, p0: impl Fn(Value) -> Value + 'static) -> Self {
+        self
+    }
+
+    pub fn fonts(mut self, fonts: &'f mut dyn Fonts) -> Self {
         self.fonts = Some(fonts);
         self
     }
 
-    pub fn value(mut self, value: Value) -> Input<'f> {
+    pub fn value(mut self, value: Value) -> Self {
         self.value = value;
         self
     }
 
-    pub fn time(mut self, time: Duration) -> Input<'f> {
+    pub fn time(mut self, time: Duration) -> Self {
         self.time = time;
         self
     }
 
-    pub fn viewport(mut self, viewport: [f32; 2]) -> Input<'f> {
+    pub fn viewport(mut self, viewport: [f32; 2]) -> Self {
         self.viewport = viewport;
         self
     }
 
-    pub fn mouse_buttons_down(mut self, mouse_buttons_down: Vec<MouseButton>) -> Input<'f> {
+    pub fn mouse_buttons_down(mut self, mouse_buttons_down: Vec<MouseButton>) -> Self {
         self.mouse_buttons_down = mouse_buttons_down;
         self
     }
 
-    pub fn mouse_buttons_up(mut self, mouse_buttons_up: Vec<MouseButton>) -> Input<'f> {
+    pub fn mouse_buttons_up(mut self, mouse_buttons_up: Vec<MouseButton>) -> Self {
         self.mouse_buttons_up = mouse_buttons_up;
         self
     }
 
-    pub fn mouse_position(mut self, mouse_position: [f32; 2]) -> Input<'f> {
+    pub fn mouse_position(mut self, mouse_position: [f32; 2]) -> Self {
         self.mouse_position = mouse_position;
         self
     }
 
-    pub fn keys_down(mut self, keys_down: Vec<Keys>) -> Input<'f> {
+    pub fn keys_down(mut self, keys_down: Vec<Keys>) -> Self {
         self.keys_down = keys_down;
         self
     }
 
-    pub fn keys_up(mut self, keys_up: Vec<Keys>) -> Input<'f> {
+    pub fn keys_up(mut self, keys_up: Vec<Keys>) -> Self {
         self.keys_up = keys_up;
         self
     }
 
-    pub fn keys_pressed(mut self, keys_pressed: Vec<Keys>) -> Input<'f> {
+    pub fn keys_pressed(mut self, keys_pressed: Vec<Keys>) -> Self {
         self.keys_pressed = keys_pressed;
         self
     }
 
-    pub fn characters(mut self, characters: Vec<char>) -> Input<'f> {
+    pub fn characters(mut self, characters: Vec<char>) -> Self {
         self.characters = characters;
         self
     }

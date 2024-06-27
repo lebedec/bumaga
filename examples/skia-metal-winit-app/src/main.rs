@@ -4,9 +4,10 @@ use std::mem::take;
 
 use core_graphics_types::geometry::CGSize;
 use objc::rc::autoreleasepool;
-use serde_json::json;
+use serde_json::{json, Value};
 use skia_safe::{
-    Canvas, Color4f, Data, Font, FontMgr, Image, Paint, Picture, Point, Rect, Size, Typeface,
+    Canvas, Color4f, colors, Data, Font, FontMgr, Image, Paint, Picture, Point, Rect, Size,
+    Typeface,
 };
 use skia_safe::utils::text_utils::Align;
 use winit::{
@@ -18,7 +19,7 @@ use winit::{
 use winit::event::{DeviceEvent, ElementState, KeyEvent, MouseButton};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use bumaga::{Component, Element, Fonts, Input, Keys, Rgba, TextStyle};
+use bumaga::{Component, Element, Fonts, Input, Keys, Rgba, TextStyle, ValueExtensions};
 
 use crate::metal::create_metal_layer;
 
@@ -28,9 +29,58 @@ const WINDOW_WIDTH: f32 = 800.0;
 const WINDOW_HEIGHT: f32 = 600.0;
 const WINDOW_SCALE: f32 = 2.0;
 
-fn serve() {}
-
 fn main() {
+    let mut fonts = FontSystem::new();
+    let mut images = ImageSystem::new();
+
+    let mut todos = vec![
+        "learn bumaga documentation".to_string(),
+        "create UI using HTML".to_string(),
+        "implement engine".to_string(),
+    ];
+    let mut todos_done = vec![];
+    let mut todo = "Enter a todo".to_string();
+
+    let mut component =
+        Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/")
+            // .pipe("status", &|value| value)
+            ;
+    // component.pipe("completed", &|todo: Value| {
+    //     let c = todos_done.clone().contains(&todo.as_string());
+    //     Value::Bool(c)
+    // });
+
+    let mut mouse_position = [0.0, 0.0];
+
+    run(|canvas, events| {
+        canvas.clear(colors::WHITE);
+        let value = json!({"todos": todos, "todo": todo});
+        let done = todos_done.clone();
+        let input = user_input(events, &mut mouse_position)
+            .fonts(&mut fonts)
+            .value(value)
+            .pipe("done", move |value| done.contains(&value).into());
+        let output = component.update(input);
+        for element in output.elements {
+            draw_element(canvas, &element, &fonts, &mut images);
+        }
+        for call in output.calls {
+            match call.signature() {
+                ("update", [value]) => todo = value.as_string(),
+                ("append", [value]) => todos.push(value.as_string()),
+                ("finish", [value]) => todos_done.push(value.clone()),
+                ("cancel", [value]) => todos_done.retain(|todo| todo != value),
+                ("remove", [value]) => todos.retain(|todo| todo != value),
+                _ => {}
+            };
+        }
+    })
+}
+
+fn run<F>(mut update: F)
+where
+    F: FnMut(&Canvas, Vec<WindowEvent>) -> (),
+{
     let events_loop = EventLoop::new().expect("failed to create event loop");
 
     let window = WindowBuilder::new()
@@ -40,70 +90,32 @@ fn main() {
         .expect("failed to create window");
 
     let mut metal = create_metal_layer(&window);
-
-    let mut fonts = FontSystem::new();
-    let mut images = ImageSystem::new();
-
-    let mut component =
-        Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/");
-    let mut todos = vec![
-        "learn bumaga documentation".to_string(),
-        "create UI using HTML".to_string(),
-        "implement engine".to_string(),
-    ];
-    let mut todo = "Enter a todo".to_string();
     let mut events = vec![];
-    let mut mouse_position = [0.0, 0.0];
-
-    let mut event_handler = |event| match event {
-        Event::WindowEvent { event, .. } => match event {
-            // WindowEvent::CloseRequested => window_target.exit(),
-            WindowEvent::Resized(size) => {
-                metal
-                    .layer
-                    .set_drawable_size(CGSize::new(size.width as f64, size.height as f64));
-                window.request_redraw()
-            }
-            WindowEvent::RedrawRequested => {
-                metal.redraw(|canvas| {
-                    canvas.scale((WINDOW_SCALE, WINDOW_SCALE));
-                    canvas.clear(Color4f::new(1.0, 1.0, 1.0, 1.0));
-                    let value = json!({"todos": todos, "todo": todo});
-                    let input = user_input(take(&mut events), &mut mouse_position)
-                        .fonts(&mut fonts)
-                        .value(value);
-                    let output = component.update(input);
-                    for element in output.elements {
-                        draw_element(canvas, &element, &fonts, &mut images);
+    events_loop
+        .run(move |event, window_target| {
+            autoreleasepool(|| match event {
+                Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::CloseRequested => window_target.exit(),
+                    WindowEvent::Resized(size) => {
+                        let size = CGSize::new(size.width as f64, size.height as f64);
+                        metal.layer.set_drawable_size(size);
+                        window.request_redraw()
                     }
-                    for call in output.calls {
-                        println!("CALL {call:?}");
-                        match call.describe() {
-                            ("append", [todo]) => {
-                                todos.push(todo.as_str().unwrap().to_string());
-                            }
-                            ("edit", [value]) => {
-                                todo = value.as_str().unwrap().to_string();
-                            }
-                            ("remove", [todo]) => {
-                                todos.retain(|record| record != todo);
-                            }
-                            _ => {}
-                        };
+                    WindowEvent::RedrawRequested => {
+                        metal.redraw(|canvas| {
+                            canvas.scale((WINDOW_SCALE, WINDOW_SCALE));
+                            update(canvas, take(&mut events));
+                            window.request_redraw();
+                        });
+                    }
+                    event => {
+                        events.push(event);
                         window.request_redraw();
                     }
-                });
-            }
-            event => {
-                events.push(event);
-                window.request_redraw();
-            }
-        },
-
-        _ => {}
-    };
-    events_loop
-        .run(move |event, window_target| autoreleasepool(|| event_handler(event)))
+                },
+                _ => {}
+            })
+        })
         .expect("run() failed");
 }
 
@@ -137,13 +149,13 @@ fn draw_element(canvas: &Canvas, element: &Element, fonts: &FontSystem, images: 
     }
 }
 
-fn draw_borders(canvas: &Canvas, element: &Element) -> Result<(), String> {
+fn draw_borders(canvas: &Canvas, element: &Element) {
     let borders = &element.borders;
     let layout = &element.layout;
-    let x = layout.location.x as f32;
-    let y = layout.location.y as f32;
-    let w = layout.size.width as f32;
-    let h = layout.size.height as f32;
+    let x = layout.location.x;
+    let y = layout.location.y;
+    let w = layout.size.width;
+    let h = layout.size.height;
     let paint = &mut Paint::new(Color4f::new(0.0, 0.0, 0.0, 0.0), None);
 
     if let Some(border) = borders.top.as_ref() {
@@ -166,7 +178,6 @@ fn draw_borders(canvas: &Canvas, element: &Element) -> Result<(), String> {
         paint.set_stroke_width(border.width);
         canvas.draw_line((x + w, y), (x + w, y + h), paint);
     }
-    Ok(())
 }
 
 fn color(value: Rgba) -> Color4f {
@@ -233,7 +244,7 @@ impl Fonts for FontSystem {
     }
 }
 
-fn user_input<'f>(events: Vec<WindowEvent>, mouse_position: &mut [f32; 2]) -> Input<'f> {
+fn user_input<'f, 't>(events: Vec<WindowEvent>, mouse_position: &mut [f32; 2]) -> Input<'f> {
     let mut characters = vec![];
     let mut keys_pressed = vec![];
     let mut buttons_down = vec![];
