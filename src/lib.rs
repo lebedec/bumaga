@@ -1,5 +1,6 @@
 pub use api::*;
 
+mod animation;
 mod api;
 mod component;
 mod html;

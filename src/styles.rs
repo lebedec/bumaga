@@ -178,6 +178,8 @@ pub fn apply_view_rules<'i>(
     inherit(parent, view);
     for property in &ruleset.style.declarations.declarations {
         match property {
+            Property::AnimationTimingFunction(timing_functions, _) => {}
+            Property::AnimationIterationCount(iteraction_count, _) => {}
             Property::Background(background) => {
                 if background.len() > 1 {
                     error!("multiple background not supported");
@@ -966,6 +968,7 @@ impl Resolver<Line<GridPlacement>> for GridColumn<'_> {
 pub fn parse_presentation(code: &str) -> Presentation {
     let sheet = StyleSheet::parse(code, ParserOptions::default()).unwrap();
     let mut rules = vec![];
+    let mut animations = HashMap::new();
     for rule in sheet.rules.0 {
         match rule {
             CssRule::Style(style) => {
@@ -992,7 +995,7 @@ pub fn parse_presentation(code: &str) -> Presentation {
             _ => {}
         }
     }
-    Presentation { rules }
+    Presentation { rules, animations }
 }
 
 const PSEUDO_CLASS_PREFIX: &str = "__pseudo_";

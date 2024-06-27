@@ -1,5 +1,10 @@
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use lightningcss::rules::style::StyleRule;
 use scraper::Selector;
+
+use crate::animation::Animation;
 
 #[derive(Clone, Copy)]
 pub struct SizeContext {
@@ -22,4 +27,5 @@ pub struct Ruleset<'i> {
 
 pub struct Presentation {
     pub rules: Vec<Ruleset<'static>>,
+    pub animations: HashMap<String, Rc<Animation>>,
 }

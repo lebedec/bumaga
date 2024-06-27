@@ -56,6 +56,12 @@ impl Component {
 
     pub fn update(&mut self, mut input: Input) -> Output {
         self.state.element_n = 0;
+        // animations
+        for animators in self.state.animators.values_mut() {
+            for animator in animators {
+                animator.update(input.time.as_secs_f32());
+            }
+        }
         let mut frame = Output::new();
         let mut value = match input.value.as_object_mut() {
             Some(value) => value.clone(),

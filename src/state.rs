@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
+use crate::animation::Animator;
 use crate::models::ElementId;
 
 pub struct State {
     pub element_n: usize,
     pub pseudo_classes: HashMap<ElementId, Vec<String>>,
     pub focus: Option<ElementId>,
+    pub animators: HashMap<ElementId, Vec<Animator>>,
 }
 
 static NO_PSEUDO_CLASSES: Vec<String> = vec![];
@@ -16,6 +18,7 @@ impl State {
             element_n: 0,
             pseudo_classes: HashMap::new(),
             focus: None,
+            animators: Default::default(),
         }
     }
 

@@ -43,13 +43,7 @@ fn main() {
     let mut todo = "Enter a todo".to_string();
 
     let mut component =
-        Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/")
-            // .pipe("status", &|value| value)
-            ;
-    // component.pipe("completed", &|todo: Value| {
-    //     let c = todos_done.clone().contains(&todo.as_string());
-    //     Value::Bool(c)
-    // });
+        Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/");
 
     let mut mouse_position = [0.0, 0.0];
 

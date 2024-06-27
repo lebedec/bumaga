@@ -419,7 +419,7 @@ pub fn interpolate_string(string: String, value: &Map<String, Value>, input: &In
     for ch in string.chars() {
         if field {
             if ch == '}' {
-                result += &get_object_value(&pipe, value, input).to_string();
+                result += &get_object_value(&pipe, value, input).as_string();
                 field = false;
             } else {
                 pipe.push(ch);
