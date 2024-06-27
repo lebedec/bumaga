@@ -57,8 +57,8 @@ impl Component {
     pub fn update(&mut self, mut input: Input) -> Output {
         self.state.element_n = 0;
         let mut frame = Output::new();
-        let value = match input.value.as_object_mut() {
-            Some(value) => value,
+        let mut value = match input.value.as_object_mut() {
+            Some(value) => value.clone(),
             None => {
                 error!("input value must be object");
                 return frame;
@@ -101,7 +101,7 @@ impl Component {
                 return frame;
             }
         };
-        self.render_tree(viewport, body, value, context, &mut rendering);
+        self.render_tree(viewport, body, &mut value, &input, context, &mut rendering);
         let result = rendering.compute_layout_with_measure(
             viewport,
             Size::MAX_CONTENT,

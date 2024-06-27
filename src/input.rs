@@ -25,7 +25,9 @@ impl<'f> Input<'f> {
         }
     }
 
-    pub fn pipe(mut self, name: &str, p0: impl Fn(Value) -> Value + 'static) -> Self {
+    pub fn pipe(mut self, name: &str, transformer: impl Fn(Value) -> Value + 'static) -> Self {
+        self.transformers
+            .insert(name.to_string(), Box::new(transformer));
         self
     }
 

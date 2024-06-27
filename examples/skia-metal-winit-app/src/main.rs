@@ -30,6 +30,7 @@ const WINDOW_HEIGHT: f32 = 600.0;
 const WINDOW_SCALE: f32 = 2.0;
 
 fn main() {
+    env_logger::init();
     let mut fonts = FontSystem::new();
     let mut images = ImageSystem::new();
 

@@ -24,6 +24,7 @@ use lightningcss::properties::Property;
 use lightningcss::properties::size::{MaxSize, Size};
 use lightningcss::properties::text::OverflowWrap;
 use lightningcss::rules::CssRule;
+use lightningcss::rules::keyframes::KeyframeSelector;
 use lightningcss::stylesheet::{ParserOptions, StyleSheet};
 use lightningcss::values::color::{CssColor, RGBA};
 use lightningcss::values::image::Image;
@@ -974,6 +975,19 @@ pub fn parse_presentation(code: &str) -> Presentation {
                 let selector = Selector::parse(&css_selector).expect("selector must be: ");
                 let style = Ruleset { selector, style };
                 rules.push(style);
+            }
+            CssRule::Keyframes(animation) => {
+                // println!("parse ANIM {:?}", animation.name);
+                // for keyframe in animation.keyframes {
+                //     for selector in keyframe.selectors {
+                //         let time = match selector {
+                //             KeyframeSelector::Percentage(time) => time.0,
+                //             KeyframeSelector::From => 0.0,
+                //             KeyframeSelector::To => 1.0,
+                //         };
+                //         println!("Keyframe[{time}] {:?}", keyframe.declarations);
+                //     }
+                // }
             }
             _ => {}
         }

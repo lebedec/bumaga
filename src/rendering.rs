@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem;
+use std::process::id;
 
 use ego_tree::NodeRef;
 use html5ever::{LocalName, ns, QualName};
@@ -11,7 +12,7 @@ use scraper::{ElementRef, Node};
 use serde_json::{Map, Value};
 use taffy::{AlignItems, Dimension, Display, JustifyContent, NodeId, Size, Style, TaffyTree};
 
-use crate::{Call, Component, Element};
+use crate::{Call, Component, Element, Input, ValueExtensions};
 use crate::html::apply_html_attributes;
 use crate::models::{ElementId, Presentation, SizeContext};
 use crate::state::State;
@@ -24,7 +25,8 @@ impl Component {
         &'a mut self,
         parent_id: NodeId,
         current: NodeRef<'b, Node>,
-        value: &mut Map<String, Value>,
+        globals: &mut Map<String, Value>,
+        input: &Input,
         context: SizeContext,
         layout: &mut TaffyTree<Element>,
     ) {
@@ -38,7 +40,7 @@ impl Component {
                         element_n: self.state.element_n,
                         hash: 0,
                     };
-                    let text = interpolate_string(text, value);
+                    let text = interpolate_string(text, globals, input);
                     let style = default_layout_style();
                     let parent = layout.get_node_context(parent_id).expect("context must be");
                     let mut view = create_view(element_id);
@@ -51,20 +53,20 @@ impl Component {
             }
             Node::Element(element) => {
                 self.state.element_n += 1;
-                if let Some(ident) = element.attr("?") {
-                    if !is_something(value.get(ident)) {
+                if let Some(pipe) = element.attr("?") {
+                    if !is_something(Some(&get_object_value(pipe, globals, input))) {
                         return;
                     }
                 }
                 if let Some(ident) = element.attr("!") {
-                    if is_something(value.get(ident)) {
+                    if is_something(globals.get(ident)) {
                         return;
                     }
                 }
                 let no_array = vec![Value::Null];
                 let no_array_key = String::new();
                 let repeat = if let Some(ident) = element.attr("*") {
-                    match as_array(value.get(ident)) {
+                    match as_array(globals.get(ident)) {
                         None => return,
                         Some(array) => (ident.to_string(), array.clone()), // TODO: remove clone
                     }
@@ -90,15 +92,16 @@ impl Component {
                     };
 
                     // PUSH STATE
+                    if !repeat_key.is_empty() {
+                        // TODO: replace value ?
+                        // TODO: remove clone ?
+                        globals.insert(repeat_key.clone(), repeat_value.clone());
+                    }
+
                     let original_element = element.clone();
                     let mut element_mut = element.clone();
                     let class_attr = qual("class");
                     let pseudo_classes = self.state.get_pseudo_classes(element_id);
-                    for key in element.attrs.keys() {
-                        if key.local.starts_with("data-") {
-                            element_mut.attrs.insert(key.clone(), "true".into());
-                        }
-                    }
                     if !pseudo_classes.is_empty() {
                         let defined = match element_mut.attrs.get(&class_attr) {
                             None => String::new(),
@@ -109,13 +112,14 @@ impl Component {
                         let result = pseudo_classes.join(" ");
                         element_mut.attrs.insert(class_attr, result.into());
                     }
+                    for (key, pipe) in &element.attrs {
+                        if key.local.starts_with("data-") {
+                            let string = get_object_value(&pipe, globals, input).as_string();
+                            element_mut.attrs.insert(key.clone(), string.into());
+                        }
+                    }
                     *current_mut = Node::Element(element_mut);
                     let element = current_mut.as_element().unwrap();
-                    if !repeat_key.is_empty() {
-                        // TODO: replace value ?
-                        // TODO: remove clone ?
-                        value.insert(repeat_key.clone(), repeat_value.clone());
-                    }
 
                     let mut style = default_layout_style();
                     let mut view = create_view(element_id);
@@ -129,7 +133,7 @@ impl Component {
                             apply_view_rules(rule, &parent, &mut view, context, &self.resources);
                         }
                     }
-                    apply_html_attributes(element, value, &mut view, &mut style);
+                    apply_html_attributes(element, globals, &mut view, &mut style);
 
                     // parse output binding
                     // NOTE: must be in rendering cycle because scope contains repeated values
@@ -141,11 +145,11 @@ impl Component {
                         "input" => {
                             if let Some(expr) = element.attr("oninput") {
                                 view.listeners
-                                    .insert("oninput".to_string(), render_call(expr, value));
+                                    .insert("oninput".to_string(), render_call(expr, globals));
                             }
                             if let Some(expr) = element.attr("onchange") {
                                 view.listeners
-                                    .insert("onchange".to_string(), render_call(expr, value));
+                                    .insert("onchange".to_string(), render_call(expr, globals));
                             }
                             // if let Some(binding) = element.attr("value") {
                             //     let value = as_string(value.get(binding));
@@ -157,7 +161,7 @@ impl Component {
                         _ => {
                             if let Some(expr) = element.attr("onclick") {
                                 view.listeners
-                                    .insert("onclick".to_string(), render_call(expr, value));
+                                    .insert("onclick".to_string(), render_call(expr, globals));
                             }
                         }
                     }
@@ -195,7 +199,7 @@ impl Component {
                             self.state.element_n += 1;
                             let text = match element.attr("value") {
                                 None => "".to_string(),
-                                Some(binding) => as_string(value.get(binding)),
+                                Some(binding) => as_string(globals.get(binding)),
                             };
                             let value_element_id = ElementId {
                                 element_n: self.state.element_n,
@@ -227,7 +231,9 @@ impl Component {
                             for child in current.children() {
                                 let mut context = context;
                                 context.parent_font_size = view.text_style.font_size;
-                                self.render_tree(current_id, child, value, context, layout);
+                                self.render_tree(
+                                    current_id, child, globals, input, context, layout,
+                                );
                             }
                         }
                     }
@@ -235,7 +241,7 @@ impl Component {
                     // POP STATE
                     *current_mut = Node::Element(original_element.clone());
                     if !repeat_key.is_empty() {
-                        value.remove(&repeat_key);
+                        globals.remove(&repeat_key);
                     }
                 }
             }
@@ -358,22 +364,70 @@ fn integer_decode(val: f64) -> (u64, i16, i8) {
     (mantissa, exponent, sign)
 }
 
-pub fn interpolate_string(string: String, value: &Map<String, Value>) -> String {
+pub fn get_object_value(pipe: &str, global: &Map<String, Value>, input: &Input) -> Value {
+    let mut value = Value::Null;
+    let segments: Vec<&str> = pipe.split("|").map(&str::trim).collect();
+    let getters = match segments.get(0) {
+        None => {
+            error!("empty pipe");
+            return value;
+        }
+        Some(path) => {
+            let getters: Vec<String> = path
+                .split(".")
+                .map(|getter| getter.trim().to_string())
+                .collect();
+            if getters.len() == 0 {
+                error!("empty getters");
+                return value;
+            }
+            getters
+        }
+    };
+    let mut scope = global;
+    for i in 0..getters.len() - 1 {
+        let getter = &getters[i];
+        scope = match scope.get(getter).and_then(|v| v.as_object()) {
+            None => {
+                error!("nested attribute '{getter}' not object");
+                return value;
+            }
+            Some(nested) => nested,
+        }
+    }
+    let attr = &getters[getters.len() - 1];
+    value = match scope.get(attr) {
+        None => {
+            error!("attribute '{attr}' not found");
+            return value;
+        }
+        Some(value) => value.clone(),
+    };
+    for name in segments.iter().skip(1) {
+        match input.transformers.get(*name) {
+            None => error!("transformer {name} not registered"),
+            Some(transform) => value = transform(value),
+        }
+    }
+    value
+}
+
+pub fn interpolate_string(string: String, value: &Map<String, Value>, input: &Input) -> String {
     let mut result = String::new();
     let mut field = false;
-    let mut field_name = String::new();
+    let mut pipe = String::new();
     for ch in string.chars() {
         if field {
             if ch == '}' {
-                result += &as_string(value.get(&field_name));
+                result += &get_object_value(&pipe, value, input).to_string();
                 field = false;
             } else {
-                field_name.push(ch);
+                pipe.push(ch);
             }
         } else {
             if ch == '{' {
                 field = true;
-                field_name = String::new();
+                pipe = String::new();
             }
             if !field {
                 result.push(ch);
