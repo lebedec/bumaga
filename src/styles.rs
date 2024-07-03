@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use lightningcss::properties::align::{
     AlignContent, AlignItems, AlignSelf, ContentDistribution, ContentPosition, GapValue,
@@ -24,7 +25,7 @@ use lightningcss::properties::Property;
 use lightningcss::properties::size::{MaxSize, Size};
 use lightningcss::properties::text::OverflowWrap;
 use lightningcss::rules::CssRule;
-use lightningcss::rules::keyframes::KeyframeSelector;
+use lightningcss::rules::keyframes::{KeyframeSelector, KeyframesName};
 use lightningcss::stylesheet::{ParserOptions, StyleSheet};
 use lightningcss::values::color::{CssColor, RGBA};
 use lightningcss::values::image::Image;
@@ -41,6 +42,7 @@ use taffy::prelude::FromLength;
 use taffy::prelude::TaffyAuto;
 
 use crate::{Background, Borders, Element, MyBorder, ObjectFit, Rgba, TextStyle};
+use crate::animation::{Animation, Keyframe, Track};
 use crate::models::{ElementId, Presentation, Ruleset, SizeContext};
 
 impl TextStyle {
@@ -84,6 +86,7 @@ pub fn create_view(id: ElementId) -> Element {
             wrap: OverflowWrap::Normal,
         },
         listeners: HashMap::new(),
+        opacity: 1.0,
     }
 }
 
@@ -169,17 +172,18 @@ pub fn inherit<'i>(parent: &Element, view: &mut Element) {
 }
 
 pub fn apply_view_rules<'i>(
-    ruleset: &Ruleset<'i>,
+    declarations: &Vec<Property<'i>>,
     parent: &Element,
     view: &mut Element,
     context: SizeContext,
     resources: &str,
 ) {
     inherit(parent, view);
-    for property in &ruleset.style.declarations.declarations {
+    for property in declarations {
         match property {
             Property::AnimationTimingFunction(timing_functions, _) => {}
             Property::AnimationIterationCount(iteraction_count, _) => {}
+            Property::Animation(animations, _) => {}
             Property::Background(background) => {
                 if background.len() > 1 {
                     error!("multiple background not supported");
@@ -348,8 +352,12 @@ pub fn apply_view_rules<'i>(
     }
 }
 
-pub fn apply_layout_rules(ruleset: &Ruleset, style: &mut Style, context: SizeContext) {
-    for property in &ruleset.style.declarations.declarations {
+pub fn apply_layout_rules<'i>(
+    declarations: &Vec<Property<'i>>,
+    style: &mut Style,
+    context: SizeContext,
+) {
+    for property in declarations {
         match property {
             Property::Display(value) => match value {
                 Display::Keyword(keyword) => match keyword {
@@ -980,17 +988,33 @@ pub fn parse_presentation(code: &str) -> Presentation {
                 rules.push(style);
             }
             CssRule::Keyframes(animation) => {
-                // println!("parse ANIM {:?}", animation.name);
-                // for keyframe in animation.keyframes {
-                //     for selector in keyframe.selectors {
-                //         let time = match selector {
-                //             KeyframeSelector::Percentage(time) => time.0,
-                //             KeyframeSelector::From => 0.0,
-                //             KeyframeSelector::To => 1.0,
-                //         };
-                //         println!("Keyframe[{time}] {:?}", keyframe.declarations);
-                //     }
-                // }
+                let mut tracks: HashMap<String, Track> = HashMap::new();
+                let name = match animation.name {
+                    KeyframesName::Ident(ident) => ident.0.to_string(),
+                    KeyframesName::Custom(name) => name.to_string(),
+                };
+                for keyframe in animation.keyframes {
+                    for selector in keyframe.selectors {
+                        let time = match selector {
+                            KeyframeSelector::Percentage(time) => time.0,
+                            KeyframeSelector::From => 0.0,
+                            KeyframeSelector::To => 1.0,
+                        };
+                        for property in &keyframe.declarations.declarations {
+                            let key = property.property_id().name().to_string();
+                            let keyframe = Keyframe {
+                                time,
+                                property: property.clone().into_owned(),
+                            };
+                            tracks.entry(key).or_default().keyframes.push(keyframe);
+                        }
+                    }
+                }
+                let mut tracks: Vec<Track> = tracks.into_values().collect();
+                for track in tracks.iter_mut() {
+                    track.keyframes.sort_by(|a, b| a.time.total_cmp(&b.time));
+                }
+                animations.insert(name.clone(), Rc::new(Animation { name, tracks }));
             }
             _ => {}
         }

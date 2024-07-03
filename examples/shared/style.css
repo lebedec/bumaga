@@ -61,6 +61,7 @@ input {
     background: #394651;
     height: 3rem;
     outline: none;
+    animation: 2s linear infinite HeightAnimation;
 }
 
 input:focus {

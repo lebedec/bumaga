@@ -1,41 +1,113 @@
+use std::collections::HashMap;
 use std::ops::Add;
 use std::rc::Rc;
 use std::time::Duration;
 
-use lightningcss::properties::animation::{AnimationIterationCount, AnimationPlayState};
+use lightningcss::properties::animation::{
+    AnimationIterationCount, AnimationName, AnimationPlayState,
+};
 use lightningcss::properties::Property;
 use lightningcss::properties::size::Size;
 use lightningcss::values::easing::EasingFunction;
 use lightningcss::values::length::{LengthPercentage, LengthValue};
 use lightningcss::values::number::CSSNumber;
 use lightningcss::values::percentage::Percentage;
+use lightningcss::values::time::Time;
 use log::error;
 use static_self::IntoOwned;
 
+use crate::{Component, Element};
+use crate::models::ElementId;
+
 pub struct Animator {
-    easing: EasingFunction,
-    duration: f32,
-    play_state: AnimationPlayState,
-    iterations: AnimationIterationCount,
-    animation: Rc<Animation>,
-    time: f32,
+    pub easing: EasingFunction,
+    pub duration: f32,
+    pub play_state: AnimationPlayState,
+    pub iterations: AnimationIterationCount,
+    pub animation: Rc<Animation>,
+    pub time: f32,
 }
 
 pub struct Animation {
-    tracks: Vec<Track>,
+    pub name: String,
+    pub tracks: Vec<Track>,
 }
 
 pub struct Keyframe {
-    time: f32,
-    property: Property<'static>,
+    pub time: f32,
+    pub property: Property<'static>,
 }
 
+#[derive(Default)]
 pub struct Track {
-    keyframes: Vec<Keyframe>,
+    pub keyframes: Vec<Keyframe>,
+}
+
+pub fn apply_animation_rules<'i>(
+    declarations: &Vec<Property<'i>>,
+    element: &mut Element,
+    active_animators: &mut HashMap<ElementId, Vec<Animator>>,
+    animators: &mut HashMap<ElementId, Vec<Animator>>,
+    animations: &HashMap<String, Rc<Animation>>,
+) {
+    let mut empty = vec![];
+    for property in declarations {
+        match property {
+            Property::Animation(declarations, _) => {
+                for declaration in declarations {
+                    let active = active_animators.get_mut(&element.id).unwrap_or(&mut empty);
+                    let current = animators.entry(element.id).or_default();
+                    let name = match &declaration.name {
+                        AnimationName::Ident(name) => name.to_string(),
+                        name => {
+                            error!("animation {name:?} not supported");
+                            continue;
+                        }
+                    };
+                    let found = active.iter().position(|animator| animator.id() == name);
+                    match found {
+                        None => {
+                            let animation = match animations.get(&name) {
+                                None => {
+                                    error!("animation {name} @keyframes not specified");
+                                    continue;
+                                }
+                                Some(animation) => animation.clone(),
+                            };
+                            let duration = match declaration.duration {
+                                Time::Seconds(value) => value,
+                                Time::Milliseconds(value) => value / 1000.0,
+                            };
+                            let easing = declaration.timing_function.clone();
+                            let iterations = declaration.iteration_count.clone();
+                            let animator = Animator {
+                                easing,
+                                duration,
+                                play_state: Default::default(),
+                                iterations,
+                                animation,
+                                time: 0.0,
+                            };
+                            current.push(animator);
+                        }
+                        Some(index) => {
+                            let animator = active.remove(index);
+                            current.push(animator);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 impl Animator {
-    pub fn update(&mut self, time: f32) {
+    pub fn id(&self) -> &str {
+        self.animation.name.as_str()
+    }
+
+    pub fn update(&mut self, time: f32) -> Vec<Property<'static>> {
         let time = if self.duration <= 0.0 {
             0.0
         } else {
@@ -57,6 +129,7 @@ impl Animator {
                 }
             }
         };
+        let mut declarations = vec![];
         for track in &self.animation.tracks {
             let mut a = 0;
             let mut b = 0;
@@ -70,16 +143,20 @@ impl Animator {
                 }
             }
             if a + 1 == b {
-                let p = self.interpolate_property(
+                // between a and b
+                let property = self.interpolate_property(
                     &track.keyframes[a].property,
                     &track.keyframes[b].property,
                     time,
                 );
-                // between a and b
+                declarations.push(property);
             } else {
                 // return a frame (last)
+                let property = track.keyframes[a].property.clone();
+                declarations.push(property);
             }
         }
+        declarations
     }
 
     fn interpolate_property(&self, a: &Property, b: &Property, t: f32) -> Property<'static> {

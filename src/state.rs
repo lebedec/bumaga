@@ -8,6 +8,7 @@ pub struct State {
     pub pseudo_classes: HashMap<ElementId, Vec<String>>,
     pub focus: Option<ElementId>,
     pub animators: HashMap<ElementId, Vec<Animator>>,
+    pub active_animators: HashMap<ElementId, Vec<Animator>>,
 }
 
 static NO_PSEUDO_CLASSES: Vec<String> = vec![];
@@ -19,6 +20,7 @@ impl State {
             pseudo_classes: HashMap::new(),
             focus: None,
             animators: Default::default(),
+            active_animators: Default::default(),
         }
     }
 

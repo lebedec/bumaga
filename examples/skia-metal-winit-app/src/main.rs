@@ -1,6 +1,7 @@
 use std::{fs, process};
 use std::collections::{HashMap, HashSet};
 use std::mem::take;
+use std::time::Instant;
 
 use core_graphics_types::geometry::CGSize;
 use objc::rc::autoreleasepool;
@@ -46,7 +47,7 @@ fn main() {
         Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/");
 
     let mut mouse_position = [0.0, 0.0];
-
+    let mut time = Instant::now();
     run(|canvas, events| {
         canvas.clear(colors::WHITE);
         let value = json!({"todos": todos, "todo": todo});
@@ -54,7 +55,9 @@ fn main() {
         let input = user_input(events, &mut mouse_position)
             .fonts(&mut fonts)
             .value(value)
+            .time(time.elapsed())
             .pipe("done", move |value| done.contains(&value).into());
+        time = Instant::now();
         let output = component.update(input);
         for element in output.elements {
             draw_element(canvas, &element, &fonts, &mut images);

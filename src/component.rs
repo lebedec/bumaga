@@ -1,4 +1,5 @@
 use std::fs;
+use std::mem::take;
 use std::ops::Add;
 use std::path::Path;
 
@@ -107,6 +108,7 @@ impl Component {
                 return frame;
             }
         };
+        self.state.active_animators = take(&mut self.state.animators);
         self.render_tree(viewport, body, &mut value, &input, context, &mut rendering);
         let result = rendering.compute_layout_with_measure(
             viewport,

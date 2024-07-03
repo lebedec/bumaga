@@ -13,6 +13,7 @@ use serde_json::{Map, Value};
 use taffy::{AlignItems, Dimension, Display, JustifyContent, NodeId, Size, Style, TaffyTree};
 
 use crate::{Call, Component, Element, Input, ValueExtensions};
+use crate::animation::apply_animation_rules;
 use crate::html::apply_html_attributes;
 use crate::models::{ElementId, Presentation, SizeContext};
 use crate::state::State;
@@ -127,13 +128,40 @@ impl Component {
                     view.tag = element.name.local.to_string();
                     let parent = layout.get_node_context(parent_id).expect("context must be");
                     let matching_element = &ElementRef::wrap(current).expect("node is element");
+
                     for rule in &self.presentation.rules {
                         if rule.selector.matches(matching_element) {
-                            apply_layout_rules(rule, &mut style, context);
-                            apply_view_rules(rule, &parent, &mut view, context, &self.resources);
+                            let props = &rule.style.declarations.declarations;
+                            apply_layout_rules(props, &mut style, context);
+                            apply_view_rules(props, &parent, &mut view, context, &self.resources);
+                            apply_animation_rules(
+                                props,
+                                &mut view,
+                                &mut self.state.active_animators,
+                                &mut self.state.animators,
+                                &self.presentation.animations,
+                            );
                         }
                     }
                     apply_html_attributes(element, globals, &mut view, &mut style);
+                    // apply animation
+                    let mut no_animators = vec![];
+                    let animators = self
+                        .state
+                        .animators
+                        .get_mut(&element_id)
+                        .unwrap_or(&mut no_animators);
+                    for animator in animators {
+                        let props = animator.update(input.time.as_secs_f32());
+                        // println!(
+                        //     "APPLY {} t{} p{}",
+                        //     animator.id(),
+                        //     animator.time,
+                        //     props.len()
+                        // );
+                        apply_layout_rules(&props, &mut style, context);
+                        apply_view_rules(&props, &parent, &mut view, context, &self.resources);
+                    }
 
                     // parse output binding
                     // NOTE: must be in rendering cycle because scope contains repeated values

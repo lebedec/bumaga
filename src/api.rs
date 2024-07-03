@@ -92,6 +92,7 @@ pub struct Element {
     /// The different properties of an element's text font.
     pub text_style: TextStyle,
     pub listeners: HashMap<String, Call>,
+    pub opacity: f32,
 }
 
 pub type Rgba = [u8; 4];

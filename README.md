@@ -8,7 +8,7 @@ You should use it if these features valuable to you:
 + Simple view bindings and interoperability based on JSON values
 + Graphics API agnostic
 + Windowing API agnostic
-+ (TODO) CSS animations
++ CSS animations
 
 The development of this library possible thanks to work of Rust enthusiasts:
 [servo](https://github.com/servo/servo),
