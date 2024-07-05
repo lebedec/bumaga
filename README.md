@@ -91,6 +91,14 @@ should help to understand how it works:
 * TODO: bevy
 * [macroquad](examples/macroquad-app)
 
+# Dev
+
+TODO:
+
+* hierarchy transforms
+* transforms percent
+* transitions
+* input state
 
 
 

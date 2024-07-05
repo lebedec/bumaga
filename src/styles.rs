@@ -24,6 +24,7 @@ use lightningcss::properties::position::Position;
 use lightningcss::properties::Property;
 use lightningcss::properties::size::{MaxSize, Size};
 use lightningcss::properties::text::OverflowWrap;
+use lightningcss::properties::transform::Matrix3d;
 use lightningcss::rules::CssRule;
 use lightningcss::rules::keyframes::{KeyframeSelector, KeyframesName};
 use lightningcss::stylesheet::{ParserOptions, StyleSheet};
@@ -87,6 +88,7 @@ pub fn create_view(id: ElementId) -> Element {
         },
         listeners: HashMap::new(),
         opacity: 1.0,
+        transform: None,
     }
 }
 
@@ -319,6 +321,12 @@ pub fn apply_view_rules<'i>(
             }
             Property::OverflowWrap(wrap) => view.text_style.wrap = wrap.clone(),
             Property::WordWrap(wrap) => view.text_style.wrap = wrap.clone(),
+            Property::Transform(transforms, _) => match transforms.to_matrix() {
+                None => {
+                    error!("unable to handle transform matrix {property:?}");
+                }
+                Some(transform) => view.transform = Some(transform),
+            },
             Property::Custom(custom) => match &custom.name {
                 CustomPropertyName::Unknown(ident) => match ident.0.as_ref() {
                     "object-fit" => {

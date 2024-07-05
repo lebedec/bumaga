@@ -43,6 +43,7 @@ header > span {
 
 .todo:hover {
     background-color: rgba(255, 255, 255, 0.4);
+    transform: translateX(-50px);
 }
 
 .todo[data-done="true"] {

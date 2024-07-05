@@ -9,6 +9,7 @@ pub use lightningcss::properties::background::{
 pub use lightningcss::properties::border::LineStyle;
 pub use lightningcss::properties::font::{FontStretchKeyword, FontStyle};
 pub use lightningcss::properties::text::OverflowWrap;
+use lightningcss::properties::transform::Matrix3d;
 use scraper::{Html, Selector};
 use serde_json::Value;
 pub use taffy::Layout;
@@ -100,6 +101,7 @@ pub struct Element {
     pub text_style: TextStyle,
     pub listeners: HashMap<String, Call>,
     pub opacity: f32,
+    pub transform: Option<Matrix3d<f32>>,
 }
 
 pub type Rgba = [u8; 4];

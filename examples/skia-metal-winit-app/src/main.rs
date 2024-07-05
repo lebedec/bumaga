@@ -7,7 +7,7 @@ use core_graphics_types::geometry::CGSize;
 use objc::rc::autoreleasepool;
 use serde_json::{json, Value};
 use skia_safe::{
-    Canvas, Color4f, colors, Data, Font, FontMgr, Image, Paint, Picture, Point, Rect, Size,
+    Canvas, Color4f, colors, Data, Font, FontMgr, Image, Matrix, Paint, Picture, Point, Rect, Size,
     Typeface,
 };
 use skia_safe::utils::text_utils::Align;
@@ -60,7 +60,38 @@ fn main() {
         time = Instant::now();
         let output = component.update(input);
         for element in output.elements {
+            // let matrix = canvas.concat()
+            if let Some(transforms) = &element.transform {
+                canvas.translate((-50.0, 0.0));
+                // for trans in transforms.decompose().unwrap().0 {
+                //     match trans {
+                //         Transform::Translate(_, _) => {}
+                //         Transform::TranslateX(_) => {}
+                //         Transform::TranslateY(_) => {}
+                //         Transform::TranslateZ(_) => {}
+                //         Transform::Translate3d(_, _, _) => {}
+                //         Transform::Scale(_, _) => {}
+                //         Transform::ScaleX(_) => {}
+                //         Transform::ScaleY(_) => {}
+                //         Transform::ScaleZ(_) => {}
+                //         Transform::Scale3d(_, _, _) => {}
+                //         Transform::Rotate(_) => {}
+                //         Transform::RotateX(_) => {}
+                //         Transform::RotateY(_) => {}
+                //         Transform::RotateZ(_) => {}
+                //         Transform::Rotate3d(_, _, _, _) => {}
+                //         Transform::Skew(_, _) => {}
+                //         Transform::SkewX(_) => {}
+                //         Transform::SkewY(_) => {}
+                //         Transform::Perspective(_) => {}
+                //         Transform::Matrix(_) => {}
+                //         Transform::Matrix3d(_) => {}
+                //     }
+                // }
+            }
             draw_element(canvas, &element, &fonts, &mut images);
+            // canvas.reset_matrix();
+            // canvas.scale((2.0, 2.0));
         }
         for call in output.calls {
             match call.signature() {
