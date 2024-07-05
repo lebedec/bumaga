@@ -129,7 +129,7 @@ impl Component {
                     let parent = layout.get_node_context(parent_id).expect("context must be");
                     let matching_element = &ElementRef::wrap(current).expect("node is element");
 
-                    for rule in &self.presentation.rules {
+                    for rule in &self.presentation.content.rules {
                         if rule.selector.matches(matching_element) {
                             let props = &rule.style.declarations.declarations;
                             apply_layout_rules(props, &mut style, context);
@@ -139,7 +139,7 @@ impl Component {
                                 &mut view,
                                 &mut self.state.active_animators,
                                 &mut self.state.animators,
-                                &self.presentation.animations,
+                                &self.presentation.content.animations,
                             );
                         }
                     }

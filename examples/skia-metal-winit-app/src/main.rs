@@ -44,7 +44,7 @@ fn main() {
     let mut todo = "Enter a todo".to_string();
 
     let mut component =
-        Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/");
+        Component::watch_files("../shared/index.html", "../shared/style.css", "../shared/");
 
     let mut mouse_position = [0.0, 0.0];
     let mut time = Instant::now();
@@ -266,9 +266,13 @@ fn user_input<'f, 't>(events: Vec<WindowEvent>, mouse_position: &mut [f32; 2]) -
                 ElementState::Released => {}
             },
             WindowEvent::KeyboardInput { event, .. } => {
+                println!(
+                    "CHAR {:?} {:?} {} '{:?}'",
+                    event.state, event.physical_key, event.repeat, event.text
+                );
                 if let Some(text) = event.text {
                     for char in text.chars() {
-                        println!("CHAR {char:?}");
+                        // println!("CHAR {char:?}");
                         if char != '\u{8}' {
                             characters.push(char);
                         }

@@ -12,7 +12,7 @@ use sdl2::render::{BlendMode, Canvas, Texture, TextureCreator, WindowCanvas};
 use sdl2::ttf::{Font, Sdl2TtfContext};
 use serde_json::json;
 
-use bumaga::{Component, CssColor, Element, Fonts, Input, Keys, TextStyle};
+use bumaga::{Component, Element, Fonts, Input, Keys, Rgba, TextStyle};
 
 fn main() {
     run().unwrap()
@@ -41,7 +41,8 @@ fn run() -> Result<(), String> {
         .build()
         .map_err(|error| error.to_string())?;
 
-    let mut component = Component::compile_files("../shared/index.html", "../shared/style.css");
+    let mut component =
+        Component::watch_files("../shared/index.html", "../shared/style.css", "../shared");
     let todos = [
         "learn bumaga documentation",
         "create UI using HTML",
@@ -86,9 +87,9 @@ fn draw_element(
     fonts: &mut FontSystem,
 ) -> Result<(), String> {
     let texture_creator = canvas.texture_creator();
-    let color = color(&element.background.color);
-    if color.a > 0 {
-        canvas.set_draw_color(color);
+    let bg = color(element.background.color);
+    if bg.a > 0 {
+        canvas.set_draw_color(bg);
         canvas.set_blend_mode(BlendMode::Blend);
         canvas.fill_rect(Rect::new(
             element.layout.location.x as i32,
@@ -100,11 +101,9 @@ fn draw_element(
     draw_borders(canvas, element)?;
     if let Some(text) = element.text.as_ref() {
         let font = fonts.get_font(element.text_style.font_size as u16);
-        let color = &element.color;
-        let color = Color::RGBA(color.red, color.green, color.blue, color.alpha);
         let surface = font
             .render(text)
-            .blended(color)
+            .blended(color(element.color))
             .map_err(|error| error.to_string())?;
         let texture =
             Texture::from_surface(&surface, &texture_creator).map_err(|error| error.to_string())?;
@@ -131,25 +130,23 @@ fn draw_borders(canvas: &mut WindowCanvas, element: &Element) -> Result<(), Stri
     let h = layout.size.height as i16;
 
     if let Some(border) = borders.top.as_ref() {
-        canvas.line(x, y, x + w, y, color(&border.color))?;
+        canvas.line(x, y, x + w, y, color(border.color))?;
     }
     if let Some(border) = borders.bottom.as_ref() {
-        canvas.line(x, y + h, x + w, y + h, color(&border.color))?;
+        canvas.line(x, y + h, x + w, y + h, color(border.color))?;
     }
     if let Some(border) = borders.left.as_ref() {
-        canvas.line(x, y, x, y + h, color(&border.color))?;
+        canvas.line(x, y, x, y + h, color(border.color))?;
     }
     if let Some(border) = borders.left.as_ref() {
-        canvas.line(x + w, y, x + w, y + h, color(&border.color))?;
+        canvas.line(x + w, y, x + w, y + h, color(border.color))?;
     }
     Ok(())
 }
 
-fn color(css: &CssColor) -> Color {
-    match css {
-        CssColor::RGBA(color) => Color::RGBA(color.red, color.green, color.blue, color.alpha),
-        _ => Color::RED,
-    }
+fn color(css: Rgba) -> Color {
+    let [r, g, b, a] = css;
+    Color::RGBA(r, g, b, a)
 }
 
 struct FontSystem<'ttf> {
@@ -201,12 +198,24 @@ fn user_input<'f>(mut events: EventPump) -> Input<'f> {
                 MouseButton::Right => buttons_down.push(1),
                 _ => {}
             },
+            Event::KeyDown {
+                keycode, repeat, ..
+            } => {
+                if let Some(keycode) = keycode {
+                    println!("CHAR KeyDOWN {:?} {}", keycode, repeat);
+                }
+            }
+
             Event::KeyUp { keycode, .. } => {
                 if let Some(keycode) = keycode {
+                    println!("CHAR KeyUP {:?}", keycode);
                     keys_pressed.push(map_keycode(keycode))
                 }
             }
-            Event::TextInput { text, .. } => characters = text.chars().collect(),
+            Event::TextInput { text, .. } => {
+                println!("CHAR text {:?}", text);
+                characters = text.chars().collect()
+            }
             Event::Quit { .. } => process::exit(0),
             _ => {}
         }

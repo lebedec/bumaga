@@ -7,7 +7,9 @@ use lightningcss::properties::animation::{
     AnimationIterationCount, AnimationName, AnimationPlayState,
 };
 use lightningcss::properties::Property;
+use lightningcss::properties::Property::BackgroundColor;
 use lightningcss::properties::size::Size;
+use lightningcss::values::color::{CssColor, RGBA};
 use lightningcss::values::easing::EasingFunction;
 use lightningcss::values::length::{LengthPercentage, LengthValue};
 use lightningcss::values::number::CSSNumber;
@@ -162,10 +164,37 @@ impl Animator {
     fn interpolate_property(&self, a: &Property, b: &Property, t: f32) -> Property<'static> {
         match (a, b) {
             (Property::Height(a), Property::Height(b)) => Property::Height(self.size(a, b, t)),
+            (Property::MinHeight(a), Property::MinHeight(b)) => {
+                Property::Height(self.size(a, b, t))
+            }
             (Property::Width(a), Property::Width(b)) => Property::Width(self.size(a, b, t)),
+            (Property::MinWidth(a), Property::MinWidth(b)) => {
+                Property::MinWidth(self.size(a, b, t))
+            }
+            (Property::Color(a), Property::Color(b)) => Property::Color(self.color(a, b, t)),
+            (BackgroundColor(a), BackgroundColor(b)) => BackgroundColor(self.color(a, b, t)),
             (a, b) => {
                 error!("interpolation from {a:?} to {b:?} not supported");
                 a.clone().into_owned()
+            }
+        }
+    }
+
+    fn color(&self, a: &CssColor, b: &CssColor, t: f32) -> CssColor {
+        let fallback = a.clone();
+        match (a, b) {
+            (CssColor::RGBA(x), CssColor::RGBA(y)) => {
+                let rgba = RGBA {
+                    red: ((x.red_f32() + (y.red_f32() - x.red_f32()) * t) * 255.0) as u8,
+                    green: ((x.green_f32() + (y.green_f32() - x.green_f32()) * t) * 255.0) as u8,
+                    blue: ((x.blue_f32() + (y.blue_f32() - x.blue_f32()) * t) * 255.0) as u8,
+                    alpha: ((x.alpha_f32() + (y.alpha_f32() - x.alpha_f32()) * t) * 255.0) as u8,
+                };
+                CssColor::RGBA(rgba)
+            }
+            _ => {
+                error!("interpolation from {a:?} to {b:?} not supported");
+                fallback
             }
         }
     }

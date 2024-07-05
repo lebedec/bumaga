@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::time::Duration;
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 pub use lightningcss::properties::background::{
     BackgroundAttachment, BackgroundClip, BackgroundOrigin, BackgroundPosition, BackgroundRepeat,
@@ -21,11 +22,17 @@ use crate::value;
 /// Components are reusable parts of UI that define views,
 /// handle user input and store UI state between interactions.
 pub struct Component {
-    pub(crate) presentation: Presentation,
-    pub(crate) html: Html,
+    pub(crate) presentation: Source<Presentation>,
+    pub(crate) html: Source<Html>,
     pub(crate) state: State,
     pub(crate) body_selector: Selector,
     pub(crate) resources: String,
+}
+
+pub struct Source<T> {
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) modified: SystemTime,
+    pub(crate) content: T,
 }
 
 pub struct Input<'f> {
