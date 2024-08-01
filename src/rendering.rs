@@ -4,22 +4,21 @@ use std::mem;
 use std::process::id;
 
 use ego_tree::NodeRef;
-use html5ever::{LocalName, ns, QualName};
 use html5ever::namespace_url;
+use html5ever::{ns, LocalName, QualName};
 use lightningcss::values::color::{CssColor, RGBA};
 use log::error;
 use scraper::{ElementRef, Node};
 use serde_json::{Map, Value};
 use taffy::{AlignItems, Dimension, Display, JustifyContent, NodeId, Size, Style, TaffyTree};
 
-use crate::{Call, Component, Element, Input, ValueExtensions};
 use crate::animation::apply_animation_rules;
-use crate::html::apply_html_attributes;
 use crate::models::{ElementId, Presentation, SizeContext};
 use crate::state::State;
 use crate::styles::{
     apply_layout_rules, apply_view_rules, create_view, default_layout_style, inherit, pseudo,
 };
+use crate::{Call, Component, Element, Input, ValueExtensions};
 
 impl Component {
     pub fn render_tree<'a, 'b>(
@@ -143,7 +142,6 @@ impl Component {
                             );
                         }
                     }
-                    apply_html_attributes(element, globals, &mut view, &mut style);
                     // apply animation
                     let mut no_animators = vec![];
                     let animators = self

@@ -1,0 +1,67 @@
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/terminology.html#space
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+Document = _{ SOI ~ Content+ ~ EOI }
+
+// TODO element array
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
+Content = _{ Element | Text | Void }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
+Element = { "<" ~ Tag ~ Attributes ~">" ~ Children ~ "<" ~ "/" ~  Tag ~ ">"}
+
+Children = { Content* }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
+Text = { "<" ~ Tag ~ Attributes ~ ">" ~ String ~ "<" ~ "/" ~  Tag ~ ">" }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
+Void = { "<" ~ Tag ~ Attributes ~ "/" ~ ">" }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
+Tag = @{ TChar+ }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
+TChar = { ASCII_ALPHA | ASCII_DIGIT }
+
+String = @{ SChar* }
+
+SChar = { !("<" | ">") ~ ANY }
+
+Attributes = { Attribute* }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
+Attribute = { DoubleQuoted | Unquoted | Empty }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
+DoubleQuoted = _{ Name ~ "=" ~ "\"" ~ Value ~ "\"" }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
+// single quoted obsolete and need literal without ' quote char
+// so, we won't support it until someone needs it
+// SingleQuoted = _{ Name ~ "=" ~ "'" ~ Value ~ "'" }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
+Unquoted = _{ Name ~ "=" ~ Value }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
+Empty = _{ Name }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
+Name = @{ NChar+ }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
+NChar = @{
+    !("\"" | "\\" | "'" | ">" | "/" | "=" | "\u{0000}" | WHITESPACE) ~ ANY
+}
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
+Value = @{ VChar* }
+
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
+VChar = {
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+    | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
