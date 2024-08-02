@@ -3,11 +3,10 @@ use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 use std::collections::HashMap;
-use taffy::TaffyTree;
 
 #[derive(Parser)]
 #[grammar = "html/grammar.pest"]
-struct Html {}
+struct HtmlParser {}
 
 pub type Node = u32;
 
@@ -24,68 +23,75 @@ impl From<Error<Rule>> for ReaderError {
     }
 }
 
-#[derive(Debug)]
-enum Content {
-    Element {
-        tag: String,
-        attrs: HashMap<String, String>,
-        children: Vec<Content>,
-    },
-    Text {
-        tag: String,
-        attrs: HashMap<String, String>,
-        text: String,
-    },
+/// The Document Object Model (DOM) is an interface that treats an HTML document as a tree structure
+/// wherein each node is an object representing a part of the document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Object {
+    pub tag: String,
+    pub attrs: HashMap<String, String>,
+    pub text: Option<String>,
+    pub children: Vec<Object>,
 }
 
-pub fn read_html(content: &str) -> Result<TaffyTree<Node>, ReaderError> {
-    let document = Html::parse(Rule::Document, content)?
+pub fn read_html_unchecked(html: &str) -> Object {
+    read_html(html).expect("must be read html")
+}
+
+pub fn read_html(html: &str) -> Result<Object, ReaderError> {
+    let document = HtmlParser::parse(Rule::Document, html)?
         .next()
         .ok_or(ReaderError::EmptyDocument)?;
-
-    println!("DOC {:?}", document);
     let content = parse_content(document);
-    println!("content {:?}", content);
-
-    let tree = TaffyTree::new();
-    Ok(tree)
+    Ok(content)
 }
 
 /// NOTE:
 /// Pest parser guarantees that pairs will contain only rules defined in grammar.
 /// So, knowing the exact order of rules and it parameters we can unwrap iterators
 /// without error handling. Macro unreachable! can be used for the same reason.
-fn parse_content(pair: Pair<Rule>) -> Content {
+fn parse_content(pair: Pair<Rule>) -> Object {
     match pair.as_rule() {
         Rule::Element => {
             let mut iter = pair.into_inner();
             let tag = iter.next().unwrap().as_str();
             let attrs = iter.next().unwrap();
             let children = iter.next().unwrap();
-            Content::Element {
+            Object {
                 tag: tag.to_string(),
                 attrs: parse_attrs(attrs),
+                text: None,
                 children: children.into_inner().map(parse_content).collect(),
             }
         }
         Rule::Text => {
-            let mut iter = pair.into_inner();
-            let tag = iter.next().unwrap().as_str();
-            let attrs = iter.next().unwrap();
-            let text = iter.next().unwrap().as_str();
-            Content::Text {
-                tag: tag.to_string(),
-                attrs: parse_attrs(attrs),
-                text: text.to_string(),
+            let text = pair.as_str().trim().to_string();
+            Object {
+                tag: "".to_string(),
+                attrs: Default::default(),
+                text: Some(text),
+                children: vec![],
             }
         }
+        // Rule::Text => {
+        //     let mut iter = pair.into_inner();
+        //     let tag = iter.next().unwrap().as_str();
+        //     let attrs = iter.next().unwrap();
+        //     let text = iter.next().unwrap().as_str().trim().to_string();
+        //     Object {
+        //         tag: tag.to_string(),
+        //         attrs: parse_attrs(attrs),
+        //         text: Some(text),
+        //         children: vec![],
+        //     }
+        // }
         Rule::Void => {
             let mut iter = pair.into_inner();
             let tag = iter.next().unwrap().as_str();
             let attrs = iter.next().unwrap();
-            Content::Element {
+            Object {
                 tag: tag.to_string(),
                 attrs: parse_attrs(attrs),
+                text: None,
                 children: vec![],
             }
         }
@@ -114,6 +120,52 @@ fn parse_attrs(pair: Pair<Rule>) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use crate::html::reader::read_html;
+    use crate::html::Object;
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    impl Object {
+        pub fn attr(mut self, attr: &str, value: &str) -> Self {
+            self.attrs.insert(attr.to_string(), value.to_string());
+            self
+        }
+    }
+
+    fn void(tag: &str) -> Object {
+        Object {
+            tag: tag.to_string(),
+            attrs: Default::default(),
+            text: None,
+            children: vec![],
+        }
+    }
+
+    fn el(tag: &str, children: Vec<Object>) -> Object {
+        Object {
+            tag: tag.to_string(),
+            attrs: Default::default(),
+            text: None,
+            children,
+        }
+    }
+
+    fn txt(text: &str) -> Object {
+        Object {
+            tag: "".to_string(),
+            attrs: Default::default(),
+            text: Some(text.to_string()),
+            children: vec![],
+        }
+    }
+
+    fn tag(tag: &str, text: &str) -> Object {
+        Object {
+            tag: tag.to_string(),
+            attrs: Default::default(),
+            text: None,
+            children: vec![txt(text)],
+        }
+    }
 
     // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
     const VOID_TAGS: [&str; 16] = [
@@ -124,20 +176,22 @@ mod tests {
     #[test]
     pub fn test_simple_error() {
         let document = read_html("<");
-        println!("{}", document.is_err());
         assert!(document.is_err());
     }
 
     #[test]
     pub fn test_no_childs_parsing() {
         let document = read_html("<div></div>").expect("valid document");
-        assert_eq!(2, document.total_node_count());
+        assert_eq!(document, el("div", vec![]))
     }
 
     #[test]
     pub fn test_one_child_parsing() {
         let document = read_html("<div><span>Hello world!</span></div>").expect("valid document");
-        assert_eq!(2, document.total_node_count());
+        assert_eq!(
+            document,
+            el("div", vec![el("span", vec![txt("Hello world!")])])
+        )
     }
 
     #[test]
@@ -150,43 +204,178 @@ mod tests {
             </div>
         ";
         let document = read_html(html).expect("valid document");
-        assert_eq!(2, document.total_node_count());
+        assert_eq!(
+            document,
+            el(
+                "div",
+                vec![
+                    void("link"),
+                    el("h1", vec![txt("Header")]),
+                    el("div", vec![])
+                ]
+            )
+        )
     }
 
     #[test]
     pub fn test_text_parsing() {
         let document = read_html("<div>Hello world!</div>").expect("valid document");
-        assert_eq!(2, document.total_node_count());
+        assert_eq!(document, el("div", vec![txt("Hello world!")]))
+    }
+
+    #[test]
+    pub fn test_combined_content_parsing() {
+        let html = "
+            <div>
+                String
+                <h1>Header</h1>
+                <link />
+            </div>
+        ";
+        let document = read_html(html).expect("valid document");
+        assert_eq!(
+            document,
+            el(
+                "div",
+                vec![txt("String"), el("h1", vec![txt("Header")]), void("link")]
+            )
+        )
     }
 
     #[test]
     pub fn test_void_parsing() {
-        for html in VOID_TAGS.map(|tag| format!("<{tag} />")) {
-            let document = read_html(&html).expect("valid document");
-            assert_eq!(2, document.total_node_count());
+        for tag in VOID_TAGS {
+            let document = read_html(&format!("<{tag} />")).expect("valid document");
+            assert_eq!(document, void(tag));
+            let document = read_html(&format!("<{tag}>")).expect("valid document");
+            assert_eq!(document, void(tag));
         }
     }
 
     #[test]
     pub fn test_void_one_attr_parsing() {
         let document = read_html(r#"<link href="..." />"#).expect("valid document");
-        assert_eq!(2, document.total_node_count());
+        assert_eq!(document, void("link").attr("href", "..."))
     }
 
     #[test]
     pub fn test_void_three_attr_parsing() {
         let html = r#"<link href="..." disabled *="single" />"#;
         let document = read_html(html).expect("valid document");
-        assert_eq!(2, document.total_node_count());
+        assert_eq!(
+            document,
+            void("link")
+                .attr("href", "...")
+                .attr("disabled", "")
+                .attr("*", "single")
+        );
     }
 
+    #[derive(Debug, Clone)]
+    struct MyStruct<'s> {
+        tag: &'s str,
+        children: Vec<MyStruct<'s>>,
+    }
+
+    fn parse_something(data: &str) -> MyStruct {
+        MyStruct {
+            tag: &data[..3],
+            children: vec![
+                MyStruct {
+                    tag: &data[3..6],
+                    children: vec![],
+                },
+                MyStruct {
+                    tag: &data[6..9],
+                    children: vec![],
+                },
+            ],
+        }
+    }
+
+    #[test]
+    pub fn test_giga_html() {
+        let res = parse_something("0123456789abcdef");
+        println!("RES {:?}", res);
+
+        let html = include_str!("giga.html");
+        let t = Instant::now();
+        let document = read_html(html).expect("valid document");
+        fn collect(object: Object, stats: &mut HashMap<String, usize>) {
+            *stats.entry(object.tag.clone()).or_insert(0) += 1;
+            for child in object.children {
+                collect(child, stats);
+            }
+        }
+        let mut stats = HashMap::new();
+        collect(document, &mut stats);
+        assert!(100 > t.elapsed().as_millis(), "parsing time (ms)");
+        println!("el: {:?}", t.elapsed());
+        assert_eq!(Some(&139), stats.get("div"), "div elements");
+        assert_eq!(Some(&5), stats.get("input"), "input elements");
+        assert_eq!(Some(&302), stats.get(""), "text nodes")
+    }
+
+    #[test]
     pub fn test_complex_document_parsing() {
-        let html = "
-            <div>
-                <link />
-                <h1>Header</h1>
-                <div></div>
+        let html = r#"
+            <html>
+            <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+            <link href="style.css" rel="stylesheet" />
+            <body>
+            <div class="panel">
+                <header>
+                    Bumaga Todo
+                    <span>Streamline Your Day, the Bumaga Way!</span>
+                </header>
+                <div *="todos" class="todo" data-done="todos|done" onclick="finish(todos)">
+                    <span>{todos}</span>
+                    <div>×</div>
+                </div>
+                <input value="todo" oninput="update" onchange="append"/>
             </div>
-        ";
+            </body>
+            </html>"#;
+        let document = read_html(html).expect("valid document");
+
+        assert_eq!(
+            document,
+            el(
+                "html",
+                vec![
+                    void("meta")
+                        .attr("http-equiv", "content-type")
+                        .attr("content", "text/html; charset=UTF-8"),
+                    void("link")
+                        .attr("href", "style.css")
+                        .attr("rel", "stylesheet"),
+                    el(
+                        "body",
+                        vec![el(
+                            "div",
+                            vec![
+                                el(
+                                    "header",
+                                    vec![
+                                        txt("Bumaga Todo"),
+                                        tag("span", "Streamline Your Day, the Bumaga Way!")
+                                    ]
+                                ),
+                                el("div", vec![tag("span", "{todos}"), tag("div", "×")])
+                                    .attr("*", "todos")
+                                    .attr("class", "todo")
+                                    .attr("data-done", "todos|done")
+                                    .attr("onclick", "finish(todos)"),
+                                void("input")
+                                    .attr("value", "todo")
+                                    .attr("oninput", "update")
+                                    .attr("onchange", "append")
+                            ]
+                        )
+                        .attr("class", "panel")]
+                    )
+                ]
+            )
+        )
     }
 }

@@ -3,20 +3,20 @@ use std::mem::take;
 use std::ops::Add;
 
 use log::error;
-use scraper::Html;
 use serde_json::Value;
+use taffy::prelude::length;
+use taffy::style_helpers::TaffyMaxContent;
 use taffy::{
     AvailableSpace, Layout, NodeId, Point, Position, PrintTree, Size, Style, TaffyTree,
     TraversePartialTree,
 };
-use taffy::prelude::length;
-use taffy::style_helpers::TaffyMaxContent;
 
-use crate::{Component, Element, Fonts, Input, Keys, LEFT_MOUSE_BUTTON, Output, Source};
+use crate::html::{read_html_unchecked, Object};
 use crate::input::FakeFonts;
 use crate::models::{ElementId, SizeContext};
 use crate::state::State;
 use crate::styles::{create_view, parse_presentation, pseudo};
+use crate::{Component, Element, Fonts, Input, Keys, Output, Source, LEFT_MOUSE_BUTTON};
 
 impl Component {
     pub fn update(&mut self, mut input: Input) -> Output {
@@ -31,7 +31,7 @@ impl Component {
         if let Some(path) = &self.html.path {
             if let Ok(modified) = fs::metadata(path).and_then(|meta| meta.modified()) {
                 if modified > self.html.modified {
-                    self.html = Source::from_file(Html::parse_document, path);
+                    self.html = Source::from_file(read_html_unchecked, path);
                     self.reset_state();
                 }
             }
@@ -59,7 +59,13 @@ impl Component {
             },
             ..Default::default()
         };
-        let viewport_view = create_view(viewport_id);
+        let fake_object = Object {
+            tag: "".to_string(),
+            attrs: Default::default(),
+            text: None,
+            children: vec![],
+        };
+        let viewport_view = create_view(viewport_id, &fake_object);
         let context = SizeContext {
             root_font_size: viewport_view.text_style.font_size,
             parent_font_size: viewport_view.text_style.font_size,
@@ -75,14 +81,7 @@ impl Component {
             }
         };
         let html = self.html.content.clone();
-        let body = html.select(&self.body_selector).next();
-        let body = match body {
-            Some(body) => *body,
-            None => {
-                error!("unable to update component, body not found");
-                return frame;
-            }
-        };
+        let body = html.children.last().cloned().expect("body must be found");
         self.state.active_animators = take(&mut self.state.animators);
         self.render_tree(viewport, body, &mut value, &input, context, &mut rendering);
         let result = rendering.compute_layout_with_measure(
@@ -139,14 +138,14 @@ impl Component {
             if state.focus == Some(view.id) {
                 pseudo_classes.push(pseudo(":focus"));
 
-                if view.tag == "input" {
+                if view.html.tag == "input" {
                     let value_node = tree
                         .children(node)
                         .expect("input must contain value element")[0];
                     let value_view = tree
                         .get_node_context(value_node)
                         .expect("input value must contain context");
-                    let mut value = value_view.text.clone().unwrap_or_default();
+                    let mut value = value_view.html.text.clone().unwrap_or_default();
                     let mut has_changes = false;
                     if !input.characters.is_empty() {
                         has_changes = true;
@@ -256,7 +255,7 @@ impl<'f> Input<'f> {
             None => return Size::ZERO,
             Some(element) => element,
         };
-        if let Some(text) = element.text.as_ref() {
+        if let Some(text) = element.html.text.as_ref() {
             let max_width = size.width.map(Some).unwrap_or_else(|| match space.width {
                 AvailableSpace::MinContent => Some(0.0),
                 AvailableSpace::MaxContent => None,

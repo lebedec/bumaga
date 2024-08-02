@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use lightningcss::rules::style::StyleRule;
-use scraper::Selector;
 
 use crate::animation::Animation;
 
@@ -21,7 +20,6 @@ pub struct ElementId {
 }
 
 pub struct Ruleset<'i> {
-    pub selector: Selector,
     pub style: StyleRule<'i>,
 }
 

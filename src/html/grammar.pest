@@ -1,12 +1,14 @@
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/terminology.html#space
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
+COMMENT = _{ "<!--" ~ (!"-->" ~ ANY)* ~ "-->" }
+
 Document = _{ SOI ~ Content+ ~ EOI }
 
 // TODO element array
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
-Content = _{ Element | Text | Void }
+Content = _{ Void | Text | Element  }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
 Element = { "<" ~ Tag ~ Attributes ~">" ~ Children ~ "<" ~ "/" ~  Tag ~ ">"}
@@ -14,10 +16,27 @@ Element = { "<" ~ Tag ~ Attributes ~">" ~ Children ~ "<" ~ "/" ~  Tag ~ ">"}
 Children = { Content* }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
-Text = { "<" ~ Tag ~ Attributes ~ ">" ~ String ~ "<" ~ "/" ~  Tag ~ ">" }
+Void = { "<" ~ VoidTag ~ Attributes ~ ("/")? ~ ">" }
 
-// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
-Void = { "<" ~ Tag ~ Attributes ~ "/" ~ ">" }
+VoidTag = {
+    ^"area"
+    | ^"base"
+    | ^"br"
+    | ^"col"
+    | ^"command"
+    | ^"embed"
+    | ^"hr"
+    | ^"img"
+    | ^"input"
+    | ^"keygen"
+    | ^"link"
+    | ^"meta"
+    | ^"param"
+    | ^"source"
+    | ^"track"
+    | ^"wbr"
+    | ^"meta"
+}
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
 Tag = @{ TChar+ }
@@ -25,7 +44,10 @@ Tag = @{ TChar+ }
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
 TChar = { ASCII_ALPHA | ASCII_DIGIT }
 
-String = @{ SChar* }
+// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
+Text = { String }
+
+String = @{ SChar+ }
 
 SChar = { !("<" | ">") ~ ANY }
 

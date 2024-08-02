@@ -5,27 +5,27 @@ use std::path::Path;
 use std::time::SystemTime;
 
 use log::error;
-use scraper::{Html, Selector};
 use serde_json::{Error, Map, Value};
+use taffy::prelude::length;
+use taffy::style_helpers::TaffyMaxContent;
 use taffy::{
     AvailableSpace, Layout, NodeId, Point, Position, PrintTree, Size, Style, TaffyResult,
     TaffyTree, TraversePartialTree,
 };
-use taffy::prelude::length;
-use taffy::style_helpers::TaffyMaxContent;
 
-use crate::{Element, Fonts, Keys, LEFT_MOUSE_BUTTON, Source};
 use crate::api::{Call, Component, Input, Output};
+use crate::html::{read_html, read_html_unchecked, Object};
 use crate::input::FakeFonts;
 use crate::models::{ElementId, Presentation, SizeContext};
 use crate::rendering::as_string;
 use crate::state::State;
 use crate::styles::{create_view, parse_presentation, pseudo};
+use crate::{Element, Fonts, Keys, Source, LEFT_MOUSE_BUTTON};
 
 impl Component {
     pub fn watch_files<P: AsRef<Path>>(html_path: P, css_path: P, resources: P) -> Self {
         let presentation = Source::from_file(parse_presentation, css_path);
-        let html = Source::from_file(Html::parse_document, html_path);
+        let html = Source::from_file(read_html_unchecked, html_path);
         Self::compile_component(
             html,
             presentation,
@@ -44,23 +44,21 @@ impl Component {
 
     pub fn compile(html: &str, css: &str, resources: &str) -> Component {
         let presentation = Source::from_content(parse_presentation(css));
-        let html = Source::from_content(Html::parse_document(html));
+        let html = Source::from_content(read_html(html).expect("must be read"));
 
         Self::compile_component(html, presentation, resources)
     }
 
     pub fn compile_component(
-        html: Source<Html>,
+        html: Source<Object>,
         presentation: Source<Presentation>,
         resources: &str,
     ) -> Component {
         let state = State::new();
-        let body_selector = Selector::parse("body").expect("body selector must be parsed");
         Self {
             presentation,
             html,
             state,
-            body_selector,
             resources: resources.to_string(),
         }
     }

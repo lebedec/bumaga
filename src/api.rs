@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -10,23 +10,21 @@ pub use lightningcss::properties::border::LineStyle;
 pub use lightningcss::properties::font::{FontStretchKeyword, FontStyle};
 pub use lightningcss::properties::text::OverflowWrap;
 use lightningcss::properties::transform::Matrix3d;
-use scraper::{Html, Selector};
 use serde_json::Value;
 pub use taffy::Layout;
 
-pub use value::ValueExtensions;
-
+use crate::html::Object;
 use crate::models::{ElementId, Presentation};
 use crate::state::State;
 use crate::value;
+pub use value::ValueExtensions;
 
 /// Components are reusable parts of UI that define views,
 /// handle user input and store UI state between interactions.
 pub struct Component {
     pub(crate) presentation: Source<Presentation>,
-    pub(crate) html: Source<Html>,
+    pub(crate) html: Source<Object>,
     pub(crate) state: State,
-    pub(crate) body_selector: Selector,
     pub(crate) resources: String,
 }
 
@@ -87,21 +85,25 @@ pub struct Element {
     /// The final result of a layout algorithm, describes size and position of element.
     pub layout: Layout,
     pub id: ElementId,
-    pub html_element: Option<scraper::node::Element>,
-    /// The HTML tag used for creating element.
-    pub tag: String,
+    pub html: Html,
     pub object_fit: ObjectFit,
     pub background: Background,
     pub borders: Borders,
     /// The foreground color of element (most often text color).
     pub color: Rgba,
-    /// The text inside an element.
-    pub text: Option<String>,
     /// The different properties of an element's text font.
     pub text_style: TextStyle,
     pub listeners: HashMap<String, Call>,
     pub opacity: f32,
     pub transform: Option<Matrix3d<f32>>,
+}
+
+#[derive(Clone)]
+pub struct Html {
+    pub tag: String,
+    pub attrs: HashMap<String, String>,
+    pub text: Option<String>,
+    pub pseudo_classes: HashSet<String>,
 }
 
 pub type Rgba = [u8; 4];

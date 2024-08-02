@@ -4,7 +4,8 @@ use macroquad::prelude::*;
 use serde_json::{json, Value};
 
 use bumaga::{
-    Borders, Component, CssColor, Element, Fonts, Input, Keys, Layout, MyBorder, TextStyle,
+    Borders, Component, Element, Fonts, Input, Keys, Layout, MyBorder, Rgba, TextStyle,
+    ValueExtensions,
 };
 
 #[macroquad::main("macroquad bumaga example")]
@@ -14,35 +15,37 @@ async fn main() {
         .await
         .unwrap();
     let mut fonts = FontSystem { font };
-    let mut component = Component::compile_files("../shared/index.html", "../shared/style.css");
-    let todos = [
-        "learn bumaga documentation",
-        "create UI using HTML",
-        "implement engine",
+    let mut component =
+        Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/");
+
+    let mut todos_done = vec![];
+    let mut todos = vec![
+        "learn bumaga documentation".to_string(),
+        "create UI using HTML".to_string(),
+        "implement engine".to_string(),
     ];
-    let mut todos = HashSet::from(todos.map(&str::to_string));
     let mut todo = "Enter a todo".to_string();
+
     loop {
         clear_background(WHITE);
         draw_scene();
         let value = json!({"todos": todos, "todo": todo});
-        let input = user_input().fonts(&mut fonts).value(value);
+        let done = todos_done.clone();
+        let input = user_input()
+            .fonts(&mut fonts)
+            .value(value)
+            .pipe("done", move |value| done.contains(&value).into());
         let output = component.update(input);
         for element in output.elements {
             draw_element(&element, &fonts);
         }
         for call in output.calls {
-            println!("CALL {call:?}");
             match call.signature() {
-                ("append", [todo]) => {
-                    todos.insert(todo.as_str().unwrap().to_string());
-                }
-                ("edit", [value]) => {
-                    todo = value.as_str().unwrap().to_string();
-                }
-                ("remove", [todo]) => {
-                    todos.remove(todo.as_str().unwrap());
-                }
+                ("update", [value]) => todo = value.as_string(),
+                ("append", [value]) => todos.push(value.as_string()),
+                ("finish", [value]) => todos_done.push(value.clone()),
+                ("cancel", [value]) => todos_done.retain(|todo| todo != value),
+                ("remove", [value]) => todos.retain(|todo| todo != value),
                 _ => {}
             };
         }
@@ -60,7 +63,7 @@ fn draw_element(element: &Element, fonts: &FontSystem) {
     );
     draw_borders(&element);
     // draw_line()
-    if let Some(text) = element.text.as_ref() {
+    if let Some(text) = element.html.text.as_ref() {
         let text_params = TextParams {
             font_size: element.text_style.font_size as u16,
             font: Some(&fonts.font),
@@ -96,11 +99,8 @@ fn draw_borders(element: &Element) {
     }
 }
 
-fn color(css: &CssColor) -> Color {
-    match css {
-        CssColor::RGBA(color) => Color::from_rgba(color.red, color.green, color.blue, color.alpha),
-        _ => RED,
-    }
+fn color(rgba: &Rgba) -> Color {
+    Color::from_rgba(rgba[0], rgba[1], rgba[2], rgba[3])
 }
 
 struct FontSystem {

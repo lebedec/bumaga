@@ -21,30 +21,33 @@ use lightningcss::properties::grid::{
 };
 use lightningcss::properties::overflow::OverflowKeyword;
 use lightningcss::properties::position::Position;
-use lightningcss::properties::Property;
 use lightningcss::properties::size::{MaxSize, Size};
 use lightningcss::properties::text::OverflowWrap;
 use lightningcss::properties::transform::Matrix3d;
-use lightningcss::rules::CssRule;
+use lightningcss::properties::Property;
 use lightningcss::rules::keyframes::{KeyframeSelector, KeyframesName};
+use lightningcss::rules::CssRule;
+use lightningcss::selector::{Combinator, Component, PseudoClass, PseudoElement};
 use lightningcss::stylesheet::{ParserOptions, StyleSheet};
 use lightningcss::values::color::{CssColor, RGBA};
 use lightningcss::values::image::Image;
 use lightningcss::values::length::{Length, LengthPercentage, LengthPercentageOrAuto, LengthValue};
 use log::error;
-use scraper::Selector;
+use parcel_selectors::attr::AttrSelectorOperator;
+use parcel_selectors::parser::NthType;
 use static_self::IntoOwned;
+use taffy::prelude::FromLength;
+use taffy::prelude::TaffyAuto;
+use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
 use taffy::{
     Dimension, GridPlacement, GridTrackRepetition, LengthPercentageAuto, Line, Overflow, Point,
     Rect, Style, TrackSizingFunction,
 };
-use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
-use taffy::prelude::FromLength;
-use taffy::prelude::TaffyAuto;
 
-use crate::{Background, Borders, Element, MyBorder, ObjectFit, Rgba, TextStyle};
 use crate::animation::{Animation, Keyframe, Track};
+use crate::html::Object;
 use crate::models::{ElementId, Presentation, Ruleset, SizeContext};
+use crate::{Background, Borders, Element, Html, MyBorder, ObjectFit, Rgba, TextStyle};
 
 impl TextStyle {
     pub const DEFAULT_FONT_FAMILY: &'static str = "system-ui";
@@ -52,12 +55,16 @@ impl TextStyle {
     pub const DEFAULT_FONT_STRETCH: FontStretchKeyword = FontStretchKeyword::Normal;
 }
 
-pub fn create_view(id: ElementId) -> Element {
+pub fn create_view(id: ElementId, object: &Object) -> Element {
     Element {
         layout: Default::default(),
         id,
-        html_element: None,
-        tag: "".to_string(),
+        html: Html {
+            tag: object.tag.clone(),
+            attrs: object.attrs.clone(),
+            text: object.text.clone(),
+            pseudo_classes: Default::default(),
+        },
         object_fit: ObjectFit::Fill,
         background: Background {
             image: None,
@@ -76,7 +83,6 @@ pub fn create_view(id: ElementId) -> Element {
             left: None,
         },
         color: [255, 255, 255, 255],
-        text: None,
         text_style: TextStyle {
             font_family: TextStyle::DEFAULT_FONT_FAMILY.to_string(),
             font_size: 16.0,
@@ -989,10 +995,7 @@ pub fn parse_presentation(code: &str) -> Presentation {
         match rule {
             CssRule::Style(style) => {
                 let style = style.into_owned();
-                let css_selector = style.selectors.to_string();
-                let css_selector = css_selector.replace(":", PSEUDO_CLASS_SELECTOR);
-                let selector = Selector::parse(&css_selector).expect("selector must be: ");
-                let style = Ruleset { selector, style };
+                let style = Ruleset { style };
                 rules.push(style);
             }
             CssRule::Keyframes(animation) => {
@@ -1038,4 +1041,50 @@ const PSEUDO_CLASS_SELECTOR: &str = ".__pseudo_";
 /// TODO: correct implementation of CSS matching with selectors crate or else
 pub fn pseudo(name: &str) -> String {
     name.replace(":", PSEUDO_CLASS_PREFIX)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::styles::parse_presentation;
+
+    #[test]
+    pub fn test_something() {
+        let css = r#"
+        .myClass {
+            background: red;
+        }
+        #myId {
+            background: red;
+        }
+        div {
+            background: red;
+        }
+        #myContainer > div > span {
+            background: red;
+        }
+        .myA.myB {
+            background: red;
+        }
+        .myA .myB {
+            background: red;
+        }
+        input:focus {
+            background: red;
+        }
+        dd:last-of-type {
+            background: red;
+        }
+        di:last-child {
+            background: red;
+        }
+        .todo[data-done="true"]:hover {
+            background: red;
+        }
+        li:nth-child(even) {
+            background: red;
+        }
+
+        "#;
+        parse_presentation(css);
+    }
 }

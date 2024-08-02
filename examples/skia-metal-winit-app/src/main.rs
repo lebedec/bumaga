@@ -1,24 +1,24 @@
-use std::{fs, process};
 use std::collections::{HashMap, HashSet};
 use std::mem::take;
 use std::time::Instant;
+use std::{fs, process};
 
 use core_graphics_types::geometry::CGSize;
 use objc::rc::autoreleasepool;
 use serde_json::{json, Value};
+use skia_safe::utils::text_utils::Align;
 use skia_safe::{
-    Canvas, Color4f, colors, Data, Font, FontMgr, Image, Matrix, Paint, Picture, Point, Rect, Size,
+    colors, Canvas, Color4f, Data, Font, FontMgr, Image, Matrix, Paint, Picture, Point, Rect, Size,
     Typeface,
 };
-use skia_safe::utils::text_utils::Align;
+use winit::event::{DeviceEvent, ElementState, KeyEvent, MouseButton};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
     event_loop::EventLoop,
     window::WindowBuilder,
 };
-use winit::event::{DeviceEvent, ElementState, KeyEvent, MouseButton};
-use winit::keyboard::{KeyCode, PhysicalKey};
 
 use bumaga::{Component, Element, Fonts, Input, Keys, Rgba, TextStyle, ValueExtensions};
 
@@ -35,12 +35,12 @@ fn main() {
     let mut fonts = FontSystem::new();
     let mut images = ImageSystem::new();
 
+    let mut todos_done = vec![];
     let mut todos = vec![
         "learn bumaga documentation".to_string(),
         "create UI using HTML".to_string(),
         "implement engine".to_string(),
     ];
-    let mut todos_done = vec![];
     let mut todo = "Enter a todo".to_string();
 
     let mut component =
