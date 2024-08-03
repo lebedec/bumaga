@@ -14,12 +14,12 @@ use taffy::{
 };
 
 use crate::api::{Call, Component, Input, Output};
-use crate::html::{read_html, read_html_unchecked, Object};
+use crate::html::{read_html, read_html_unchecked, Dom};
 use crate::input::FakeFonts;
 use crate::models::{ElementId, Presentation, SizeContext};
 use crate::rendering::as_string;
 use crate::state::State;
-use crate::styles::{create_view, parse_presentation, pseudo};
+use crate::styles::{create_element, parse_presentation};
 use crate::{Element, Fonts, Keys, Source, LEFT_MOUSE_BUTTON};
 
 impl Component {
@@ -50,7 +50,7 @@ impl Component {
     }
 
     pub fn compile_component(
-        html: Source<Object>,
+        html: Source<Dom>,
         presentation: Source<Presentation>,
         resources: &str,
     ) -> Component {

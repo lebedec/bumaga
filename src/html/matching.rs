@@ -95,24 +95,17 @@ where
         }
     };
     match component {
-        Component::LocalName(local) => {
-            println!("type {}", local.name.as_ref());
-            html.tag.as_str() == local.name.as_ref()
-        }
-        Component::ID(ident) => {
-            println!("id #{}", ident.as_ref());
-            html.attrs
-                .get("id")
-                .map(|id| id.as_str() == ident.as_ref())
-                .unwrap_or(false)
-        }
-        Component::Class(ident) => {
-            println!("class .{}", ident.as_ref());
-            html.attrs
-                .get("class")
-                .map(|classes| match_class(classes, ident))
-                .unwrap_or(false)
-        }
+        Component::LocalName(local) => html.tag.as_str() == local.name.as_ref(),
+        Component::ID(ident) => html
+            .attrs
+            .get("id")
+            .map(|id| id.as_str() == ident.as_ref())
+            .unwrap_or(false),
+        Component::Class(ident) => html
+            .attrs
+            .get("class")
+            .map(|classes| match_class(classes, ident))
+            .unwrap_or(false),
         Component::AttributeInNoNamespace {
             local_name,
             value,
@@ -140,15 +133,14 @@ where
                 PseudoClass::Active => "active",
                 PseudoClass::Focus => "focus",
                 _ => {
-                    println!("pseudo class {component:?} not supported");
+                    error!("pseudo class {component:?} not supported");
                     return false;
                 }
             };
-            println!("pseudoClass :{}", name);
             html.pseudo_classes.contains(name)
         }
         _ => {
-            println!("selector {component:?} not supported");
+            error!("selector {component:?} not supported");
             false
         }
     }

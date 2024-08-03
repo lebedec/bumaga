@@ -35,7 +35,6 @@ VoidTag = {
     | ^"source"
     | ^"track"
     | ^"wbr"
-    | ^"meta"
 }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements

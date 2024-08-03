@@ -45,9 +45,9 @@ use taffy::{
 };
 
 use crate::animation::{Animation, Keyframe, Track};
-use crate::html::Object;
-use crate::models::{ElementId, Presentation, Ruleset, SizeContext};
-use crate::{Background, Borders, Element, Html, MyBorder, ObjectFit, Rgba, TextStyle};
+use crate::html::Dom;
+use crate::models::{ElementId, Object, Presentation, Ruleset, SizeContext};
+use crate::{Background, Borders, Element, MyBorder, ObjectFit, Rgba, TextStyle};
 
 impl TextStyle {
     pub const DEFAULT_FONT_FAMILY: &'static str = "system-ui";
@@ -55,16 +55,11 @@ impl TextStyle {
     pub const DEFAULT_FONT_STRETCH: FontStretchKeyword = FontStretchKeyword::Normal;
 }
 
-pub fn create_view(id: ElementId, object: &Object) -> Element {
+pub fn create_element(id: ElementId, html: Object) -> Element {
     Element {
         layout: Default::default(),
         id,
-        html: Html {
-            tag: object.tag.clone(),
-            attrs: object.attrs.clone(),
-            text: object.text.clone(),
-            pseudo_classes: Default::default(),
-        },
+        html,
         object_fit: ObjectFit::Fill,
         background: Background {
             image: None,
@@ -179,7 +174,7 @@ pub fn inherit<'i>(parent: &Element, view: &mut Element) {
     view.text_style.wrap = parent.text_style.wrap;
 }
 
-pub fn apply_view_rules<'i>(
+pub fn apply_element_rules<'i>(
     declarations: &Vec<Property<'i>>,
     parent: &Element,
     view: &mut Element,
@@ -1031,16 +1026,6 @@ pub fn parse_presentation(code: &str) -> Presentation {
         }
     }
     Presentation { rules, animations }
-}
-
-const PSEUDO_CLASS_PREFIX: &str = "__pseudo_";
-const PSEUDO_CLASS_SELECTOR: &str = ".__pseudo_";
-
-/// Tricky pre-processing to implement pseudo classes.
-/// Scraper Selector implements only simple CSS selectors.
-/// TODO: correct implementation of CSS matching with selectors crate or else
-pub fn pseudo(name: &str) -> String {
-    name.replace(":", PSEUDO_CLASS_PREFIX)
 }
 
 #[cfg(test)]

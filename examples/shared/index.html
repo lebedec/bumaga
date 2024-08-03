@@ -9,7 +9,7 @@
     </header>
     <div *="todos" class="todo" data-done="todos|done" onclick="finish(todos)">
         <span>{todos}</span>
-        <div>×</div>
+        <div onclick="remove(todos)">×</div>
     </div>
     <input value="todo" oninput="update" onchange="append"/>
 </div>

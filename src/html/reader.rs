@@ -26,18 +26,19 @@ impl From<Error<Rule>> for ReaderError {
 /// The Document Object Model (DOM) is an interface that treats an HTML document as a tree structure
 /// wherein each node is an object representing a part of the document.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Object {
+pub struct Dom {
+    pub pos: (usize, usize),
     pub tag: String,
     pub attrs: HashMap<String, String>,
     pub text: Option<String>,
-    pub children: Vec<Object>,
+    pub children: Vec<Dom>,
 }
 
-pub fn read_html_unchecked(html: &str) -> Object {
+pub fn read_html_unchecked(html: &str) -> Dom {
     read_html(html).expect("must be read html")
 }
 
-pub fn read_html(html: &str) -> Result<Object, ReaderError> {
+pub fn read_html(html: &str) -> Result<Dom, ReaderError> {
     let document = HtmlParser::parse(Rule::Document, html)?
         .next()
         .ok_or(ReaderError::EmptyDocument)?;
@@ -49,14 +50,16 @@ pub fn read_html(html: &str) -> Result<Object, ReaderError> {
 /// Pest parser guarantees that pairs will contain only rules defined in grammar.
 /// So, knowing the exact order of rules and it parameters we can unwrap iterators
 /// without error handling. Macro unreachable! can be used for the same reason.
-fn parse_content(pair: Pair<Rule>) -> Object {
+fn parse_content(pair: Pair<Rule>) -> Dom {
     match pair.as_rule() {
         Rule::Element => {
+            let pos = pair.line_col();
             let mut iter = pair.into_inner();
             let tag = iter.next().unwrap().as_str();
             let attrs = iter.next().unwrap();
             let children = iter.next().unwrap();
-            Object {
+            Dom {
+                pos,
                 tag: tag.to_string(),
                 attrs: parse_attrs(attrs),
                 text: None,
@@ -64,31 +67,23 @@ fn parse_content(pair: Pair<Rule>) -> Object {
             }
         }
         Rule::Text => {
+            let pos = pair.line_col();
             let text = pair.as_str().trim().to_string();
-            Object {
+            Dom {
+                pos,
                 tag: "".to_string(),
                 attrs: Default::default(),
                 text: Some(text),
                 children: vec![],
             }
         }
-        // Rule::Text => {
-        //     let mut iter = pair.into_inner();
-        //     let tag = iter.next().unwrap().as_str();
-        //     let attrs = iter.next().unwrap();
-        //     let text = iter.next().unwrap().as_str().trim().to_string();
-        //     Object {
-        //         tag: tag.to_string(),
-        //         attrs: parse_attrs(attrs),
-        //         text: Some(text),
-        //         children: vec![],
-        //     }
-        // }
         Rule::Void => {
+            let pos = pair.line_col();
             let mut iter = pair.into_inner();
             let tag = iter.next().unwrap().as_str();
             let attrs = iter.next().unwrap();
-            Object {
+            Dom {
+                pos,
                 tag: tag.to_string(),
                 attrs: parse_attrs(attrs),
                 text: None,
@@ -120,19 +115,19 @@ fn parse_attrs(pair: Pair<Rule>) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use crate::html::reader::read_html;
-    use crate::html::Object;
+    use crate::html::Dom;
     use std::collections::HashMap;
     use std::time::Instant;
 
-    impl Object {
+    impl Dom {
         pub fn attr(mut self, attr: &str, value: &str) -> Self {
             self.attrs.insert(attr.to_string(), value.to_string());
             self
         }
     }
 
-    fn void(tag: &str) -> Object {
-        Object {
+    fn void(tag: &str) -> Dom {
+        Dom {
             tag: tag.to_string(),
             attrs: Default::default(),
             text: None,
@@ -140,8 +135,8 @@ mod tests {
         }
     }
 
-    fn el(tag: &str, children: Vec<Object>) -> Object {
-        Object {
+    fn el(tag: &str, children: Vec<Dom>) -> Dom {
+        Dom {
             tag: tag.to_string(),
             attrs: Default::default(),
             text: None,
@@ -149,8 +144,8 @@ mod tests {
         }
     }
 
-    fn txt(text: &str) -> Object {
-        Object {
+    fn txt(text: &str) -> Dom {
+        Dom {
             tag: "".to_string(),
             attrs: Default::default(),
             text: Some(text.to_string()),
@@ -158,8 +153,8 @@ mod tests {
         }
     }
 
-    fn tag(tag: &str, text: &str) -> Object {
-        Object {
+    fn tag(tag: &str, text: &str) -> Dom {
+        Dom {
             tag: tag.to_string(),
             attrs: Default::default(),
             text: None,
@@ -301,7 +296,7 @@ mod tests {
         let html = include_str!("giga.html");
         let t = Instant::now();
         let document = read_html(html).expect("valid document");
-        fn collect(object: Object, stats: &mut HashMap<String, usize>) {
+        fn collect(object: Dom, stats: &mut HashMap<String, usize>) {
             *stats.entry(object.tag.clone()).or_insert(0) += 1;
             for child in object.children {
                 collect(child, stats);

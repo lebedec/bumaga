@@ -9,267 +9,255 @@ use serde_json::{Map, Value};
 use taffy::{AlignItems, Dimension, Display, JustifyContent, NodeId, Size, Style, TaffyTree};
 
 use crate::animation::apply_animation_rules;
-use crate::html::{match_rule, Object};
-use crate::models::{ElementId, Presentation, SizeContext};
+use crate::html::{match_rule, Dom};
+use crate::models::{ElementId, Object, Presentation, SizeContext};
 use crate::state::State;
 use crate::styles::{
-    apply_layout_rules, apply_view_rules, create_view, default_layout_style, inherit, pseudo,
+    apply_element_rules, apply_layout_rules, create_element, default_layout_style, inherit,
 };
 use crate::{Call, Component, Element, Input, ValueExtensions};
 
 impl Component {
-    pub fn render_tree<'a, 'b>(
-        &'a mut self,
+    pub fn render_tree(
+        &mut self,
         parent_id: NodeId,
-        current: Object,
+        current: Dom,
         globals: &mut Map<String, Value>,
         input: &Input,
         context: SizeContext,
         layout: &mut TaffyTree<Element>,
     ) {
-        if let Some(text) = current.text.clone() {
-            if !text.is_empty() {
-                // fake text element
-                self.state.element_n += 1;
-                let element_id = ElementId {
-                    element_n: self.state.element_n,
-                    hash: 0,
-                };
-                let text = interpolate_string(text, globals, input);
-                let style = default_layout_style();
-                let parent = layout.get_node_context(parent_id).expect("context must be");
-                let mut view = create_view(element_id, &current);
-                inherit(&parent, &mut view);
-                layout.new_child_of(parent_id, style, view.clone());
-            }
+        if current.text.is_some() {
+            self.render_text(parent_id, current, input, globals, layout);
         } else {
-            self.state.element_n += 1;
-            if let Some(pipe) = current.attrs.get("?") {
-                if !is_something(Some(&get_object_value(pipe, globals, input))) {
-                    return;
+            self.render_template(parent_id, current, globals, input, context, layout)
+        }
+    }
+
+    fn render_text(
+        &mut self,
+        parent_id: NodeId,
+        current: Dom,
+        input: &Input,
+        globals: &mut Map<String, Value>,
+        layout: &mut TaffyTree<Element>,
+    ) {
+        let element_id = ElementId::from(&current);
+        let text = current.text.unwrap_or_default();
+        let text = interpolate_string(&text, globals, input);
+        let style = default_layout_style();
+        let object = Object::text(text);
+        let mut element = create_element(element_id, object);
+        let parent = layout.get_node_context(parent_id).expect("context must be");
+        inherit(&parent, &mut element);
+        layout.new_child_of(parent_id, style, element);
+    }
+
+    pub fn render_template(
+        &mut self,
+        parent_id: NodeId,
+        current: Dom,
+        globals: &mut Map<String, Value>,
+        input: &Input,
+        context: SizeContext,
+        layout: &mut TaffyTree<Element>,
+    ) {
+        if let Some(pipe) = current.attrs.get("?") {
+            if !is_something(Some(&get_object_value(pipe, globals, input))) {
+                return;
+            }
+        }
+        if let Some(ident) = current.attrs.get("!") {
+            if is_something(globals.get(ident)) {
+                return;
+            }
+        }
+        let repetition = Repetition::from(&globals, current.attrs.get("*"));
+        for repeat_value in repetition.values {
+            // PUSH STATE
+            globals.insert(repetition.key.to_string(), repeat_value.clone());
+            // RENDER
+            let element_id = ElementId::hash(&current, &repeat_value);
+            self.render_element(
+                element_id, parent_id, &current, globals, input, context, layout,
+            );
+            // POP STATE
+            globals.remove(&repetition.key);
+        }
+    }
+
+    fn render_element(
+        &mut self,
+        element_id: ElementId,
+        parent_id: NodeId,
+        template: &Dom,
+        globals: &mut Map<String, Value>,
+        input: &Input,
+        context: SizeContext,
+        layout: &mut TaffyTree<Element>,
+    ) {
+        let current_id = layout
+            .new_leaf(default_layout_style())
+            .expect("id must be created");
+        layout
+            .add_child(parent_id, current_id)
+            .expect("child must be added");
+
+        let mut current = template.clone();
+        for (key, pipe) in &template.attrs {
+            if key.starts_with("data-") {
+                let string = get_object_value(&pipe, globals, input).as_string();
+                current.attrs.insert(key.clone(), string.into());
+            }
+        }
+
+        let object = Object {
+            tag: current.tag.to_string(),
+            attrs: current.attrs.clone(),
+            text: None,
+            pseudo_classes: self.state.load_pseudo_classes(element_id).clone(),
+        };
+        let mut element = create_element(element_id, object);
+
+        // APPLY STYLES
+        let mut layout_style = default_layout_style();
+        // preset element context for CSS matching process
+        layout
+            .set_node_context(current_id, Some(element.clone()))
+            .expect("context must be set");
+        let parent = layout.get_node_context(parent_id).expect("context must be");
+        // default html styles
+        match element.html.tag.as_str() {
+            "input" => {
+                layout_style.display = Display::Flex;
+                layout_style.align_items = Some(AlignItems::Center);
+            }
+            _ => {}
+        }
+        for ruleset in &self.presentation.content.rules {
+            if match_rule(&ruleset.style, current_id, layout) {
+                let props = &ruleset.style.declarations.declarations;
+                apply_layout_rules(props, &mut layout_style, context);
+                apply_element_rules(props, &parent, &mut element, context, &self.resources);
+                apply_animation_rules(
+                    props,
+                    &mut element,
+                    &mut self.state.active_animators,
+                    &mut self.state.animators,
+                    &self.presentation.content.animations,
+                );
+            }
+        }
+        let animators = self.state.load_animators_mut(element_id);
+        for animator in animators {
+            let props = animator.update(input.time.as_secs_f32());
+            apply_layout_rules(&props, &mut layout_style, context);
+            apply_element_rules(&props, &parent, &mut element, context, &self.resources);
+        }
+
+        self.render_output_bindings(&mut element, globals);
+
+        // final commit of style changes
+        layout
+            .set_style(current_id, layout_style)
+            .expect("style must be updated");
+        layout
+            .set_node_context(current_id, Some(element.clone()))
+            .expect("context must be set");
+
+        match element.html.tag.as_str() {
+            "img" => {
+                self.render_img(current_id, &element, layout);
+            }
+            "input" => {
+                self.render_input(current_id, &element, globals, layout);
+            }
+            "area" => {}
+            "base" => {}
+            "br" => {}
+            "col" => {}
+            "command" => {}
+            "embed" => {}
+            "hr" => {}
+            "keygen" => {}
+            "link" => {}
+            "meta" => {}
+            "param" => {}
+            "source" => {}
+            "track" => {}
+            "wbr" => {}
+            _ => {
+                for child in template.children.clone() {
+                    let mut context = context;
+                    context.parent_font_size = element.text_style.font_size;
+                    self.render_tree(current_id, child, globals, input, context, layout);
                 }
             }
-            if let Some(ident) = current.attrs.get("!") {
-                if is_something(globals.get(ident)) {
-                    return;
-                }
-            }
-            let no_array = vec![Value::Null];
-            let no_array_key = String::new();
-            let repeat = if let Some(ident) = current.attrs.get("*") {
-                match as_array(globals.get(ident)) {
-                    None => return,
-                    Some(array) => (ident.to_string(), array.clone()), // TODO: remove clone
-                }
-            } else {
-                (no_array_key, no_array)
-            };
-            let (repeat_key, repeat_values) = repeat;
+        }
+    }
 
-            for repeat_value in repeat_values {
-                let element_id = ElementId {
-                    element_n: self.state.element_n,
-                    // array of object (especially big objects) can reduce performance
-                    // TODO: use key attribute like React
-                    hash: hash_value(&repeat_value),
-                };
+    fn render_img(&mut self, parent_id: NodeId, parent: &Element, layout: &mut TaffyTree<Element>) {
+        let element_id = ElementId::fake();
+        let empty = "undefined.png".to_string();
+        let src = parent.html.attrs.get("src").unwrap_or(&empty);
+        let src = format!("{}{}", self.resources, src);
+        let object = Object::fake();
+        let mut element = create_element(element_id, object);
+        element.background.image = Some(src);
+        let style = Style {
+            size: Size {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Percent(1.0),
+            },
+            ..default_layout_style()
+        };
+        layout.new_child_of(parent_id, style, element);
+    }
 
-                let current_id = layout
-                    .new_leaf(default_layout_style())
-                    .expect("id must be created");
-                layout
-                    .add_child(parent_id, current_id)
-                    .expect("child must be added");
+    fn render_input(
+        &mut self,
+        parent_id: NodeId,
+        parent: &Element,
+        globals: &mut Map<String, Value>,
+        layout: &mut TaffyTree<Element>,
+    ) {
+        let text = match parent.html.attrs.get("value") {
+            None => "".to_string(),
+            Some(binding) => as_string(globals.get(binding)),
+        };
+        let element_id = ElementId::child(parent.id, 1);
+        let style = default_layout_style();
+        let object = Object::text(text);
+        let mut element = create_element(element_id, object);
+        inherit(&parent, &mut element);
+        layout.new_child_of(parent_id, style, element);
 
-                // PUSH STATE
-                if !repeat_key.is_empty() {
-                    // TODO: replace value ?
-                    // TODO: remove clone ?
-                    globals.insert(repeat_key.clone(), repeat_value.clone());
-                }
+        let element_id = ElementId::child(parent.id, 2);
+        if parent.html.pseudo_classes.contains("focus") {
+            let object = Object::fake();
+            let mut element = create_element(element_id, object);
+            let mut style = default_layout_style();
+            style.size.width = Dimension::Length(1.0);
+            style.size.height = Dimension::Length(element.text_style.font_size);
+            element.background.color = element.color;
+            layout.new_child_of(parent_id, style, element);
+        }
+    }
 
-                let original_element = current.clone();
-                let mut element_mut = current.clone();
-                let pseudo_classes = self.state.get_pseudo_classes(element_id);
-                if !pseudo_classes.is_empty() {
-                    let defined = match element_mut.attrs.get("class") {
-                        None => String::new(),
-                        Some(classes) => classes.trim().to_string(),
-                    };
-                    let mut pseudo_classes = pseudo_classes.clone();
-                    pseudo_classes.insert(0, defined);
-                    let result = pseudo_classes.join(" ");
-                    element_mut.attrs.insert("class".to_string(), result.into());
-                }
-                for (key, pipe) in &current.attrs {
-                    if key.starts_with("data-") {
-                        let string = get_object_value(&pipe, globals, input).as_string();
-                        element_mut.attrs.insert(key.clone(), string.into());
-                    }
-                }
-                let element = current.clone();
-
-                let mut style = default_layout_style();
-                let mut view = create_view(element_id, &original_element);
-                layout
-                    .set_node_context(current_id, Some(view.clone()))
-                    .expect("context must be set");
-
-                let parent = layout.get_node_context(parent_id).expect("context must be");
-
-                for ruleset in &self.presentation.content.rules {
-                    if match_rule(&ruleset.style, current_id, layout) {
-                        let props = &ruleset.style.declarations.declarations;
-                        apply_layout_rules(props, &mut style, context);
-                        apply_view_rules(props, &parent, &mut view, context, &self.resources);
-                        apply_animation_rules(
-                            props,
-                            &mut view,
-                            &mut self.state.active_animators,
-                            &mut self.state.animators,
-                            &self.presentation.content.animations,
-                        );
-                    }
-                }
-                // apply animation
-                let mut no_animators = vec![];
-                let animators = self
-                    .state
-                    .animators
-                    .get_mut(&element_id)
-                    .unwrap_or(&mut no_animators);
-                for animator in animators {
-                    let props = animator.update(input.time.as_secs_f32());
-                    // println!(
-                    //     "APPLY {} t{} p{}",
-                    //     animator.id(),
-                    //     animator.time,
-                    //     props.len()
-                    // );
-                    apply_layout_rules(&props, &mut style, context);
-                    apply_view_rules(&props, &parent, &mut view, context, &self.resources);
-                }
-
-                // parse output binding
-                // NOTE: must be in rendering cycle because scope contains repeated values
-                // TODO: analyze performance issues (skip call render if no events)
-                // Configures the elements or adjust their behavior in various ways to meet HTML experience.
-                //
-                // see details: https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes
-                match view.html.tag.as_ref() {
-                    "input" => {
-                        if let Some(expr) = element.attrs.get("oninput") {
-                            view.listeners
-                                .insert("oninput".to_string(), render_call(expr, globals));
-                        }
-                        if let Some(expr) = element.attrs.get("onchange") {
-                            view.listeners
-                                .insert("onchange".to_string(), render_call(expr, globals));
-                        }
-                        // if let Some(binding) = element.attr("value") {
-                        //     let value = as_string(value.get(binding));
-                        //     view.text = Some(value);
-                        // }
-                        style.display = Display::Flex;
-                        style.align_items = Some(AlignItems::Center);
-                    }
-                    _ => {
-                        if let Some(expr) = element.attrs.get("onclick") {
-                            view.listeners
-                                .insert("onclick".to_string(), render_call(expr, globals));
-                        }
-                    }
-                }
-                //
-
-                layout
-                    .set_node_context(current_id, Some(view.clone()))
-                    .expect("update node context");
-
-                // special rendering
-                match view.html.tag.as_str() {
-                    "img" => {
-                        self.state.element_n += 1;
-                        let object_element_id = ElementId {
-                            element_n: self.state.element_n,
-                            hash: 0,
-                        };
-                        let empty = "undefined.png".to_string();
-                        let src = element.attrs.get("src").unwrap_or(&empty);
-                        let src = format!("{}{}", self.resources, src);
-                        let mut object_style = default_layout_style();
-                        let fake_object = Object {
-                            tag: "".to_string(),
-                            attrs: Default::default(),
-                            text: None,
-                            children: vec![],
-                        };
-                        let mut object_element = create_view(object_element_id, &fake_object);
-                        object_element.background.image = Some(src);
-                        object_style.size = Size {
-                            width: Dimension::Percent(1.0),
-                            height: Dimension::Percent(1.0),
-                        };
-                        // object element size width, height
-                        // object element position
-                        layout.new_child_of(current_id, object_style, object_element);
-                    }
-                    "input" => {
-                        // inner text elements
-                        self.state.element_n += 1;
-                        let text = match element.attrs.get("value") {
-                            None => "".to_string(),
-                            Some(binding) => as_string(globals.get(binding)),
-                        };
-                        let value_element_id = ElementId {
-                            element_n: self.state.element_n,
-                            hash: 0,
-                        };
-                        let value_style = default_layout_style();
-                        let fake_object = Object {
-                            tag: "".to_string(),
-                            attrs: Default::default(),
-                            text: Some(text),
-                            children: vec![],
-                        };
-                        let mut value_view = create_view(value_element_id, &fake_object);
-                        inherit(&view, &mut value_view);
-                        layout.new_child_of(current_id, value_style, value_view.clone());
-
-                        self.state.element_n += 1;
-                        let caret_element_id = ElementId {
-                            element_n: self.state.element_n,
-                            hash: 0,
-                        };
-                        if self.state.has_pseudo_class(view.id, &pseudo(":focus")) {
-                            let mut caret_style = default_layout_style();
-                            let fake_object = Object {
-                                tag: "".to_string(),
-                                attrs: Default::default(),
-                                text: None,
-                                children: vec![],
-                            };
-                            let mut caret_view = create_view(caret_element_id, &fake_object);
-                            caret_style.size.width = Dimension::Length(1.0);
-                            caret_style.size.height =
-                                Dimension::Length(value_view.text_style.font_size);
-                            caret_view.background.color = value_view.color;
-                            layout.new_child_of(current_id, caret_style, caret_view.clone());
-                        }
-                    }
-                    _ => {
-                        for child in current.children.clone() {
-                            let mut context = context;
-                            context.parent_font_size = view.text_style.font_size;
-                            self.render_tree(current_id, child, globals, input, context, layout);
-                        }
-                    }
-                }
-
-                // POP STATE
-                if !repeat_key.is_empty() {
-                    globals.remove(&repeat_key);
-                }
+    /// NOTE: must be in rendering cycle because scope contains repeated values
+    /// TODO: analyze performance issues (skip call render if no events)
+    /// Configures the elements or adjust their behavior in various ways to meet HTML experience.
+    ///
+    /// see details: https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes
+    fn render_output_bindings(&self, element: &mut Element, globals: &mut Map<String, Value>) {
+        let events: &[&str] = match element.html.tag.as_ref() {
+            "input" => &["oninput", "onchange"],
+            _ => &["onclick"],
+        };
+        for event in events {
+            if let Some(expr) = element.html.attrs.get(*event) {
+                let output = eval_call(expr, globals);
+                element.listeners.insert(event.to_string(), output);
             }
         }
     }
@@ -337,45 +325,6 @@ pub fn as_string(value: Option<&Value>) -> String {
     }
 }
 
-pub fn hash_value(value: &Value) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    // available since v1.0.118
-    value.hash(&mut hasher);
-    hasher.finish()
-    // match value {
-    //     Value::Null => 0,
-    //     Value::Bool(value) => {
-    //         if *value {
-    //             1
-    //         } else {
-    //             0
-    //         }
-    //     }
-    //     Value::Number(value) => {
-    //         let value = value.as_f64().unwrap_or(0.0);
-    //         integer_decode(value).hash(&mut hasher);
-    //         hasher.finish()
-    //     }
-    //     Value::String(value) => {
-    //         value.hash(&mut hasher);
-    //         hasher.finish()
-    //     }
-    //     Value::Array(array) => {
-    //         let hashes: Vec<u64> = array.iter().map(hash_value).collect();
-    //         hashes.hash(&mut hasher);
-    //         hasher.finish()
-    //     }
-    //     Value::Object(object) => {
-    //         let mut hashes: Vec<(String, u64)> = vec![];
-    //         for (key, value) in object {
-    //             hashes.push((key.to_string(), hash_value(value)));
-    //         }
-    //         hashes.hash(&mut hasher);
-    //         hasher.finish()
-    //     }
-    // }
-}
-
 fn integer_decode(val: f64) -> (u64, i16, i8) {
     let bits: u64 = unsafe { mem::transmute(val) };
     let sign: i8 = if bits >> 63 == 0 { 1 } else { -1 };
@@ -437,7 +386,7 @@ pub fn get_object_value(pipe: &str, global: &Map<String, Value>, input: &Input) 
     value
 }
 
-pub fn interpolate_string(string: String, value: &Map<String, Value>, input: &Input) -> String {
+pub fn interpolate_string(string: &str, value: &Map<String, Value>, input: &Input) -> String {
     let mut result = String::new();
     let mut field = false;
     let mut pipe = String::new();
@@ -462,7 +411,7 @@ pub fn interpolate_string(string: String, value: &Map<String, Value>, input: &In
     result
 }
 
-fn render_call(expression: &str, global_value: &Map<String, Value>) -> Call {
+fn eval_call(expression: &str, global_value: &Map<String, Value>) -> Call {
     let mut function = String::new();
     let mut arguments = vec![];
     let mut is_function = true;
@@ -491,5 +440,36 @@ fn render_call(expression: &str, global_value: &Map<String, Value>) -> Call {
     Call {
         function,
         arguments,
+    }
+}
+
+struct Repetition {
+    key: String,
+    values: Vec<Value>,
+}
+
+impl Repetition {
+    pub fn from(globals: &Map<String, Value>, key: Option<&String>) -> Self {
+        let key = match key {
+            None => return Repetition::no(),
+            Some(key) => key,
+        };
+        match as_array(globals.get(key)) {
+            None => {
+                error!("unable to repeat {key}, it must be JSON array");
+                Self::no()
+            }
+            Some(values) => Self {
+                key: key.to_string(),
+                values: values.clone(),
+            },
+        }
+    }
+
+    pub fn no() -> Self {
+        Self {
+            key: "".to_string(),
+            values: vec![Value::Null],
+        }
     }
 }

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::mem::take;
 use std::ops::Add;
@@ -11,11 +12,11 @@ use taffy::{
     TraversePartialTree,
 };
 
-use crate::html::{read_html_unchecked, Object};
+use crate::html::{read_html_unchecked, Dom};
 use crate::input::FakeFonts;
-use crate::models::{ElementId, SizeContext};
+use crate::models::{ElementId, Object, SizeContext};
 use crate::state::State;
-use crate::styles::{create_view, parse_presentation, pseudo};
+use crate::styles::{create_element, parse_presentation};
 use crate::{Component, Element, Fonts, Input, Keys, Output, Source, LEFT_MOUSE_BUTTON};
 
 impl Component {
@@ -37,7 +38,6 @@ impl Component {
             }
         }
 
-        self.state.element_n = 0;
         let mut frame = Output::new();
         let mut value = match input.value.as_object_mut() {
             Some(value) => value.clone(),
@@ -48,10 +48,7 @@ impl Component {
         };
         let mut rendering = TaffyTree::new();
         let [viewport_width, viewport_height] = input.viewport;
-        let viewport_id = ElementId {
-            element_n: self.state.element_n,
-            hash: 0,
-        };
+        let viewport_id = ElementId::fake();
         let viewport_layout = Style {
             size: Size {
                 width: length(viewport_width),
@@ -59,13 +56,8 @@ impl Component {
             },
             ..Default::default()
         };
-        let fake_object = Object {
-            tag: "".to_string(),
-            attrs: Default::default(),
-            text: None,
-            children: vec![],
-        };
-        let viewport_view = create_view(viewport_id, &fake_object);
+        let fake_object = Object::fake();
+        let viewport_view = create_element(viewport_id, fake_object);
         let context = SizeContext {
             root_font_size: viewport_view.text_style.font_size,
             parent_font_size: viewport_view.text_style.font_size,
@@ -103,12 +95,12 @@ impl Component {
             mut location: Point<f32>,
         ) {
             let mut layout = *tree.get_final_layout(node);
-            let view = match tree.get_node_context(node) {
+            let element = match tree.get_node_context(node) {
                 None => {
                     error!("unable to traverse node {node:?} has no context");
                     return;
                 }
-                Some(view) => view,
+                Some(element) => element,
             };
             let style = match tree.style(node) {
                 Ok(style) => style,
@@ -123,22 +115,22 @@ impl Component {
             }
 
             // interaction
-            let mut pseudo_classes = vec![];
+            let mut pseudo_classes = HashSet::new();
             if is_element_contains(&layout, input.mouse_position) {
-                pseudo_classes.push(pseudo(":hover"));
+                pseudo_classes.insert("hover".to_string());
                 if input.is_mouse_down() {
-                    pseudo_classes.push(pseudo(":active"));
-                    state.set_focus(view.id);
-                } else if state.has_pseudo_class(view.id, &pseudo(":active")) {
-                    if let Some(call) = view.listeners.get("onclick") {
+                    pseudo_classes.insert("active".to_string());
+                    state.set_focus(element.id);
+                } else if element.html.pseudo_classes.contains("active") {
+                    if let Some(call) = element.listeners.get("onclick") {
                         frame.calls.push(call.clone());
                     }
                 }
             }
-            if state.focus == Some(view.id) {
-                pseudo_classes.push(pseudo(":focus"));
+            if state.focus == Some(element.id) {
+                pseudo_classes.insert("focus".to_string());
 
-                if view.html.tag == "input" {
+                if element.html.tag == "input" {
                     let value_node = tree
                         .children(node)
                         .expect("input must contain value element")[0];
@@ -161,7 +153,7 @@ impl Component {
                         value.pop();
                     }
                     if input.is_key_pressed(Keys::Enter) {
-                        if let Some(call) = view.listeners.get("onchange") {
+                        if let Some(call) = element.listeners.get("onchange") {
                             let mut call = call.clone();
                             if call.arguments.len() == 0 {
                                 call.arguments.push(Value::String(value.clone()));
@@ -170,7 +162,7 @@ impl Component {
                         }
                     }
                     if has_changes {
-                        if let Some(call) = view.listeners.get("oninput") {
+                        if let Some(call) = element.listeners.get("oninput") {
                             let mut call = call.clone();
                             if call.arguments.len() == 0 {
                                 call.arguments.push(Value::String(value));
@@ -180,9 +172,9 @@ impl Component {
                     }
                 }
             }
-            state.set_pseudo_classes(view.id, pseudo_classes);
+            state.save_pseudo_classes(element.id, pseudo_classes);
 
-            let mut view = view.clone();
+            let mut view = element.clone();
             view.layout = layout;
             frame.elements.push(view);
             location = layout.location;
