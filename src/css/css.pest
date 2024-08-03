@@ -1,0 +1,76 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+StyleSheet = _{ SOI ~ Rules ~ EOI }
+
+Rules = { Rule* }
+
+Rule = _{ Animation | Style }
+
+// @keyframes
+
+Animation = { "@keyframes" ~ Name ~ "{" ~ Keyframes ~ "}" }
+
+Name = @{ (ASCII_ALPHA | ASCII_DIGIT | "-" | "_")+ }
+
+Keyframes = _{ Keyframe* }
+
+Keyframe = { Step ~ DeclarationBlock }
+
+Step = @{ (!"{" ~ ANY)+ }
+
+// style
+
+Style = { Selectors ~ DeclarationBlock }
+
+Selectors = { Complex ~ ("," ~ Complex)* }
+
+Complex = { (Combinator? ~ Compound)* }
+
+Combinator = { ">" | "+" | "~" }
+
+Compound = ${ Simple+ }
+
+Simple = _{ Id | Class | PseudoClass | PseudoElement | Attribute | Type }
+
+Id = { "#" ~ Ident }
+
+Class = { "." ~ Ident }
+
+Type = { Ident }
+
+Attribute = {
+    "[" ~ Ident ~ "]" |
+    "[" ~ Ident ~ Matcher ~ (String | Ident) ~ Modifier? ~ "]"
+}
+
+Matcher = { ("~" | "|" | "^" | "$" | "*")? ~ "=" }
+
+Modifier = { "i" | "s" }
+
+PseudoClass = {
+    ":" ~ Ident ~ "(" ~ (!")" ~ ANY)* ~ ")" |
+    ":" ~ Ident
+}
+
+PseudoElement = { "::" ~ Ident }
+
+Arguments = @{ (!")" ~ ASCII_ALPHA)* }
+
+// properties
+
+DeclarationBlock = {
+    "{" ~ "}" |
+    "{" ~ Declaration* ~ "}"
+}
+
+Declaration = { Property ~ ":" ~ Value ~ ";" }
+
+Property = @{ (ASCII_ALPHA | "-" | "_")+ }
+
+Value = @{ (!";" ~ ANY)+ }
+
+Ident = _{ (ASCII_ALPHA | ASCII_DIGIT | "-" | "_")+ }
+
+String = @{"\"" ~ (!"\"" ~ ANY)* ~ "\"" }

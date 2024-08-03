@@ -18,32 +18,29 @@ pub struct SizeContext {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ElementId {
-    pub pos: (usize, usize),
-    pub hash: u64,
+    pub(crate) index: usize,
+    pub(crate) hash: u64,
 }
 
 impl ElementId {
     /// Fake elements like caret or input text can't participate in user interaction or share
     /// any state. We cane safely use one "zero" id for these elements.
     pub fn fake() -> Self {
-        Self {
-            pos: (0, 0),
-            hash: 0,
-        }
+        Self { index: 0, hash: 0 }
     }
 
     /// Document object position is line and column position in source HTML file.
     /// It guarantees unique identification of original element.
     pub fn from(dom: &Dom) -> Self {
         Self {
-            pos: dom.pos,
+            index: dom.index,
             hash: 0,
         }
     }
 
     pub fn child(other: ElementId, value: u64) -> Self {
         Self {
-            pos: other.pos,
+            index: other.index,
             hash: value,
         }
     }
@@ -52,7 +49,7 @@ impl ElementId {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
         Self {
-            pos: dom.pos,
+            index: dom.index,
             hash: hasher.finish(),
         }
     }
