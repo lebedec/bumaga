@@ -1,3 +1,4 @@
+use crate::css::model::{CssDimension, CssProperty, CssValue, CssVariable};
 use pest::error::Error;
 use pest::iterators::Pair;
 use pest::Parser;
@@ -28,7 +29,7 @@ pub struct MyStyle<'i> {
 
 #[derive(Debug)]
 pub struct Property<'i> {
-    name: &'i str,
+    name: CssProperty,
     value: &'i str,
 }
 
@@ -70,84 +71,6 @@ impl MyComponent<'_> {
     }
 }
 
-// Used to optimize frequently used or complex values.
-// At same time provides ease parsing.
-pub enum CssValue {
-    Inherit,
-    Initial,
-    Unset,
-    Dimension { value: f32, unit: MyStr },
-    Color { value: u32 },
-    Unparsed(Span),
-}
-
-#[derive(Clone, Copy)]
-struct Span {
-    start: usize,
-    end: usize,
-}
-
-#[derive(Clone, Copy)]
-struct MyStr {
-    start: usize,
-    end: usize,
-}
-
-pub struct Bundle {
-    data: String,
-    values: Vec<CssValue>,
-}
-
-impl Bundle {
-    pub fn new() -> Self {
-        Self {
-            data: "abc123456789".to_string(),
-            values: vec![
-                CssValue::Initial,
-                CssValue::Dimension {
-                    value: 1.32,
-                    unit: MyStr { start: 0, end: 4 },
-                },
-            ],
-        }
-    }
-
-    pub fn string(&self, str: MyStr) -> &str {
-        &self.data[str.start..str.end]
-    }
-}
-
-fn do_something(bundle: &Bundle) {
-    for value in &bundle.values {
-        match value {
-            CssValue::Inherit => {}
-            CssValue::Initial => {}
-            CssValue::Unset => {}
-            CssValue::Dimension { value, unit } => {
-                let unit = bundle.string(*unit);
-                let v = match unit {
-                    "px" => *value,
-                    "rem" => *value * 16.0,
-                    _ => *value,
-                };
-                println!("value {v} {unit}")
-            }
-            _ => {}
-        }
-    }
-}
-
-fn parse_declaration<'i>(pair: Pair<'i, Rule>) -> Vec<Property<'i>> {
-    let mut declaration = vec![];
-    for property in pair.into_inner() {
-        let mut iter = property.into_inner();
-        let name = iter.next().unwrap().as_str();
-        let value = iter.next().unwrap().as_str();
-        declaration.push(Property { name, value })
-    }
-    declaration
-}
-
 pub fn read_css(css: &str) -> Result<MyPresentation, ReaderError> {
     let stylesheet = CssParser::parse(Rule::StyleSheet, css)?
         .next()
@@ -163,7 +86,7 @@ pub fn read_css(css: &str) -> Result<MyPresentation, ReaderError> {
                 for pair in iter {
                     let mut iter = pair.into_inner();
                     let step = iter.next().unwrap().as_str();
-                    let declaration = parse_declaration(iter.next().unwrap());
+                    let declaration = read_declaration(iter.next().unwrap());
                     keyframes.push(MyKeyframe { step, declaration })
                 }
                 animations.push(MyAnimation { name, keyframes })
@@ -194,7 +117,7 @@ pub fn read_css(css: &str) -> Result<MyPresentation, ReaderError> {
                     }
                     selectors.push(MySelector { components })
                 }
-                let declaration = parse_declaration(iter.next().unwrap());
+                let declaration = read_declaration(iter.next().unwrap());
                 styles.push(MyStyle {
                     selectors,
                     declaration,
@@ -206,17 +129,63 @@ pub fn read_css(css: &str) -> Result<MyPresentation, ReaderError> {
     Ok(MyPresentation { styles, animations })
 }
 
+fn read_declaration<'i>(pair: Pair<'i, Rule>) -> Vec<Property<'i>> {
+    let mut declaration = vec![];
+    for property in pair.into_inner() {
+        let mut iter = property.into_inner();
+        let name = iter.next().unwrap().as_span();
+
+        let name = CssProperty::from(name);
+        let v = iter.next().unwrap();
+
+        let value = v.as_str();
+        //println!("VALUE {value} {v:?}");
+        declaration.push(Property { name, value })
+    }
+    declaration
+}
+
+fn read_value<'i>(pair: Pair<'i, Rule>) -> CssValue {
+    match pair.as_rule() {
+        Rule::Rgba => CssValue::Color(read_color(pair)),
+        Rule::Rgb => CssValue::Color(read_color(pair)),
+        Rule::Color => CssValue::Color(read_color(pair)),
+        Rule::Zero => CssValue::Zero,
+        Rule::Percentage => CssValue::Percentage(read_number(pair) / 100.0),
+        Rule::Dimension => CssValue::Dimension(read_dimension(pair)),
+        Rule::Number => CssValue::Number(read_number(pair)),
+        Rule::Var => CssValue::Var(read_variable(pair)),
+        Rule::Raw => match pair.as_str() {
+            "inherit" => CssValue::Inherit,
+            "initial" => CssValue::Initial,
+            "unset" => CssValue::Unset,
+            _ => CssValue::Raw(pair.as_span().into()),
+        },
+        _ => CssValue::Raw(pair.as_span().into()),
+    }
+}
+
+fn read_dimension<'i>(pair: Pair<'i, Rule>) -> CssDimension {
+    unimplemented!()
+}
+
+fn read_variable<'i>(pair: Pair<'i, Rule>) -> CssVariable {
+    unimplemented!()
+}
+
+fn read_number<'i>(pair: Pair<'i, Rule>) -> f32 {
+    unimplemented!()
+}
+
+fn read_color<'i>(pair: Pair<'i, Rule>) -> u32 {
+    unimplemented!()
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::css::reader::{do_something, read_css, Bundle};
+    use crate::css::reader::read_css;
     use crate::styles::parse_presentation;
     use std::time::Instant;
-
-    #[test]
-    pub fn test_something() {
-        let bundle = Bundle::new();
-        do_something(&bundle)
-    }
 
     #[test]
     pub fn test_simple_rule() {

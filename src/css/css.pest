@@ -65,12 +65,36 @@ DeclarationBlock = {
     "{" ~ Declaration* ~ "}"
 }
 
-Declaration = { Property ~ ":" ~ Value ~ ";" }
+Declaration = { Property ~ ":" ~ Values ~ ";" }
 
 Property = @{ (ASCII_ALPHA | "-" | "_")+ }
-
-Value = @{ (!";" ~ ANY)+ }
 
 Ident = _{ (ASCII_ALPHA | ASCII_DIGIT | "-" | "_")+ }
 
 String = @{"\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+
+Values = { Shorthand ~ ("," ~ Shorthand)* }
+
+Shorthand = ${ Value+ }
+
+Value = _{ Rgba | Rgb | Color | Zero | Percentage | Dimension | Number | Var | Raw  }
+
+Rgba = { "rgba(" ~ (ASCII_DIGIT+ ~ ","){3} ~ Number ~ ")" }
+
+Rgb = { "rgb(" ~ (ASCII_DIGIT+ ~ ","){2} ~ ASCII_DIGIT+ ~ ")" }
+
+Color = { "#" ~ ASCII_HEX_DIGIT+ }
+
+Zero = { "0" }
+
+Percentage = { Number ~ "%" }
+
+Dimension = { Number ~ Unit }
+
+Number = { (ASCII_DIGIT | "-" | ".")+ }
+
+Unit = { ASCII_ALPHA+ }
+
+Raw = @{ (!(";" | "," | "}") ~ ANY)+ }
+
+Var = { "var(" ~ Ident ~ ("," ~ Raw)? ~ ")" }
