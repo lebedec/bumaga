@@ -1,3 +1,4 @@
+use log::warn;
 use pest::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,49 +23,99 @@ impl From<Span<'_>> for CssSpan {
     }
 }
 
+#[derive(Debug)]
+pub enum CssValues {
+    One(CssShorthand),
+    Multiple(Vec<CssShorthand>),
+}
+
+impl CssValues {
+    #[inline(always)]
+    pub fn as_one(&self) -> &CssShorthand {
+        match self {
+            CssValues::One(shorthand) => shorthand,
+            CssValues::Multiple(shorthands) => {
+                warn!("takes multiple css values as one");
+                &shorthands[0]
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_single(&self) -> &CssValue {
+        self.as_one().as_single()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum CssShorthand {
+    N1(CssValue),
+    N2(CssValue, CssValue),
+    N3(CssValue, CssValue, CssValue),
+    N4(CssValue, CssValue, CssValue, CssValue),
+    N(Vec<CssValue>),
+}
+
+impl CssShorthand {
+    #[inline(always)]
+    pub fn as_single(&self) -> &CssValue {
+        let value = match self {
+            Self::N1(value) => return value,
+            Self::N2(value, _) => value,
+            Self::N3(value, _, _) => value,
+            Self::N4(value, _, _, _) => value,
+            Self::N(values) => &values[0],
+        };
+        warn!("takes css  shorthand as single value");
+        value
+    }
+}
+
 // Used to optimize frequently used or complex values.
 // At same time provides ease parsing.
+#[derive(Clone, Copy, Debug)]
 pub enum CssValue {
     Inherit,
     Initial,
     Unset,
+    Keyword(CssSpan),
     Zero,
     Percentage(f32),
     Dimension(CssDimension),
     Number(f32),
-    Color(u32),
+    Color([u8; 4]),
     Var(CssVariable),
     Raw(CssSpan),
 }
 
-pub enum Shorthand {
-    Single(CssValue),
-    N2(CssValue, CssValue),
-    N3(CssValue, CssValue, CssValue),
-    N4(CssValue, CssValue, CssValue, CssValue),
-    N5(CssValue, CssValue, CssValue, CssValue, CssValue),
-}
-
-impl Shorthand {
-    pub fn som(self) {
+impl CssValue {
+    #[inline(always)]
+    pub fn as_keyword(&self) -> Option<CssSpan> {
         match self {
-            Shorthand::Single(value) => {}
-            Shorthand::N2(_, _) => {}
-            Shorthand::N3(_, _, _) => {}
-            Shorthand::N4(_, _, _, _) => {}
-            Shorthand::N5(_, _, _, _, _) => {}
+            CssValue::Keyword(span) => Some(*span),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_raw(&self) -> Option<CssSpan> {
+        match self {
+            CssValue::Raw(span) => Some(*span),
+            _ => None,
         }
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct CssDimension {
-    value: f32,
-    unit: CssSpan,
+    pub value: f32,
+    pub unit: CssSpan,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct CssVariable {
-    name: CssSpan,
-    value: CssSpan,
+    pub name: CssSpan,
+    pub fallback: Option<CssSpan>,
 }
 
 /// based on https://www.w3.org/Style/CSS/all-properties.en.html

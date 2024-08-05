@@ -1,8 +1,12 @@
-use crate::css::model::{CssDimension, CssProperty, CssValue, CssVariable};
+use crate::css::model::{
+    CssDimension, CssProperty, CssShorthand, CssValue, CssValues, CssVariable,
+};
+use log::error;
 use pest::error::Error;
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
+use std::num::ParseFloatError;
 
 #[derive(Parser)]
 #[grammar = "css/css.pest"]
@@ -24,13 +28,13 @@ impl From<Error<Rule>> for ReaderError {
 #[derive(Debug)]
 pub struct MyStyle<'i> {
     selectors: Vec<MySelector<'i>>,
-    declaration: Vec<Property<'i>>,
+    declaration: Vec<Property>,
 }
 
 #[derive(Debug)]
-pub struct Property<'i> {
+pub struct Property {
     name: CssProperty,
-    value: &'i str,
+    values: CssValues,
 }
 
 #[derive(Debug)]
@@ -42,7 +46,7 @@ pub struct MyAnimation<'i> {
 #[derive(Debug)]
 pub struct MyKeyframe<'i> {
     step: &'i str,
-    declaration: Vec<Property<'i>>,
+    declaration: Vec<Property>,
 }
 
 #[derive(Debug)]
@@ -129,24 +133,42 @@ pub fn read_css(css: &str) -> Result<MyPresentation, ReaderError> {
     Ok(MyPresentation { styles, animations })
 }
 
-fn read_declaration<'i>(pair: Pair<'i, Rule>) -> Vec<Property<'i>> {
+fn read_declaration(pair: Pair<Rule>) -> Vec<Property> {
     let mut declaration = vec![];
     for property in pair.into_inner() {
         let mut iter = property.into_inner();
-        let name = iter.next().unwrap().as_span();
+        let name = iter.next().unwrap();
+        let values = iter.next().unwrap();
 
-        let name = CssProperty::from(name);
-        let v = iter.next().unwrap();
+        // println!("PROP {} {values:?}", name.as_str());
 
-        let value = v.as_str();
-        //println!("VALUE {value} {v:?}");
-        declaration.push(Property { name, value })
+        let name = CssProperty::from(name.as_span());
+        let mut shorthands: Vec<CssShorthand> = values.into_inner().map(read_shorthand).collect();
+        let values = if shorthands.len() == 1 {
+            CssValues::One(shorthands.remove(0))
+        } else {
+            CssValues::Multiple(shorthands)
+        };
+
+        declaration.push(Property { name, values })
     }
     declaration
 }
 
-fn read_value<'i>(pair: Pair<'i, Rule>) -> CssValue {
+fn read_shorthand(pair: Pair<Rule>) -> CssShorthand {
+    let values: Vec<CssValue> = pair.into_inner().map(read_value).collect();
+    match values.len() {
+        1 => CssShorthand::N1(values[0]),
+        2 => CssShorthand::N2(values[0], values[1]),
+        3 => CssShorthand::N3(values[0], values[1], values[2]),
+        4 => CssShorthand::N4(values[0], values[1], values[2], values[3]),
+        _ => CssShorthand::N(values),
+    }
+}
+
+fn read_value(pair: Pair<Rule>) -> CssValue {
     match pair.as_rule() {
+        Rule::Keyword => CssValue::Keyword(pair.as_span().into()),
         Rule::Rgba => CssValue::Color(read_color(pair)),
         Rule::Rgb => CssValue::Color(read_color(pair)),
         Rule::Color => CssValue::Color(read_color(pair)),
@@ -155,34 +177,75 @@ fn read_value<'i>(pair: Pair<'i, Rule>) -> CssValue {
         Rule::Dimension => CssValue::Dimension(read_dimension(pair)),
         Rule::Number => CssValue::Number(read_number(pair)),
         Rule::Var => CssValue::Var(read_variable(pair)),
+        Rule::Calc => CssValue::Raw(pair.as_span().into()),
         Rule::Raw => match pair.as_str() {
             "inherit" => CssValue::Inherit,
             "initial" => CssValue::Initial,
             "unset" => CssValue::Unset,
-            _ => CssValue::Raw(pair.as_span().into()),
+            _ => {
+                // println!("RAW {}", pair.as_str());
+                CssValue::Raw(pair.as_span().into())
+            }
         },
-        _ => CssValue::Raw(pair.as_span().into()),
+        _ => unreachable!(),
     }
 }
 
-fn read_dimension<'i>(pair: Pair<'i, Rule>) -> CssDimension {
-    unimplemented!()
+fn read_dimension(pair: Pair<Rule>) -> CssDimension {
+    let mut iter = pair.into_inner();
+    let number = iter.next().unwrap();
+    let unit = iter.next().unwrap();
+    CssDimension {
+        value: read_number(number),
+        unit: unit.as_span().into(),
+    }
 }
 
-fn read_variable<'i>(pair: Pair<'i, Rule>) -> CssVariable {
-    unimplemented!()
+fn read_variable(pair: Pair<Rule>) -> CssVariable {
+    let mut iter = pair.into_inner();
+    let name = iter.next().unwrap();
+    let fallback = iter.next();
+    CssVariable {
+        name: name.as_span().into(),
+        fallback: fallback.map(|pair| pair.as_span().into()),
+    }
 }
 
-fn read_number<'i>(pair: Pair<'i, Rule>) -> f32 {
-    unimplemented!()
+fn read_number(pair: Pair<Rule>) -> f32 {
+    let number = pair.as_str();
+    number.parse::<f32>().unwrap_or_else(|error| {
+        error!("unable to parse dimension value {number}, {error}");
+        0.0
+    })
 }
 
-fn read_color<'i>(pair: Pair<'i, Rule>) -> u32 {
-    unimplemented!()
+fn read_color(pair: Pair<Rule>) -> [u8; 4] {
+    let value = pair.as_str();
+    match value.len() {
+        7 if value.starts_with("#") => {
+            let r = u8::from_str_radix(&value[1..3], 16).unwrap_or(0);
+            let g = u8::from_str_radix(&value[3..5], 16).unwrap_or(0);
+            let b = u8::from_str_radix(&value[5..7], 16).unwrap_or(0);
+            let a = 255;
+            [r, g, b, a]
+        }
+        9 if value.starts_with("#") => {
+            let r = u8::from_str_radix(&value[1..3], 16).unwrap_or(0);
+            let g = u8::from_str_radix(&value[3..5], 16).unwrap_or(0);
+            let b = u8::from_str_radix(&value[5..7], 16).unwrap_or(0);
+            let a = u8::from_str_radix(&value[7..9], 16).unwrap_or(0);
+            [r, g, b, a]
+        }
+        _ => {
+            error!("unable to parse color {value}");
+            [255; 4]
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::css::model::{CssShorthand, CssValue};
     use crate::css::reader::read_css;
     use crate::styles::parse_presentation;
     use std::time::Instant;
@@ -191,7 +254,17 @@ mod tests {
     pub fn test_simple_rule() {
         let css = r#"
         .myClass {
-            background: red;
+
+            top: 0 !important;
+            background-color: rgba(0, 0, 0, 0);
+            background: red solid;
+            margin: auto calc(0px - var(--page-padding));
+            right: calc(var(--sidebar-resize-indicator-width) * -1);
+            width: calc(var(--sidebar-resize-indicator-width) - var(--sidebar-resize-indicator-space))
+            position: -webkit-sticky;
+            transition: color 0.5s;
+            margin-block-end: -1px;
+
         }
         #myId {
             background: red;
@@ -240,7 +313,19 @@ mod tests {
         }
 
         "#;
+
+        println!("CssShorthand {}", std::mem::size_of::<CssShorthand>());
+        println!("CssValue {}", std::mem::size_of::<CssValue>());
+
         let present = read_css(css).expect("must be valid");
+
+        let v = present.styles[0].declaration[0]
+            .values
+            .as_single()
+            .as_keyword()
+            .map(|span| span.as_str(css));
+        println!("BACKGROUND: {:?}", v);
+
         println!("{:?}", present);
         assert_eq!(11, present.styles.len());
         assert_eq!(1, present.animations.len())
@@ -259,5 +344,11 @@ mod tests {
         let preset = read_css(css).expect("must be valid");
         println!("pest CSS (wip): {:?}", t.elapsed()); // ~ 5ms
         assert_eq!(90, preset.styles.len());
+
+        for rul in preset.styles {
+            for pr in rul.declaration {
+                // println!("{:?}: {:?}", pr.name, pr.values.as_single())
+            }
+        }
     }
 }

@@ -67,7 +67,7 @@ DeclarationBlock = {
 
 Declaration = { Property ~ ":" ~ Values ~ ";" }
 
-Property = @{ (ASCII_ALPHA | "-" | "_")+ }
+Property = { (ASCII_ALPHA | "-" | "_")+ }
 
 Ident = _{ (ASCII_ALPHA | ASCII_DIGIT | "-" | "_")+ }
 
@@ -75,13 +75,13 @@ String = @{"\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 
 Values = { Shorthand ~ ("," ~ Shorthand)* }
 
-Shorthand = ${ Value+ }
+Shorthand = ${ Value ~ (WHITESPACE ~ Value)* }
 
-Value = _{ Rgba | Rgb | Color | Zero | Percentage | Dimension | Number | Var | Raw  }
+Value = _{  Var | Calc |  Rgba | Rgb | Color |  Keyword | Percentage | Dimension | Number | Zero | Raw }
 
-Rgba = { "rgba(" ~ (ASCII_DIGIT+ ~ ","){3} ~ Number ~ ")" }
+Rgba = @{ "rgba(" ~ (ASCII_DIGIT+ ~ "," ~ WHITESPACE*){3} ~ Number ~ ")" }
 
-Rgb = { "rgb(" ~ (ASCII_DIGIT+ ~ ","){2} ~ ASCII_DIGIT+ ~ ")" }
+Rgb = @{ "rgb(" ~ (ASCII_DIGIT+ ~ "," ~ WHITESPACE*){2} ~ ASCII_DIGIT+ ~ ")" }
 
 Color = { "#" ~ ASCII_HEX_DIGIT+ }
 
@@ -95,6 +95,16 @@ Number = { (ASCII_DIGIT | "-" | ".")+ }
 
 Unit = { ASCII_ALPHA+ }
 
-Raw = @{ (!(";" | "," | "}") ~ ANY)+ }
+Var = { "var(" ~ Variable ~ ("," ~ Fallback)? ~ ")" }
 
-Var = { "var(" ~ Ident ~ ("," ~ Raw)? ~ ")" }
+Variable = { Ident }
+
+Fallback = { Raw }
+
+Keyword = { "-"? ~ "-"? ~ (ASCII_ALPHA | "-" | "_")+ }
+
+Calc = @{ "calc(" ~ (!")" ~ ANY)* ~ ")"*  }
+
+Operator = { "+" | "-" | "*" | "/" }
+
+Raw = { (!(";" | "," | "}") ~ ANY)+ }
