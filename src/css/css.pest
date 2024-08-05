@@ -42,8 +42,10 @@ Type = { Ident }
 
 Attribute = {
     "[" ~ Ident ~ "]" |
-    "[" ~ Ident ~ Matcher ~ (String | Ident) ~ Modifier? ~ "]"
+    "[" ~ Ident ~ Matcher ~ "\""? ~ Search ~ "\""? ~ Modifier? ~ "]"
 }
+
+Search = @{ (!"\"" ~ ANY)* }
 
 Matcher = { ("~" | "|" | "^" | "$" | "*")? ~ "=" }
 
@@ -56,8 +58,6 @@ PseudoClass = {
 
 PseudoElement = { "::" ~ Ident }
 
-Arguments = @{ (!")" ~ ASCII_ALPHA)* }
-
 // properties
 
 DeclarationBlock = {
@@ -69,9 +69,7 @@ Declaration = { Property ~ ":" ~ Values ~ ";" }
 
 Property = { (ASCII_ALPHA | "-" | "_")+ }
 
-Ident = _{ (ASCII_ALPHA | ASCII_DIGIT | "-" | "_")+ }
-
-String = @{"\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+Ident = { (ASCII_ALPHA | ASCII_DIGIT | "-" | "_")+ }
 
 Values = { Shorthand ~ ("," ~ Shorthand)* }
 
@@ -79,9 +77,9 @@ Shorthand = ${ Value ~ (WHITESPACE ~ Value)* }
 
 Value = _{  Var | Calc |  Rgba | Rgb | Color |  Keyword | Percentage | Dimension | Number | Zero | Raw }
 
-Rgba = @{ "rgba(" ~ (ASCII_DIGIT+ ~ "," ~ WHITESPACE*){3} ~ Number ~ ")" }
+Rgba = { "rgba(" ~ (Number+ ~ "," ~ WHITESPACE*){3} ~ Number ~ ")" }
 
-Rgb = @{ "rgb(" ~ (ASCII_DIGIT+ ~ "," ~ WHITESPACE*){2} ~ ASCII_DIGIT+ ~ ")" }
+Rgb = { "rgb(" ~ (Number+ ~ "," ~ WHITESPACE*){2} ~ Number+ ~ ")" }
 
 Color = { "#" ~ ASCII_HEX_DIGIT+ }
 
@@ -95,9 +93,7 @@ Number = { (ASCII_DIGIT | "-" | ".")+ }
 
 Unit = { ASCII_ALPHA+ }
 
-Var = { "var(" ~ Variable ~ ("," ~ Fallback)? ~ ")" }
-
-Variable = { Ident }
+Var = { "var(" ~ Ident ~ ("," ~ Fallback)? ~ ")" }
 
 Fallback = { Raw }
 

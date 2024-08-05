@@ -6,6 +6,7 @@ mod component;
 mod css;
 mod html;
 mod input;
+mod math;
 mod models;
 mod rendering;
 mod state;

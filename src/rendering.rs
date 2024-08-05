@@ -3,17 +3,16 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem;
 use std::process::id;
 
-use lightningcss::values::color::{CssColor, RGBA};
 use log::error;
 use serde_json::{Map, Value};
 use taffy::{AlignItems, Dimension, Display, JustifyContent, NodeId, Size, Style, TaffyTree};
 
-use crate::animation::apply_animation_rules;
-use crate::html::{match_rule, Dom};
-use crate::models::{ElementId, Object, Presentation, SizeContext};
+use crate::css::match_rule_new;
+use crate::html::Dom;
+use crate::models::{ElementId, Object, SizeContext};
 use crate::state::State;
 use crate::styles::{
-    apply_element_rules, apply_layout_rules, create_element, default_layout_style, inherit,
+    apply_element_rules2, apply_layout_rules2, create_element, default_layout_style, inherit,
 };
 use crate::{Call, Component, Element, Input, ValueExtensions};
 
@@ -134,26 +133,30 @@ impl Component {
             }
             _ => {}
         }
-        for ruleset in &self.presentation.content.rules {
-            if match_rule(&ruleset.style, current_id, layout) {
-                let props = &ruleset.style.declarations.declarations;
-                apply_layout_rules(props, &mut layout_style, context);
-                apply_element_rules(props, &parent, &mut element, context, &self.resources);
-                apply_animation_rules(
-                    props,
-                    &mut element,
-                    &mut self.state.active_animators,
-                    &mut self.state.animators,
-                    &self.presentation.content.animations,
-                );
+
+        let css = &self.css.content.source;
+        for style in &self.css.content.styles {
+            if match_rule_new(css, &style, current_id, layout) {
+                apply_layout_rules2(css, style, &mut layout_style, context);
+                apply_element_rules2(css, style, &parent, &mut element, context, &self.resources);
+                //let props = &ruleset.style.declarations.declarations;
+                //apply_layout_rules(props, &mut layout_style, context);
+                //apply_element_rules(props, &parent, &mut element, context, &self.resources);
+                // apply_animation_rules(
+                //     props,
+                //     &mut element,
+                //     &mut self.state.active_animators,
+                //     &mut self.state.animators,
+                //     &self.presentation_old.content.animations,
+                // );
             }
         }
-        let animators = self.state.load_animators_mut(element_id);
-        for animator in animators {
-            let props = animator.update(input.time.as_secs_f32());
-            apply_layout_rules(&props, &mut layout_style, context);
-            apply_element_rules(&props, &parent, &mut element, context, &self.resources);
-        }
+        // let animators = self.state.load_animators_mut(element_id);
+        // for animator in animators {
+        //     let props = animator.update(input.time.as_secs_f32());
+        //     //apply_layout_rules(&props, &mut layout_style, context);
+        //     //apply_element_rules(&props, &parent, &mut element, context, &self.resources);
+        // }
 
         self.render_output_bindings(&mut element, globals);
 

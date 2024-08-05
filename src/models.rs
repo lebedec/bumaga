@@ -2,11 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
-use lightningcss::rules::style::StyleRule;
-
-use crate::animation::Animation;
 use crate::html::Dom;
-use crate::Element;
 
 #[derive(Clone, Copy)]
 pub struct SizeContext {
@@ -81,13 +77,4 @@ impl Object {
             pseudo_classes: Default::default(),
         }
     }
-}
-
-pub struct Ruleset<'i> {
-    pub style: StyleRule<'i>,
-}
-
-pub struct Presentation {
-    pub rules: Vec<Ruleset<'static>>,
-    pub animations: HashMap<String, Rc<Animation>>,
 }

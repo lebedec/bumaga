@@ -12,19 +12,20 @@ use taffy::{
     TraversePartialTree,
 };
 
+use crate::css::read_css_unchecked;
 use crate::html::{read_html_unchecked, Dom};
 use crate::input::FakeFonts;
 use crate::models::{ElementId, Object, SizeContext};
 use crate::state::State;
-use crate::styles::{create_element, parse_presentation};
+use crate::styles::create_element;
 use crate::{Component, Element, Fonts, Input, Keys, Output, Source, LEFT_MOUSE_BUTTON};
 
 impl Component {
     pub fn update(&mut self, mut input: Input) -> Output {
-        if let Some(path) = &self.presentation.path {
+        if let Some(path) = &self.css.path {
             if let Ok(modified) = fs::metadata(path).and_then(|meta| meta.modified()) {
-                if modified > self.presentation.modified {
-                    self.presentation = Source::from_file(parse_presentation, path);
+                if modified > self.css.modified {
+                    self.css = Source::from_file(read_css_unchecked, path);
                     self.reset_state();
                 }
             }

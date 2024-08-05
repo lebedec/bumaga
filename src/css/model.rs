@@ -12,6 +12,11 @@ impl CssSpan {
     pub fn as_str(self, data: &str) -> &str {
         &data[self.start..self.end]
     }
+
+    #[inline(always)]
+    pub fn empty() -> Self {
+        Self { start: 0, end: 0 }
+    }
 }
 
 impl From<Span<'_>> for CssSpan {
@@ -31,7 +36,7 @@ pub enum CssValues {
 
 impl CssValues {
     #[inline(always)]
-    pub fn as_one(&self) -> &CssShorthand {
+    pub fn as_shorthand(&self) -> &CssShorthand {
         match self {
             CssValues::One(shorthand) => shorthand,
             CssValues::Multiple(shorthands) => {
@@ -42,8 +47,8 @@ impl CssValues {
     }
 
     #[inline(always)]
-    pub fn as_single(&self) -> &CssValue {
-        self.as_one().as_single()
+    pub fn as_value(&self) -> &CssValue {
+        self.as_shorthand().as_value()
     }
 }
 
@@ -58,7 +63,7 @@ pub enum CssShorthand {
 
 impl CssShorthand {
     #[inline(always)]
-    pub fn as_single(&self) -> &CssValue {
+    pub fn as_value(&self) -> &CssValue {
         let value = match self {
             Self::N1(value) => return value,
             Self::N2(value, _) => value,

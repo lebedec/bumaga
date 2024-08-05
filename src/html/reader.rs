@@ -116,7 +116,6 @@ fn parse_attrs(pair: Pair<Rule>) -> HashMap<String, String> {
 mod tests {
     use crate::html::reader::read_html;
     use crate::html::Dom;
-    use crate::styles::parse_presentation;
     use std::collections::HashMap;
     use std::time::Instant;
 

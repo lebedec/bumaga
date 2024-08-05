@@ -2,19 +2,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-pub use lightningcss::properties::background::{
-    BackgroundAttachment, BackgroundClip, BackgroundOrigin, BackgroundPosition, BackgroundRepeat,
-    BackgroundSize,
-};
-pub use lightningcss::properties::border::LineStyle;
-pub use lightningcss::properties::font::{FontStretchKeyword, FontStyle};
-pub use lightningcss::properties::text::OverflowWrap;
-use lightningcss::properties::transform::Matrix3d;
 use serde_json::Value;
 pub use taffy::Layout;
 
+use crate::css::Css;
 use crate::html::Dom;
-use crate::models::{ElementId, Object, Presentation};
+use crate::math::Mat4;
+use crate::models::{ElementId, Object};
 use crate::state::State;
 use crate::value;
 pub use value::ValueExtensions;
@@ -22,7 +16,7 @@ pub use value::ValueExtensions;
 /// Components are reusable parts of UI that define views,
 /// handle user input and store UI state between interactions.
 pub struct Component {
-    pub(crate) presentation: Source<Presentation>,
+    pub(crate) css: Source<Css>,
     pub(crate) html: Source<Dom>,
     pub(crate) state: State,
     pub(crate) resources: String,
@@ -95,7 +89,7 @@ pub struct Element {
     pub text_style: TextStyle,
     pub listeners: HashMap<String, Call>,
     pub opacity: f32,
-    pub transform: Option<Matrix3d<f32>>,
+    pub transform: Option<Mat4>,
 }
 
 pub type Rgba = [u8; 4];
@@ -111,7 +105,7 @@ pub struct Borders {
 #[derive(Clone)]
 pub struct MyBorder {
     pub width: f32,
-    pub style: LineStyle,
+    // pub style: LineStyle,
     pub color: Rgba,
 }
 
@@ -121,18 +115,18 @@ pub struct Background {
     pub image: Option<String>,
     /// The background color.
     pub color: Rgba,
-    /// The background position.
-    pub position: BackgroundPosition,
-    /// How the background image should repeat.
-    pub repeat: BackgroundRepeat,
-    /// The size of the background image.
-    pub size: BackgroundSize,
-    /// The background attachment.
-    pub attachment: BackgroundAttachment,
-    /// The background origin.
-    pub origin: BackgroundOrigin,
-    /// How the background should be clipped.
-    pub clip: BackgroundClip,
+    // The background position.
+    // pub position: BackgroundPosition,
+    // /// How the background image should repeat.
+    // pub repeat: BackgroundRepeat,
+    // /// The size of the background image.
+    // pub size: BackgroundSize,
+    // /// The background attachment.
+    // pub attachment: BackgroundAttachment,
+    // /// The background origin.
+    // pub origin: BackgroundOrigin,
+    // /// How the background should be clipped.
+    // pub clip: BackgroundClip,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -150,16 +144,16 @@ pub struct TextStyle {
     pub font_family: String,
     /// The font size.
     pub font_size: f32,
-    /// The font style.
-    pub font_style: FontStyle,
+    // The font style.
+    // pub font_style: FontStyle,
     /// The font weight.
     pub font_weight: u16,
-    /// The font stretch.
-    pub font_stretch: FontStretchKeyword,
+    // The font stretch.
+    // pub font_stretch: FontStretchKeyword,
     /// The line height.
     pub line_height: f32,
-    /// The text overflow wrap.
-    pub wrap: OverflowWrap,
+    // The text overflow wrap.
+    // pub wrap: OverflowWrap,
 }
 
 pub trait Fonts {

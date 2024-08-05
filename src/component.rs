@@ -14,23 +14,20 @@ use taffy::{
 };
 
 use crate::api::{Call, Component, Input, Output};
+use crate::css::{read_css, read_css_unchecked, Css};
 use crate::html::{read_html, read_html_unchecked, Dom};
 use crate::input::FakeFonts;
-use crate::models::{ElementId, Presentation, SizeContext};
+use crate::models::{ElementId, SizeContext};
 use crate::rendering::as_string;
 use crate::state::State;
-use crate::styles::{create_element, parse_presentation};
+use crate::styles::create_element;
 use crate::{Element, Fonts, Keys, Source, LEFT_MOUSE_BUTTON};
 
 impl Component {
     pub fn watch_files<P: AsRef<Path>>(html_path: P, css_path: P, resources: P) -> Self {
-        let presentation = Source::from_file(parse_presentation, css_path);
+        let css = Source::from_file(read_css_unchecked, css_path);
         let html = Source::from_file(read_html_unchecked, html_path);
-        Self::compile_component(
-            html,
-            presentation,
-            &resources.as_ref().display().to_string(),
-        )
+        Self::compile_component(html, css, &resources.as_ref().display().to_string())
     }
 
     pub fn compile_files<P: AsRef<Path>>(html: P, css: P, resources: P) -> Self {
@@ -43,20 +40,16 @@ impl Component {
     }
 
     pub fn compile(html: &str, css: &str, resources: &str) -> Component {
-        let presentation = Source::from_content(parse_presentation(css));
+        let css = Source::from_content(read_css(css).expect("must be read"));
         let html = Source::from_content(read_html(html).expect("must be read"));
 
-        Self::compile_component(html, presentation, resources)
+        Self::compile_component(html, css, resources)
     }
 
-    pub fn compile_component(
-        html: Source<Dom>,
-        presentation: Source<Presentation>,
-        resources: &str,
-    ) -> Component {
+    pub fn compile_component(html: Source<Dom>, css: Source<Css>, resources: &str) -> Component {
         let state = State::new();
         Self {
-            presentation,
+            css,
             html,
             state,
             resources: resources.to_string(),

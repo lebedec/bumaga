@@ -11,9 +11,8 @@ You should use it if these features valuable to you:
 + CSS animations
 
 The development of this library possible thanks to work of Rust enthusiasts:
-[servo](https://github.com/servo/servo),
-[taffy](https://github.com/DioxusLabs/taffy),
-[lightningcss](https://github.com/parcel-bundler/lightningcss), other 🔥 🚀
+[pest](https://github.com/pest-parser/pest),
+[taffy](https://github.com/DioxusLabs/taffy), other 🔥 🚀
 
 ## What it is not
 

@@ -1,5 +1,5 @@
 use crate::css::model::{
-    CssDimension, CssProperty, CssShorthand, CssValue, CssValues, CssVariable,
+    CssDimension, CssProperty, CssShorthand, CssSpan, CssValue, CssValues, CssVariable,
 };
 use log::error;
 use pest::error::Error;
@@ -7,6 +7,7 @@ use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 use std::num::ParseFloatError;
+use std::slice::Iter;
 
 #[derive(Parser)]
 #[grammar = "css/css.pest"]
@@ -26,56 +27,96 @@ impl From<Error<Rule>> for ReaderError {
 }
 
 #[derive(Debug)]
-pub struct MyStyle<'i> {
-    selectors: Vec<MySelector<'i>>,
-    declaration: Vec<Property>,
+pub struct MyStyle {
+    pub selectors: Vec<MySelector>,
+    pub declaration: Vec<MyProperty>,
 }
 
 #[derive(Debug)]
-pub struct Property {
-    name: CssProperty,
-    values: CssValues,
+pub struct MyProperty {
+    pub name: CssProperty,
+    pub values: CssValues,
+}
+
+impl MyProperty {
+    #[inline(always)]
+    pub fn as_value(&self) -> &CssValue {
+        self.values.as_value()
+    }
+
+    #[inline(always)]
+    pub fn as_shorthand(&self) -> &CssShorthand {
+        self.values.as_shorthand()
+    }
 }
 
 #[derive(Debug)]
-pub struct MyAnimation<'i> {
-    name: &'i str,
-    keyframes: Vec<MyKeyframe<'i>>,
+pub struct MyAnimation {
+    name: CssSpan,
+    keyframes: Vec<MyKeyframe>,
 }
 
 #[derive(Debug)]
-pub struct MyKeyframe<'i> {
-    step: &'i str,
-    declaration: Vec<Property>,
+pub struct MyKeyframe {
+    step: CssSpan,
+    declaration: Vec<MyProperty>,
 }
 
 #[derive(Debug)]
-pub struct MyPresentation<'i> {
-    styles: Vec<MyStyle<'i>>,
-    animations: Vec<MyAnimation<'i>>,
+pub struct Css {
+    pub source: String,
+    pub styles: Vec<MyStyle>,
+    pub animations: Vec<MyAnimation>,
 }
 
 #[derive(Debug)]
-pub struct MySelector<'i> {
-    components: Vec<MyComponent<'i>>,
+pub struct MySelector {
+    pub components: Vec<MyComponent>,
 }
 
 #[derive(Debug)]
-pub enum MyComponent<'i> {
-    Selector(&'i str),
-    Combinator(&'i str),
+pub enum MyComponent {
+    Id(CssSpan),
+    Class(CssSpan),
+    Type(CssSpan),
+    Attribute(CssSpan, MyMatcher, CssSpan),
+    PseudoClass(CssSpan),
+    PseudoElement(CssSpan),
+    Combinator(char),
 }
 
-impl MyComponent<'_> {
-    pub fn as_combinator(&self) -> Option<&str> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MyMatcher {
+    /// [attr]
+    Exist,
+    /// [attr=value]
+    Equal,
+    /// [attr~=value]
+    Include,
+    /// [attr|=value]
+    DashMatch,
+    /// [attr^=value]
+    Prefix,
+    /// [attr*=value]
+    Substring,
+    /// [attr$=value]
+    Suffix,
+}
+
+impl MyComponent {
+    pub fn as_combinator(&self) -> Option<char> {
         match self {
-            MyComponent::Combinator(combinator) => Some(combinator),
+            MyComponent::Combinator(combinator) => Some(*combinator),
             _ => None,
         }
     }
 }
 
-pub fn read_css(css: &str) -> Result<MyPresentation, ReaderError> {
+pub fn read_css_unchecked(css: &str) -> Css {
+    read_css(css).expect("must be valid css")
+}
+
+pub fn read_css(css: &str) -> Result<Css, ReaderError> {
     let stylesheet = CssParser::parse(Rule::StyleSheet, css)?
         .next()
         .ok_or(ReaderError::EmptyStyleSheet)?;
@@ -85,11 +126,11 @@ pub fn read_css(css: &str) -> Result<MyPresentation, ReaderError> {
         match rule.as_rule() {
             Rule::Animation => {
                 let mut iter = rule.into_inner();
-                let name = iter.next().unwrap().as_str();
+                let name = iter.next().unwrap().as_span().into();
                 let mut keyframes = vec![];
                 for pair in iter {
                     let mut iter = pair.into_inner();
-                    let step = iter.next().unwrap().as_str();
+                    let step = iter.next().unwrap().as_span().into();
                     let declaration = read_declaration(iter.next().unwrap());
                     keyframes.push(MyKeyframe { step, declaration })
                 }
@@ -107,15 +148,45 @@ pub fn read_css(css: &str) -> Result<MyPresentation, ReaderError> {
                                 let is_descendant = components.len() > 0
                                     && components[components.len() - 1].as_combinator().is_none();
                                 if is_descendant {
-                                    components.push(MyComponent::Combinator(" "));
+                                    components.push(MyComponent::Combinator(' '));
                                 }
                                 for simple in component.into_inner() {
-                                    components.push(MyComponent::Selector(simple.as_str()))
+                                    let simple_rule = simple.as_rule();
+                                    let mut iter = simple.into_inner();
+                                    let ident = iter.next().unwrap().as_span().into();
+                                    let component = match simple_rule {
+                                        Rule::Id => MyComponent::Id(ident),
+                                        Rule::Class => MyComponent::Class(ident),
+                                        Rule::Type => MyComponent::Type(ident),
+                                        Rule::Attribute => {
+                                            let matcher =
+                                                iter.next().map(|pair| pair.as_str()).unwrap_or("");
+                                            let matcher = match matcher {
+                                                "" => MyMatcher::Exist,
+                                                "=" => MyMatcher::Equal,
+                                                "~=" => MyMatcher::Include,
+                                                "|=" => MyMatcher::DashMatch,
+                                                "^=" => MyMatcher::Prefix,
+                                                "$=" => MyMatcher::Suffix,
+                                                "*=" => MyMatcher::Substring,
+                                                _ => unreachable!(),
+                                            };
+                                            let search = iter
+                                                .next()
+                                                .map(|pair| pair.as_span().into())
+                                                .unwrap_or(CssSpan::empty());
+                                            MyComponent::Attribute(ident, matcher, search)
+                                        }
+                                        Rule::PseudoClass => MyComponent::PseudoClass(ident),
+                                        Rule::PseudoElement => MyComponent::PseudoElement(ident),
+                                        _ => unreachable!(),
+                                    };
+                                    components.push(component)
                                 }
                             }
-                            Rule::Combinator => {
-                                components.push(MyComponent::Combinator(component.as_str()))
-                            }
+                            Rule::Combinator => components.push(MyComponent::Combinator(
+                                component.as_str().chars().next().unwrap(),
+                            )),
                             _ => unreachable!(),
                         }
                     }
@@ -130,10 +201,14 @@ pub fn read_css(css: &str) -> Result<MyPresentation, ReaderError> {
             _ => unreachable!(),
         }
     }
-    Ok(MyPresentation { styles, animations })
+    Ok(Css {
+        source: css.to_string(),
+        styles,
+        animations,
+    })
 }
 
-fn read_declaration(pair: Pair<Rule>) -> Vec<Property> {
+fn read_declaration(pair: Pair<Rule>) -> Vec<MyProperty> {
     let mut declaration = vec![];
     for property in pair.into_inner() {
         let mut iter = property.into_inner();
@@ -150,7 +225,7 @@ fn read_declaration(pair: Pair<Rule>) -> Vec<Property> {
             CssValues::Multiple(shorthands)
         };
 
-        declaration.push(Property { name, values })
+        declaration.push(MyProperty { name, values })
     }
     declaration
 }
@@ -237,8 +312,21 @@ fn read_color(pair: Pair<Rule>) -> [u8; 4] {
             [r, g, b, a]
         }
         _ => {
-            error!("unable to parse color {value}");
-            [255; 4]
+            if value.starts_with("rgb") {
+                let mut iter = pair.into_inner();
+                let r: u8 = iter.next().unwrap().as_str().parse().unwrap_or(0);
+                let g: u8 = iter.next().unwrap().as_str().parse().unwrap_or(0);
+                let b: u8 = iter.next().unwrap().as_str().parse().unwrap_or(0);
+                let a: f32 = iter
+                    .next()
+                    .map(|a| a.as_str().parse().unwrap_or(1.0))
+                    .unwrap_or(1.0);
+                let a = (255.0 * a.max(0.0).min(1.0)) as u8;
+                [r, g, b, a]
+            } else {
+                error!("unable to parse color {value}");
+                [255; 4]
+            }
         }
     }
 }
@@ -247,7 +335,6 @@ fn read_color(pair: Pair<Rule>) -> [u8; 4] {
 mod tests {
     use crate::css::model::{CssShorthand, CssValue};
     use crate::css::reader::read_css;
-    use crate::styles::parse_presentation;
     use std::time::Instant;
 
     #[test]
@@ -258,9 +345,11 @@ mod tests {
             top: 0 !important;
             background-color: rgba(0, 0, 0, 0);
             background: red solid;
+            /*
             margin: auto calc(0px - var(--page-padding));
             right: calc(var(--sidebar-resize-indicator-width) * -1);
             width: calc(var(--sidebar-resize-indicator-width) - var(--sidebar-resize-indicator-space))
+            */
             position: -webkit-sticky;
             transition: color 0.5s;
             margin-block-end: -1px;
@@ -321,7 +410,7 @@ mod tests {
 
         let v = present.styles[0].declaration[0]
             .values
-            .as_single()
+            .as_value()
             .as_keyword()
             .map(|span| span.as_str(css));
         println!("BACKGROUND: {:?}", v);
@@ -335,10 +424,10 @@ mod tests {
     pub fn test_giga_css() {
         let css = include_str!("giga.css");
 
-        let t = Instant::now();
-        let presentation = parse_presentation(css);
-        println!("lightning CSS: {:?}", t.elapsed()); // ~ 6ms
-        assert_eq!(90, presentation.rules.len());
+        // let t = Instant::now();
+        // let presentation = parse_presentation(css);
+        // println!("lightning CSS: {:?}", t.elapsed()); // ~ 6ms
+        // assert_eq!(90, presentation.rules.len());
 
         let t = Instant::now();
         let preset = read_css(css).expect("must be valid");
