@@ -72,7 +72,6 @@ input {
 input:focus {
     border: 2px solid white;
     animation: 2s linear infinite WidthAnimation;
-    /*animation-name: WidthAnimation;*/
 }
 
 @keyframes HeightAnimation {
@@ -97,7 +96,7 @@ input:focus {
     }
     50% {
         width: 4rem;
-        color: #00ff00;
+        color: #ff00bf;
     }
     100% {
         width: 3rem;

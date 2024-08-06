@@ -6,6 +6,7 @@ use pest::error::Error;
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
+use std::collections::HashMap;
 use std::num::ParseFloatError;
 use std::slice::Iter;
 
@@ -36,7 +37,6 @@ pub struct MyStyle {
 pub struct MyProperty {
     pub name: CssProperty,
     pub values: CssValues,
-    pub has_vars: bool,
 }
 
 impl MyProperty {
@@ -53,21 +53,20 @@ impl MyProperty {
 
 #[derive(Debug)]
 pub struct MyAnimation {
-    name: CssSpan,
-    keyframes: Vec<MyKeyframe>,
+    pub keyframes: Vec<MyKeyframe>,
 }
 
 #[derive(Debug)]
 pub struct MyKeyframe {
-    step: CssSpan,
-    declaration: Vec<MyProperty>,
+    pub step: f32,
+    pub declaration: Vec<MyProperty>,
 }
 
 #[derive(Debug)]
 pub struct Css {
     pub source: String,
     pub styles: Vec<MyStyle>,
-    pub animations: Vec<MyAnimation>,
+    pub animations: HashMap<String, MyAnimation>,
 }
 
 #[derive(Debug)]
@@ -124,20 +123,32 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
         .next()
         .ok_or(ReaderError::EmptyStyleSheet)?;
     let mut styles = vec![];
-    let mut animations = vec![];
+    let mut animations = HashMap::new();
     for rule in stylesheet.into_inner() {
         match rule.as_rule() {
             Rule::Animation => {
                 let mut iter = rule.into_inner();
-                let name = iter.next().unwrap().as_span().into();
+                let name = iter.next().unwrap();
                 let mut keyframes = vec![];
                 for pair in iter {
                     let mut iter = pair.into_inner();
-                    let step = iter.next().unwrap().as_span().into();
+                    let step = iter.next().unwrap();
+                    let step = match step.as_rule() {
+                        Rule::Percentage => read_number(step.into_inner().next().unwrap()) / 100.0,
+                        Rule::Keyword => match step.as_str() {
+                            "from" => 0.0,
+                            "to" => 1.0,
+                            keyword => {
+                                error!("incorrect keyframe step {keyword}");
+                                0.0
+                            }
+                        },
+                        _ => unreachable!(),
+                    };
                     let declaration = read_declaration(iter.next().unwrap());
                     keyframes.push(MyKeyframe { step, declaration })
                 }
-                animations.push(MyAnimation { name, keyframes })
+                animations.insert(name.as_str().to_string(), MyAnimation { keyframes });
             }
             Rule::Style => {
                 let mut iter = rule.into_inner();
@@ -234,11 +245,7 @@ fn read_declaration(pair: Pair<Rule>) -> Vec<MyProperty> {
             CssValues::Multiple(shorthands)
         };
 
-        declaration.push(MyProperty {
-            name,
-            values,
-            has_vars,
-        })
+        declaration.push(MyProperty { name, values })
     }
     declaration
 }
@@ -261,6 +268,7 @@ fn read_value(pair: Pair<Rule>) -> CssValue {
         Rule::Rgb => CssValue::Color(read_color(pair)),
         Rule::Color => CssValue::Color(read_color(pair)),
         Rule::Zero => CssValue::Zero,
+        Rule::Time => CssValue::Time(read_seconds(pair)),
         Rule::Percentage => CssValue::Percentage(read_number(pair) / 100.0),
         Rule::Dimension => CssValue::Dimension(read_dimension(pair)),
         Rule::Number => CssValue::Number(read_number(pair)),
@@ -289,6 +297,17 @@ fn read_dimension(pair: Pair<Rule>) -> CssDimension {
     }
 }
 
+fn read_seconds(pair: Pair<Rule>) -> f32 {
+    let mut iter = pair.into_inner();
+    let value = read_number(iter.next().unwrap());
+    let unit = iter.next().unwrap().as_str();
+    match unit {
+        "s" => value,
+        "ms" => value / 1000.0,
+        _ => unreachable!(),
+    }
+}
+
 fn read_variable(pair: Pair<Rule>) -> CssVariable {
     let mut iter = pair.into_inner();
     let name = iter.next().unwrap();
@@ -302,7 +321,7 @@ fn read_variable(pair: Pair<Rule>) -> CssVariable {
 fn read_number(pair: Pair<Rule>) -> f32 {
     let number = pair.as_str();
     number.parse::<f32>().unwrap_or_else(|error| {
-        error!("unable to parse dimension value {number}, {error}");
+        error!("unable to parse number value {number}, {error}");
         0.0
     })
 }

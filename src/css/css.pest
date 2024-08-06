@@ -18,7 +18,7 @@ Keyframes = _{ Keyframe* }
 
 Keyframe = { Step ~ DeclarationBlock }
 
-Step = @{ (!"{" ~ ANY)+ }
+Step = _{ Keyword | Percentage  }
 
 // style
 
@@ -79,7 +79,7 @@ Values = { Shorthand ~ ("," ~ Shorthand)* }
 
 Shorthand = ${ Value ~ (WHITESPACE ~ Value)* }
 
-Value = _{  Var | Calc |  Rgba | Rgb | Color |  Keyword | Percentage | Dimension | Number | Zero | Raw }
+Value = _{  Var | Calc |  Rgba | Rgb | Color |  Keyword | Percentage | Time | Dimension | Number | Zero | Raw }
 
 Rgba = { "rgba(" ~ (Number+ ~ "," ~ WHITESPACE*){3} ~ Number ~ ")" }
 
@@ -90,6 +90,10 @@ Color = { "#" ~ ASCII_HEX_DIGIT+ }
 Zero = { "0" }
 
 Percentage = { Number ~ "%" }
+
+Time = { Number ~ TimeUnit }
+
+TimeUnit = { "ms" | "s" }
 
 Dimension = { Number ~ Unit }
 

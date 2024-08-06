@@ -58,7 +58,7 @@ impl Component {
         let html = self.html.content.clone();
         // TODO: determine body element
         let body = html.children.last().cloned().expect("body must be found");
-        self.state.active_animators = take(&mut self.state.animators);
+        // self.state.active_animators = take(&mut self.state.animators);
         self.render_tree(root, body, globals, input, context, &mut rendering);
         rendering.compute_layout_with_measure(
             root,
@@ -154,19 +154,15 @@ impl Component {
 
         let mut current = template.clone();
         for (key, pipe) in &template.attrs {
-            if key.starts_with("data-") {
+            if key.starts_with("data-") || key.starts_with("value") {
                 let string = get_object_value(&pipe, globals, input).as_string();
                 current.attrs.insert(key.clone(), string.into());
             }
         }
 
-        let object = Object {
-            tag: current.tag.to_string(),
-            attrs: current.attrs.clone(),
-            text: None,
-            pseudo_classes: self.state.load_pseudo_classes(element_id).clone(),
-        };
+        let object = Object::element(&current);
         let mut element = create_element(element_id, object);
+        self.state.restore(&mut element);
 
         // APPLY STYLES
         let mut layout = default_layout_style();
@@ -184,7 +180,7 @@ impl Component {
         }
 
         let mut cascade = Cascade::new(&self.css.content, sizes, &self.resources);
-        cascade.apply_styles(current_id, tree, parent, &mut layout, &mut element);
+        cascade.apply_styles(input, current_id, tree, parent, &mut layout, &mut element);
 
         self.render_output_bindings(&mut element, globals);
 
@@ -199,7 +195,8 @@ impl Component {
                 self.render_img(current_id, &element, tree);
             }
             "input" => {
-                self.render_input(current_id, &element, globals, tree);
+                let text = element.html.attrs.get("value").cloned().unwrap_or_default();
+                self.render_input(text, current_id, &element, tree);
             }
             "area" => {}
             "base" => {}
@@ -245,15 +242,11 @@ impl Component {
 
     fn render_input(
         &mut self,
+        text: String,
         parent_id: NodeId,
         parent: &Element,
-        globals: &mut Map<String, Value>,
         layout: &mut TaffyTree<Element>,
     ) {
-        let text = match parent.html.attrs.get("value") {
-            None => "".to_string(),
-            Some(binding) => as_string(globals.get(binding)),
-        };
         let element_id = ElementId::child(parent.id, 1);
         let style = default_layout_style();
         let object = Object::text(text);

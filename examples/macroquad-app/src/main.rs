@@ -1,7 +1,7 @@
-use std::collections::HashSet;
-
 use macroquad::prelude::*;
 use serde_json::{json, Value};
+use std::collections::HashSet;
+use std::time::Duration;
 
 use bumaga::{
     Borders, Component, Element, Fonts, Input, Keys, Layout, MyBorder, Rgba, TextStyle,
@@ -33,6 +33,7 @@ async fn main() {
         let done = todos_done.clone();
         let input = user_input()
             .fonts(&mut fonts)
+            .time(Duration::from_millis(16))
             .value(value)
             .pipe("done", move |value| done.contains(&value).into());
         let output = component.update(input);

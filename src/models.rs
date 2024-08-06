@@ -60,6 +60,15 @@ pub struct Object {
 }
 
 impl Object {
+    pub fn element(html: &Html) -> Self {
+        Self {
+            tag: html.tag.to_string(),
+            attrs: html.attrs.clone(),
+            text: None,
+            pseudo_classes: Default::default(),
+        }
+    }
+
     pub fn text(text: String) -> Self {
         Self {
             tag: "".to_string(),

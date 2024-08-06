@@ -2,25 +2,20 @@ use std::collections::{HashMap, HashSet};
 
 use crate::animation::Animator;
 use crate::models::ElementId;
+use crate::Element;
 
 pub struct State {
-    pub pseudo_classes: HashMap<ElementId, HashSet<String>>,
-    pub no_pseudo_classes: HashSet<String>,
     pub focus: Option<ElementId>,
-    pub animators: HashMap<ElementId, Vec<Animator>>,
-    pub no_animators: Vec<Animator>,
-    pub active_animators: HashMap<ElementId, Vec<Animator>>,
+    pub pseudo_classes: HashMap<ElementId, HashSet<String>>,
+    pub animators: HashMap<ElementId, Animator>,
 }
 
 impl State {
     pub fn new() -> Self {
         State {
-            pseudo_classes: HashMap::new(),
-            no_pseudo_classes: Default::default(),
             focus: None,
-            animators: Default::default(),
-            no_animators: vec![],
-            active_animators: Default::default(),
+            pseudo_classes: HashMap::new(),
+            animators: HashMap::new(),
         }
     }
 
@@ -32,19 +27,28 @@ impl State {
         self.focus = Some(element_id)
     }
 
-    pub fn load_animators_mut(&mut self, element_id: ElementId) -> &mut Vec<Animator> {
-        self.animators
-            .get_mut(&element_id)
-            .unwrap_or(&mut self.no_animators)
+    /// Removes all unused state.
+    pub fn prune(&mut self) {
+        self.pseudo_classes = HashMap::new();
+        self.animators = HashMap::new();
     }
 
-    pub fn load_pseudo_classes(&self, element_id: ElementId) -> &HashSet<String> {
-        self.pseudo_classes
-            .get(&element_id)
-            .unwrap_or(&self.no_pseudo_classes)
+    pub fn restore(&mut self, element: &mut Element) {
+        if let Some(animator) = self.animators.remove(&element.id) {
+            element.animator = animator.clone();
+        }
+        if let Some(classes) = self.pseudo_classes.remove(&element.id) {
+            element.html.pseudo_classes = classes.clone();
+        }
     }
 
-    pub fn save_pseudo_classes(&mut self, element_id: ElementId, classes: HashSet<String>) {
-        self.pseudo_classes.insert(element_id, classes);
+    pub fn save(&mut self, element: &Element) {
+        if element.animator.is_declared() {
+            self.animators.insert(element.id, element.animator.clone());
+        }
+        if !element.html.pseudo_classes.is_empty() {
+            self.pseudo_classes
+                .insert(element.id, element.html.pseudo_classes.clone());
+        }
     }
 }

@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use crate::css::{Css, CssValue};
+use crate::animation::Animator;
+use crate::css::{Css, CssSpan, CssValue};
 use crate::html::Html;
 use crate::math::Mat4;
 use crate::models::{ElementId, Object};
@@ -92,6 +93,7 @@ pub struct Element {
     pub listeners: HashMap<String, Call>,
     pub opacity: f32,
     pub transform: Option<Mat4>,
+    pub animator: Animator,
 }
 
 pub type Rgba = [u8; 4];

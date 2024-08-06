@@ -1,26 +1,21 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::rc::Rc;
 
-use crate::animation::{Animation, Keyframe, Track};
-use crate::css::CssShorthand::{N1, N2, N3, N4};
-use crate::css::CssValue::{Keyword, Number};
-use crate::css::{
-    match_style, Css, CssDimension, CssProperty, CssShorthand, CssSpan, CssValue, CssValues,
-    CssVariable, MyProperty, MyStyle,
-};
-use crate::html::Html;
-use crate::models::{ElementId, Object, Sizes};
-use crate::{Background, Borders, Element, MyBorder, ObjectFit, Rgba, TextStyle};
-use log::{debug, error, warn};
-use taffy::prelude::FromLength;
-use taffy::prelude::TaffyAuto;
-use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
-use taffy::style_helpers::TaffyZero;
 use taffy::{
-    Dimension, GridPlacement, GridTrackRepetition, LengthPercentage, LengthPercentageAuto, Line,
-    NodeId, Overflow, Point, Rect, Style, TaffyTree, TrackSizingFunction,
+    Dimension, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect, Style,
+    TaffyTree,
 };
+
+use crate::animation::{
+    AnimationDirection, AnimationFillMode, AnimationIterations, Animator, TimingFunction,
+};
+use crate::css::CssShorthand::{N1, N2, N3, N4};
+use crate::css::CssValue::{Keyword, Number, Time};
+use crate::css::{
+    match_style, Css, CssDimension, CssProperty, CssSpan, CssValue, CssValues, CssVariable,
+    MyProperty, MyStyle,
+};
+use crate::models::{ElementId, Object, Sizes};
+use crate::{Background, Borders, Element, Input, ObjectFit, TextStyle};
 
 impl TextStyle {
     pub const DEFAULT_FONT_FAMILY: &'static str = "system-ui";
@@ -62,6 +57,7 @@ pub fn create_element(id: ElementId, html: Object) -> Element {
         listeners: HashMap::new(),
         opacity: 1.0,
         transform: None,
+        animator: Animator::default(),
     }
 }
 
@@ -194,6 +190,7 @@ impl<'c> Cascade<'c> {
 
     pub fn apply_styles(
         &mut self,
+        input: &Input,
         node: NodeId,
         tree: &TaffyTree<Element>,
         parent: &Element,
@@ -202,8 +199,7 @@ impl<'c> Cascade<'c> {
     ) {
         let css = &self.css.source;
         for style in &self.css.styles {
-            let matching = { match_style(css, &style, node, tree) };
-            if matching {
+            if match_style(css, &style, node, tree) {
                 self.apply_style(style, parent, layout, element);
                 // apply_layout_rules2(css, style, &mut layout_style, sizes);
                 // apply_element_rules2(css, style, &parent, &mut element, sizes, &self.resources);
@@ -219,12 +215,42 @@ impl<'c> Cascade<'c> {
                 // );
             }
         }
-        // let animators = self.state.load_animators_mut(element_id);
-        // for animator in animators {
-        //     let props = animator.update(input.time.as_secs_f32());
-        //     //apply_layout_rules(&props, &mut layout_style, context);
-        //     //apply_element_rules(&props, &parent, &mut element, context, &self.resources);
-        // }
+        if !element.animator.name.is_empty() {
+            let key = element.animator.name.as_str(css);
+            if let Some(t) = element.animator.update(input.time.as_secs_f32()) {
+                if let Some(animation) = self.css.animations.get(key) {
+                    let mut a = 0;
+                    let mut b = 0;
+                    for i in 0..animation.keyframes.len() {
+                        let keyframe = &animation.keyframes[i];
+                        if keyframe.step <= t {
+                            a = i;
+                        } else {
+                            b = i;
+                            break;
+                        }
+                    }
+                    if a + 1 == b {
+                        // between a and b
+                        // TODO: property tracks
+                        for k in 0..animation.keyframes[a].declaration.len() {
+                            let sa = animation.keyframes[a].step;
+                            let sb = animation.keyframes[b].step;
+
+                            let pa = &animation.keyframes[a].declaration[k];
+                            let pb = &animation.keyframes[b].declaration[k];
+
+                            let p = self.interpolate(pa, pb, (t - sa) / (sb - sa)).unwrap();
+                            self.apply_property(&p, layout, element).unwrap();
+                        }
+                    } else {
+                        // return a frame (last)
+                        let pa = &animation.keyframes[a].declaration[0];
+                        self.apply_property(pa, layout, element).unwrap();
+                    }
+                }
+            }
+        }
     }
 
     fn apply_style(
@@ -236,23 +262,78 @@ impl<'c> Cascade<'c> {
     ) {
         inherit(parent, element);
         for property in &style.declaration {
+            if let CssProperty::Variable(name) = property.name {
+                self.push_variable(name, &property.values);
+                continue;
+            }
             if let Err(error) = self.apply_property(property, layout, element) {
-                error!("unable to apply property {property:?}, {error:?}")
+                // error!("unable to apply property {property:?}, {error:?}")
             }
         }
     }
 
+    fn interpolate(&self, a: &MyProperty, b: &MyProperty, t: f32) -> Option<MyProperty> {
+        let property = match (a.name, a.as_value(), b.name, b.as_value()) {
+            (
+                CssProperty::Height,
+                CssValue::Dimension(a),
+                CssProperty::Height,
+                CssValue::Dimension(b),
+            ) => MyProperty {
+                name: CssProperty::Height,
+                values: CssValues::One(N1(CssValue::Dimension(CssDimension {
+                    value: a.value + (b.value - a.value) * t,
+                    unit: a.unit,
+                }))),
+            },
+            (
+                CssProperty::Width,
+                CssValue::Dimension(a),
+                CssProperty::Width,
+                CssValue::Dimension(b),
+            ) => MyProperty {
+                name: CssProperty::Width,
+                values: CssValues::One(N1(CssValue::Dimension(CssDimension {
+                    value: a.value + (b.value - a.value) * t,
+                    unit: a.unit,
+                }))),
+            },
+            (
+                CssProperty::BackgroundColor,
+                CssValue::Color(x),
+                CssProperty::BackgroundColor,
+                CssValue::Color(y),
+            ) => {
+                let r = (x[0] as f32 + (y[0] as f32 - x[0] as f32) * t).max(0.0) as u8;
+                let g = (x[1] as f32 + (y[1] as f32 - x[1] as f32) * t).max(0.0) as u8;
+                let b = (x[2] as f32 + (y[2] as f32 - x[2] as f32) * t).max(0.0) as u8;
+                let a = (x[3] as f32 + (y[3] as f32 - x[3] as f32) * t).max(0.0) as u8;
+                MyProperty {
+                    name: CssProperty::BackgroundColor,
+                    values: CssValues::One(N1(CssValue::Color([r, g, b, a]))),
+                }
+            }
+            (CssProperty::Color, CssValue::Color(x), CssProperty::Color, CssValue::Color(y)) => {
+                let r = (x[0] as f32 + (y[0] as f32 - x[0] as f32) * t).max(0.0) as u8;
+                let g = (x[1] as f32 + (y[1] as f32 - x[1] as f32) * t).max(0.0) as u8;
+                let b = (x[2] as f32 + (y[2] as f32 - x[2] as f32) * t).max(0.0) as u8;
+                let a = (x[3] as f32 + (y[3] as f32 - x[3] as f32) * t).max(0.0) as u8;
+                MyProperty {
+                    name: CssProperty::Color,
+                    values: CssValues::One(N1(CssValue::Color([r, g, b, a]))),
+                }
+            }
+            _ => return None,
+        };
+        Some(property)
+    }
+
     fn apply_property(
         &mut self,
-        property: &'c MyProperty,
+        property: &MyProperty,
         layout: &mut Style,
         element: &mut Element,
     ) -> Result<(), CascadeError> {
-        if let CssProperty::Variable(name) = property.name {
-            self.push_variable(name, &property.values);
-            return Ok(());
-        }
-
         let css = &self.css.source;
         let ctx = self.sizes;
         // TODO: multiple values
@@ -270,6 +351,72 @@ impl<'c> Cascade<'c> {
             (CssProperty::FontSize, N1(size)) => {
                 element.text_style.font_size =
                     resolve_length(size, self, self.sizes.parent_font_size)?;
+            }
+            //
+            // Animation
+            //
+            // there is no static shorthand pattern, we should set values by it type and order
+            // TODO: special animation shorthand parser
+            (CssProperty::Animation, N4(Time(duration), timing, Time(delay), Keyword(name))) => {
+                element.animator.name = *name;
+                element.animator.delay = *delay;
+                element.animator.duration = *duration;
+                element.animator.timing = resolve_timing(timing, self)?;
+            }
+            (CssProperty::Animation, N4(Time(duration), timing, iterations, Keyword(name))) => {
+                element.animator.name = *name;
+                element.animator.duration = *duration;
+                element.animator.iterations = resolve_iterations(iterations, self)?;
+                element.animator.timing = resolve_timing(timing, self)?;
+            }
+            (CssProperty::Animation, N3(Time(duration), timing, Keyword(name))) => {
+                element.animator.name = *name;
+                element.animator.duration = *duration;
+                element.animator.timing = resolve_timing(timing, self)?;
+            }
+            (CssProperty::Animation, N2(Time(duration), Keyword(name))) => {
+                element.animator.name = *name;
+                element.animator.duration = *duration;
+            }
+            (CssProperty::AnimationName, N1(Keyword(name))) => {
+                element.animator.name = *name;
+            }
+            (CssProperty::AnimationDelay, N1(Time(delay))) => {
+                element.animator.delay = *delay;
+            }
+            (CssProperty::AnimationDirection, N1(Keyword(keyword))) => {
+                element.animator.direction = match keyword.as_str(css) {
+                    "normal" => AnimationDirection::Normal,
+                    "reverse" => AnimationDirection::Reverse,
+                    "alternate" => AnimationDirection::Alternate,
+                    "alternate-reverse" => AnimationDirection::AlternateReverse,
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
+            }
+            (CssProperty::AnimationDuration, N1(Time(duration))) => {
+                element.animator.duration = *duration;
+            }
+            (CssProperty::AnimationFillMode, N1(Keyword(keyword))) => {
+                element.animator.fill_mode = match keyword.as_str(css) {
+                    "none" => AnimationFillMode::None,
+                    "forwards" => AnimationFillMode::Forwards,
+                    "backwards" => AnimationFillMode::Backwards,
+                    "both" => AnimationFillMode::Both,
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
+            }
+            (CssProperty::AnimationIterationCount, N1(iterations)) => {
+                element.animator.iterations = resolve_iterations(iterations, self)?;
+            }
+            (CssProperty::AnimationPlayState, N1(Keyword(keyword))) => {
+                element.animator.running = match keyword.as_str(css) {
+                    "running" => true,
+                    "paused" => false,
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
+            }
+            (CssProperty::AnimationTimingFunction, N1(timing)) => {
+                element.animator.timing = resolve_timing(timing, self)?
             }
             //
             // Layout
@@ -491,6 +638,46 @@ fn resolve_color(value: &CssValue, cascade: &Cascade) -> Result<[u8; 4], Cascade
         CssValue::Var(variable) => {
             let value = cascade.get_variable_value(variable)?;
             return resolve_color(value, cascade);
+        }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
+}
+
+fn resolve_timing(value: &CssValue, cascade: &Cascade) -> Result<TimingFunction, CascadeError> {
+    let value = match value {
+        Keyword(keyword) => match keyword.as_str(&cascade.css.source) {
+            "ease" => TimingFunction::Ease,
+            "ease-in" => TimingFunction::EaseIn,
+            "ease-out" => TimingFunction::EaseOut,
+            "ease-in-out" => TimingFunction::EaseInOut,
+            "linear" => TimingFunction::Linear,
+            "step-start" => TimingFunction::StepStart,
+            "step-end" => TimingFunction::StepEnd,
+            _ => return Err(CascadeError::ValueNotSupported),
+        },
+        CssValue::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return resolve_timing(value, cascade);
+        }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
+}
+
+fn resolve_iterations(
+    value: &CssValue,
+    cascade: &Cascade,
+) -> Result<AnimationIterations, CascadeError> {
+    let value = match value {
+        Keyword(keyword) => match keyword.as_str(&cascade.css.source) {
+            "infinite" => AnimationIterations::Infinite,
+            _ => return Err(CascadeError::ValueNotSupported),
+        },
+        Number(number) => AnimationIterations::Number(*number),
+        CssValue::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return resolve_iterations(value, cascade);
         }
         _ => return Err(CascadeError::ValueNotSupported),
     };

@@ -18,6 +18,11 @@ impl CssSpan {
     pub fn empty() -> Self {
         Self { start: 0, end: 0 }
     }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.start == 0 && self.end == 0
+    }
 }
 
 impl From<Span<'_>> for CssSpan {
@@ -98,6 +103,7 @@ pub enum CssValue {
     Keyword(CssSpan),
     Zero,
     Percentage(f32),
+    Time(f32),
     Dimension(CssDimension),
     Number(f32),
     Color([u8; 4]),

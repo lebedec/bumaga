@@ -60,7 +60,7 @@ impl Component {
         self.root = root;
 
         fn process(
-            tree: &TaffyTree<Element>,
+            tree: &mut TaffyTree<Element>,
             node: NodeId,
             input: &Input,
             frame: &mut Output,
@@ -68,13 +68,7 @@ impl Component {
             mut location: Point<f32>,
         ) {
             let mut layout = *tree.get_final_layout(node);
-            let element = match tree.get_node_context(node) {
-                None => {
-                    error!("unable to traverse node {node:?} has no context");
-                    return;
-                }
-                Some(element) => element,
-            };
+
             let style = match tree.style(node) {
                 Ok(style) => style,
                 Err(error) => {
@@ -87,12 +81,20 @@ impl Component {
                 layout.location = layout.location.add(location)
             }
 
+            let element = match tree.get_node_context_mut(node) {
+                None => {
+                    error!("unable to traverse node {node:?} has no context");
+                    return;
+                }
+                Some(element) => element,
+            };
+
             // interaction
-            let mut pseudo_classes = HashSet::new();
+            element.html.pseudo_classes = HashSet::new();
             if is_element_contains(&layout, input.mouse_position) {
-                pseudo_classes.insert("hover".to_string());
+                element.html.pseudo_classes.insert("hover".to_string());
                 if input.is_mouse_down() {
-                    pseudo_classes.insert("active".to_string());
+                    element.html.pseudo_classes.insert("active".to_string());
                     state.set_focus(element.id);
                 } else if element.html.pseudo_classes.contains("active") {
                     if let Some(call) = element.listeners.get("onclick") {
@@ -101,16 +103,10 @@ impl Component {
                 }
             }
             if state.focus == Some(element.id) {
-                pseudo_classes.insert("focus".to_string());
+                element.html.pseudo_classes.insert("focus".to_string());
 
                 if element.html.tag == "input" {
-                    let value_node = tree
-                        .children(node)
-                        .expect("input must contain value element")[0];
-                    let value_view = tree
-                        .get_node_context(value_node)
-                        .expect("input value must contain context");
-                    let mut value = value_view.html.text.clone().unwrap_or_default();
+                    let mut value = element.html.attrs.get("value").cloned().unwrap_or_default();
                     let mut has_changes = false;
                     if !input.characters.is_empty() {
                         has_changes = true;
@@ -145,7 +141,7 @@ impl Component {
                     }
                 }
             }
-            state.save_pseudo_classes(element.id, pseudo_classes);
+            state.save(&element);
 
             let mut view = element.clone();
             view.layout = layout;
@@ -162,8 +158,9 @@ impl Component {
                 }
             }
         }
+        self.state.prune();
         process(
-            &self.tree,
+            &mut self.tree,
             self.root,
             &input,
             &mut frame,
