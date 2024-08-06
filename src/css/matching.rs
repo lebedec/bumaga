@@ -4,7 +4,7 @@ use log::error;
 use std::collections::{HashMap, HashSet};
 use taffy::{NodeId, TaffyTree, TraversePartialTree};
 
-pub fn match_rule_new(css: &str, style: &MyStyle, node: NodeId, tree: &TaffyTree<Element>) -> bool {
+pub fn match_style(css: &str, style: &MyStyle, node: NodeId, tree: &TaffyTree<Element>) -> bool {
     style
         .selectors
         .iter()
@@ -70,6 +70,7 @@ fn match_simple_selector(
         }
     };
     match component {
+        MyComponent::All => true,
         MyComponent::Type(name) => html.tag.as_str() == name.as_str(css),
         MyComponent::Id(ident) => html
             .attrs
@@ -96,6 +97,7 @@ fn match_simple_selector(
                 })
                 .unwrap_or(false)
         }
+        MyComponent::Root => tree.parent(node).is_none(),
         MyComponent::PseudoClass(name) => html.pseudo_classes.contains(name.as_str(css)),
         _ => {
             error!("selector {component:?} not supported");

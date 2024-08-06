@@ -24,19 +24,19 @@ impl From<Error<Rule>> for ReaderError {
 /// The Document Object Model (DOM) is an interface that treats an HTML document as a tree structure
 /// wherein each node is an object representing a part of the document.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Dom {
+pub struct Html {
     pub index: usize,
     pub tag: String,
     pub attrs: HashMap<String, String>,
     pub text: Option<String>,
-    pub children: Vec<Dom>,
+    pub children: Vec<Html>,
 }
 
-pub fn read_html_unchecked(html: &str) -> Dom {
+pub fn read_html_unchecked(html: &str) -> Html {
     read_html(html).expect("must be read html")
 }
 
-pub fn read_html(html: &str) -> Result<Dom, ReaderError> {
+pub fn read_html(html: &str) -> Result<Html, ReaderError> {
     let document = HtmlParser::parse(Rule::Document, html)?
         .next()
         .ok_or(ReaderError::EmptyDocument)?;
@@ -49,7 +49,7 @@ pub fn read_html(html: &str) -> Result<Dom, ReaderError> {
 /// Pest parser guarantees that pairs will contain only rules defined in grammar.
 /// So, knowing the exact order of rules and it parameters we can unwrap iterators
 /// without error handling. Macro unreachable! can be used for the same reason.
-fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Dom {
+fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Html {
     *index += 1;
     match pair.as_rule() {
         Rule::Element => {
@@ -57,7 +57,7 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Dom {
             let tag = iter.next().unwrap().as_str();
             let attrs = iter.next().unwrap();
             let children = iter.next().unwrap();
-            Dom {
+            Html {
                 index: *index,
                 tag: tag.to_string(),
                 attrs: parse_attrs(attrs),
@@ -70,7 +70,7 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Dom {
         }
         Rule::Text => {
             let text = pair.as_str().trim().to_string();
-            Dom {
+            Html {
                 index: *index,
                 tag: "".to_string(),
                 attrs: Default::default(),
@@ -82,7 +82,7 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Dom {
             let mut iter = pair.into_inner();
             let tag = iter.next().unwrap().as_str();
             let attrs = iter.next().unwrap();
-            Dom {
+            Html {
                 index: *index,
                 tag: tag.to_string(),
                 attrs: parse_attrs(attrs),
@@ -115,11 +115,11 @@ fn parse_attrs(pair: Pair<Rule>) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use crate::html::reader::read_html;
-    use crate::html::Dom;
+    use crate::html::Html;
     use std::collections::HashMap;
     use std::time::Instant;
 
-    impl Dom {
+    impl Html {
         pub fn attr(mut self, attr: &str, value: &str) -> Self {
             self.attrs.insert(attr.to_string(), value.to_string());
             self
@@ -135,8 +135,8 @@ mod tests {
         }
     }
 
-    fn void(tag: &str) -> Dom {
-        Dom {
+    fn void(tag: &str) -> Html {
+        Html {
             index: index(),
             tag: tag.to_string(),
             attrs: Default::default(),
@@ -145,8 +145,8 @@ mod tests {
         }
     }
 
-    fn el(tag: &str, children: Vec<Dom>) -> Dom {
-        Dom {
+    fn el(tag: &str, children: Vec<Html>) -> Html {
+        Html {
             index: index(),
             tag: tag.to_string(),
             attrs: Default::default(),
@@ -155,8 +155,8 @@ mod tests {
         }
     }
 
-    fn txt(text: &str) -> Dom {
-        Dom {
+    fn txt(text: &str) -> Html {
+        Html {
             index: index(),
             tag: "".to_string(),
             attrs: Default::default(),
@@ -165,8 +165,8 @@ mod tests {
         }
     }
 
-    fn tag(tag: &str, text: &str) -> Dom {
-        Dom {
+    fn tag(tag: &str, text: &str) -> Html {
+        Html {
             index: index(),
             tag: tag.to_string(),
             attrs: Default::default(),
@@ -284,7 +284,7 @@ mod tests {
         let html = include_str!("giga.html");
         let t = Instant::now();
         let document = read_html(html).expect("valid document");
-        fn collect(object: Dom, stats: &mut HashMap<String, usize>) {
+        fn collect(object: Html, stats: &mut HashMap<String, usize>) {
             *stats.entry(object.tag.clone()).or_insert(0) += 1;
             for child in object.children {
                 collect(child, stats);

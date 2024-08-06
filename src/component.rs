@@ -15,9 +15,9 @@ use taffy::{
 
 use crate::api::{Call, Component, Input, Output};
 use crate::css::{read_css, read_css_unchecked, Css};
-use crate::html::{read_html, read_html_unchecked, Dom};
+use crate::html::{read_html, read_html_unchecked, Html};
 use crate::input::FakeFonts;
-use crate::models::{ElementId, SizeContext};
+use crate::models::{ElementId, Sizes};
 use crate::rendering::as_string;
 use crate::state::State;
 use crate::styles::create_element;
@@ -46,13 +46,15 @@ impl Component {
         Self::compile_component(html, css, resources)
     }
 
-    pub fn compile_component(html: Source<Dom>, css: Source<Css>, resources: &str) -> Component {
+    pub fn compile_component(html: Source<Html>, css: Source<Css>, resources: &str) -> Component {
         let state = State::new();
         Self {
             css,
             html,
             state,
             resources: resources.to_string(),
+            tree: TaffyTree::new(),
+            root: NodeId::new(0),
         }
     }
 

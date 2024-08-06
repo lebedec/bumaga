@@ -32,7 +32,9 @@ Combinator = { ">" | "+" | "~" }
 
 Compound = ${ Simple+ }
 
-Simple = _{ Id | Class | PseudoClass | PseudoElement | Attribute | Type }
+Simple = _{ All | Id | Class | Root | PseudoClass | PseudoElement | Attribute | Type }
+
+All = { "*" }
 
 Id = { "#" ~ Ident }
 
@@ -50,6 +52,8 @@ Search = @{ (!"\"" ~ ANY)* }
 Matcher = { ("~" | "|" | "^" | "$" | "*")? ~ "=" }
 
 Modifier = { "i" | "s" }
+
+Root = { ":root" }
 
 PseudoClass = {
     ":" ~ Ident ~ "(" ~ (!")" ~ ANY)* ~ ")" |

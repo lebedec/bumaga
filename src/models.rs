@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
-use crate::html::Dom;
+use crate::html::Html;
 
 #[derive(Clone, Copy)]
-pub struct SizeContext {
+pub struct Sizes {
     pub root_font_size: f32,
     pub parent_font_size: f32,
     pub viewport_width: f32,
@@ -27,7 +27,7 @@ impl ElementId {
 
     /// Document object position is line and column position in source HTML file.
     /// It guarantees unique identification of original element.
-    pub fn from(dom: &Dom) -> Self {
+    pub fn from(dom: &Html) -> Self {
         Self {
             index: dom.index,
             hash: 0,
@@ -41,7 +41,7 @@ impl ElementId {
         }
     }
 
-    pub fn hash(dom: &Dom, value: impl Hash) -> Self {
+    pub fn hash(dom: &Html, value: impl Hash) -> Self {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
         Self {
@@ -51,7 +51,7 @@ impl ElementId {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Object {
     pub tag: String,
     pub attrs: HashMap<String, String>,
@@ -72,6 +72,15 @@ impl Object {
     pub fn fake() -> Self {
         Self {
             tag: "".to_string(),
+            attrs: Default::default(),
+            text: None,
+            pseudo_classes: Default::default(),
+        }
+    }
+
+    pub fn tag(tag: &str) -> Self {
+        Self {
+            tag: tag.to_string(),
             attrs: Default::default(),
             text: None,
             pseudo_classes: Default::default(),

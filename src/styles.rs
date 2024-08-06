@@ -4,12 +4,13 @@ use std::rc::Rc;
 
 use crate::animation::{Animation, Keyframe, Track};
 use crate::css::CssShorthand::{N1, N2, N3, N4};
-use crate::css::CssValue::{Color, Keyword, Number};
+use crate::css::CssValue::{Keyword, Number};
 use crate::css::{
-    CssDimension, CssProperty, CssShorthand, CssValue, CssValues, MyProperty, MyStyle,
+    match_style, Css, CssDimension, CssProperty, CssShorthand, CssSpan, CssValue, CssValues,
+    CssVariable, MyProperty, MyStyle,
 };
-use crate::html::Dom;
-use crate::models::{ElementId, Object, SizeContext};
+use crate::html::Html;
+use crate::models::{ElementId, Object, Sizes};
 use crate::{Background, Borders, Element, MyBorder, ObjectFit, Rgba, TextStyle};
 use log::{debug, error, warn};
 use taffy::prelude::FromLength;
@@ -17,8 +18,8 @@ use taffy::prelude::TaffyAuto;
 use taffy::prelude::{FromFlex, FromPercent, TaffyFitContent, TaffyMaxContent, TaffyMinContent};
 use taffy::style_helpers::TaffyZero;
 use taffy::{
-    Dimension, GridPlacement, GridTrackRepetition, LengthPercentageAuto, Line, Overflow, Point,
-    Rect, Style, TrackSizingFunction,
+    Dimension, GridPlacement, GridTrackRepetition, LengthPercentage, LengthPercentageAuto, Line,
+    NodeId, Overflow, Point, Rect, Style, TaffyTree, TrackSizingFunction,
 };
 
 impl TextStyle {
@@ -97,31 +98,31 @@ pub fn default_layout_style() -> Style {
     }
 }
 
-pub fn inherit(parent: &Element, view: &mut Element) {
+pub fn inherit(parent: &Element, element: &mut Element) {
     // border-collapse
     // border-spacing
     // caption-side
     // color
-    view.color = parent.color;
+    element.color = parent.color;
     // cursor
     // direction
     // empty-cells
     // font-family
-    view.text_style.font_family = parent.text_style.font_family.clone();
+    element.text_style.font_family = parent.text_style.font_family.clone();
     // font-size
-    view.text_style.font_size = parent.text_style.font_size;
+    element.text_style.font_size = parent.text_style.font_size;
     // font-style
     //view.text_style.font_style = parent.text_style.font_style.clone();
     // font-variant
     // font-weight
-    view.text_style.font_weight = parent.text_style.font_weight;
+    element.text_style.font_weight = parent.text_style.font_weight;
     // font-size-adjust
     // font-stretch
     //view.text_style.font_stretch = parent.text_style.font_stretch.clone();
     // font
     // letter-spacing
     // line-height
-    view.text_style.line_height = parent.text_style.line_height;
+    element.text_style.line_height = parent.text_style.line_height;
     // list-style-image
     // list-style-position
     // list-style-type
@@ -145,380 +146,455 @@ pub fn inherit(parent: &Element, view: &mut Element) {
     //view.text_style.wrap = parent.text_style.wrap;
 }
 
-pub fn apply_element_property(
-    css: &str,
-    property: &MyProperty,
-    parent: &Element,
-    element: &mut Element,
-    context: SizeContext,
-    resources: &str,
-) {
-    let matching = (property.name, property.values.as_shorthand());
-    match matching {
-        (CssProperty::Background, N1(Color(color))) => {
-            element.background.color = *color;
-        }
-        (CssProperty::BackgroundColor, N1(Color(color))) => {
-            element.background.color = *color;
-        }
-        (CssProperty::Color, N1(Color(color))) => {
-            element.color = *color;
-        }
-        name => {}
+/// The cascade is an algorithm that defines how to combine CSS (Cascading Style Sheets)
+/// property values originating from different sources.
+pub struct Cascade<'c> {
+    css: &'c Css,
+    variables: HashMap<&'c str, &'c CssValues>,
+    sizes: Sizes,
+    resources: &'c str,
+}
+
+#[derive(Debug)]
+pub enum CascadeError {
+    PropertyNotSupported,
+    DimensionUnitsNotSupported,
+    ValueNotSupported,
+    VariableNotFound,
+    InvalidKeyword(String),
+}
+
+impl CascadeError {
+    pub fn invalid_keyword<T>(keyword: &str) -> Result<T, Self> {
+        Err(CascadeError::InvalidKeyword(keyword.to_string()))
     }
 }
 
-pub fn apply_element_rules2(
-    css: &str,
-    style: &MyStyle,
-    parent: &Element,
-    element: &mut Element,
-    context: SizeContext,
-    resources: &str,
-) {
-    inherit(parent, element);
-    for property in &style.declaration {
-        apply_element_property(css, property, parent, element, context, resources)
+impl<'c> Cascade<'c> {
+    pub fn new(css: &'c Css, sizes: Sizes, resources: &'c str) -> Self {
+        Self {
+            css,
+            variables: HashMap::with_capacity(8),
+            sizes,
+            resources,
+        }
     }
-}
 
-#[inline(always)]
-pub fn apply_layout_rules2(css: &str, style: &MyStyle, layout: &mut Style, context: SizeContext) {
-    for property in &style.declaration {
-        apply_layout_property(css, property, layout, context)
+    pub fn push_variable(&mut self, name: CssSpan, values: &'c CssValues) {
+        self.variables.insert(name.as_str(&self.css.source), values);
     }
-}
 
-pub fn apply_layout_property(
-    css: &str,
-    property: &MyProperty,
-    layout: &mut Style,
-    ctx: SizeContext,
-) {
-    let matching = (property.name, property.values.as_shorthand());
-    match matching {
-        (CssProperty::Display, N1(Keyword(keyword))) => match keyword.as_str(css) {
-            "flow" => layout.display = taffy::Display::Block,
-            "block" => layout.display = taffy::Display::Block,
-            "flex" => layout.display = taffy::Display::Flex,
-            "grid" => layout.display = taffy::Display::Grid,
-            keyword => {
-                error!("display {keyword} not supported")
+    pub fn get_variable_value(&self, variable: &CssVariable) -> Result<&CssValue, CascadeError> {
+        let name = variable.name.as_str(&self.css.source);
+        self.variables
+            .get(name)
+            .map(|values| values.as_value())
+            .ok_or(CascadeError::VariableNotFound)
+    }
+
+    pub fn apply_styles(
+        &mut self,
+        node: NodeId,
+        tree: &TaffyTree<Element>,
+        parent: &Element,
+        layout: &mut Style,
+        element: &mut Element,
+    ) {
+        let css = &self.css.source;
+        for style in &self.css.styles {
+            let matching = { match_style(css, &style, node, tree) };
+            if matching {
+                self.apply_style(style, parent, layout, element);
+                // apply_layout_rules2(css, style, &mut layout_style, sizes);
+                // apply_element_rules2(css, style, &parent, &mut element, sizes, &self.resources);
+                //let props = &ruleset.style.declarations.declarations;
+                //apply_layout_rules(props, &mut layout_style, context);
+                //apply_element_rules(props, &parent, &mut element, context, &self.resources);
+                // apply_animation_rules(
+                //     props,
+                //     &mut element,
+                //     &mut self.state.active_animators,
+                //     &mut self.state.animators,
+                //     &self.presentation_old.content.animations,
+                // );
             }
-        },
-        (CssProperty::Overflow, N2(Keyword(x), Keyword(y))) => {
-            layout.overflow.x = map_overflow2(x.as_str(css));
-            layout.overflow.y = map_overflow2(y.as_str(css));
         }
-        (CssProperty::OverflowX, N1(Keyword(x))) => {
-            layout.overflow.x = map_overflow2(x.as_str(css))
-        }
-        (CssProperty::OverflowY, N1(Keyword(y))) => {
-            layout.overflow.y = map_overflow2(y.as_str(css))
-        }
-        (CssProperty::Position, N1(Keyword(keyword))) => match keyword.as_str(css) {
-            "relative" => layout.position = taffy::Position::Relative,
-            "absolute" => layout.position = taffy::Position::Absolute,
-            keyword => {
-                error!("position {keyword} not supported")
+        // let animators = self.state.load_animators_mut(element_id);
+        // for animator in animators {
+        //     let props = animator.update(input.time.as_secs_f32());
+        //     //apply_layout_rules(&props, &mut layout_style, context);
+        //     //apply_element_rules(&props, &parent, &mut element, context, &self.resources);
+        // }
+    }
+
+    fn apply_style(
+        &mut self,
+        style: &'c MyStyle,
+        parent: &Element,
+        layout: &mut Style,
+        element: &mut Element,
+    ) {
+        inherit(parent, element);
+        for property in &style.declaration {
+            if let Err(error) = self.apply_property(property, layout, element) {
+                error!("unable to apply property {property:?}, {error:?}")
             }
-        },
-        (CssProperty::Inset, N4(top, right, bottom, left)) => {
-            layout.inset.top = resolve_lpa(css, top, ctx);
-            layout.inset.right = resolve_lpa(css, right, ctx);
-            layout.inset.bottom = resolve_lpa(css, bottom, ctx);
-            layout.inset.left = resolve_lpa(css, left, ctx);
         }
-        (CssProperty::Left, N1(value)) => layout.inset.left = resolve_lpa(css, value, ctx),
-        (CssProperty::Right, N1(value)) => layout.inset.right = resolve_lpa(css, value, ctx),
-        (CssProperty::Top, N1(value)) => layout.inset.top = resolve_lpa(css, value, ctx),
-        (CssProperty::Bottom, N1(value)) => layout.inset.bottom = resolve_lpa(css, value, ctx),
-        (CssProperty::Width, N1(value)) => layout.size.width = dimension(css, value, ctx),
-        (CssProperty::Height, N1(value)) => layout.size.height = dimension(css, value, ctx),
-        (CssProperty::MinWidth, N1(value)) => layout.min_size.width = dimension(css, value, ctx),
-        (CssProperty::MinHeight, N1(value)) => layout.min_size.height = dimension(css, value, ctx),
-        (CssProperty::MaxWidth, N1(value)) => layout.max_size.width = dimension(css, value, ctx),
-        (CssProperty::MaxHeight, N1(value)) => layout.max_size.height = dimension(css, value, ctx),
-        (CssProperty::AspectRatio, _) => {
-            // TODO:
-            // layout.aspect_ratio = None;
-            error!("aspect-ratio not supported")
-        }
-        (CssProperty::Margin, N4(top, right, bottom, left)) => {
-            layout.margin.top = resolve_lpa(css, top, ctx);
-            layout.margin.right = resolve_lpa(css, right, ctx);
-            layout.margin.bottom = resolve_lpa(css, bottom, ctx);
-            layout.margin.left = resolve_lpa(css, left, ctx);
-        }
-        (CssProperty::Margin, N3(top, horizontal, bottom)) => {
-            layout.margin.top = top.resolve(css, ctx);
-            layout.margin.right = horizontal.resolve(css, ctx);
-            layout.margin.bottom = bottom.resolve(css, ctx);
-            layout.margin.left = horizontal.resolve(css, ctx);
-        }
-        (CssProperty::Margin, N2(vertical, horizontal)) => {
-            layout.margin.top = resolve_lpa(css, vertical, ctx);
-            layout.margin.right = resolve_lpa(css, horizontal, ctx);
-            layout.margin.bottom = resolve_lpa(css, vertical, ctx);
-            layout.margin.left = resolve_lpa(css, horizontal, ctx);
-        }
-        (CssProperty::Margin, N1(value)) => {
-            layout.margin.top = resolve_lpa(css, value, ctx);
-            layout.margin.right = resolve_lpa(css, value, ctx);
-            layout.margin.bottom = resolve_lpa(css, value, ctx);
-            layout.margin.left = resolve_lpa(css, value, ctx);
-        }
-        (CssProperty::MarginTop, N1(value)) => {
-            layout.margin.top = resolve_lpa(css, value, ctx);
-        }
-        (CssProperty::MarginRight, N1(value)) => {
-            layout.margin.right = resolve_lpa(css, value, ctx);
-        }
-        (CssProperty::MarginBottom, N1(value)) => {
-            layout.margin.bottom = resolve_lpa(css, value, ctx);
-        }
-        (CssProperty::MarginLeft, N1(value)) => {
-            layout.margin.left = resolve_lpa(css, value, ctx);
+    }
+
+    fn apply_property(
+        &mut self,
+        property: &'c MyProperty,
+        layout: &mut Style,
+        element: &mut Element,
+    ) -> Result<(), CascadeError> {
+        if let CssProperty::Variable(name) = property.name {
+            self.push_variable(name, &property.values);
+            return Ok(());
         }
 
-        (CssProperty::Padding, N4(top, right, bottom, left)) => {
-            layout.padding.top = resolve_lp(css, top, ctx);
-            layout.padding.right = resolve_lp(css, right, ctx);
-            layout.padding.bottom = resolve_lp(css, bottom, ctx);
-            layout.padding.left = resolve_lp(css, left, ctx);
-        }
-        (CssProperty::Padding, N3(top, horizontal, bottom)) => {
-            layout.padding.top = resolve_lp(css, top, ctx);
-            layout.padding.right = resolve_lp(css, horizontal, ctx);
-            layout.padding.bottom = resolve_lp(css, bottom, ctx);
-            layout.padding.left = resolve_lp(css, horizontal, ctx);
-        }
-        (CssProperty::Padding, N2(vertical, horizontal)) => {
-            layout.padding.top = resolve_lp(css, vertical, ctx);
-            layout.padding.right = resolve_lp(css, horizontal, ctx);
-            layout.padding.bottom = resolve_lp(css, vertical, ctx);
-            layout.padding.left = resolve_lp(css, horizontal, ctx);
-        }
-        (CssProperty::Padding, N1(value)) => {
-            layout.padding.top = resolve_lp(css, value, ctx);
-            layout.padding.right = resolve_lp(css, value, ctx);
-            layout.padding.bottom = resolve_lp(css, value, ctx);
-            layout.padding.left = resolve_lp(css, value, ctx);
-        }
-        (CssProperty::PaddingTop, N1(value)) => {
-            layout.padding.top = resolve_lp(css, value, ctx);
-        }
-        (CssProperty::PaddingRight, N1(value)) => {
-            layout.padding.right = resolve_lp(css, value, ctx);
-        }
-        (CssProperty::PaddingBottom, N1(value)) => {
-            layout.padding.bottom = resolve_lp(css, value, ctx);
-        }
-        (CssProperty::PaddingLeft, N1(value)) => {
-            layout.padding.left = resolve_lp(css, value, ctx);
-        }
+        let css = &self.css.source;
+        let ctx = self.sizes;
+        // TODO: multiple values
+        match (property.name, property.values.as_shorthand()) {
+            //
+            // Element
+            //
+            (CssProperty::Background, N1(color)) => {
+                element.background.color = resolve_color(color, self)?
+            }
+            (CssProperty::BackgroundColor, N1(color)) => {
+                element.background.color = resolve_color(color, self)?
+            }
+            (CssProperty::Color, N1(color)) => element.color = resolve_color(color, self)?,
+            (CssProperty::FontSize, N1(size)) => {
+                element.text_style.font_size =
+                    resolve_length(size, self, self.sizes.parent_font_size)?;
+            }
+            //
+            // Layout
+            //
+            (CssProperty::Display, N1(Keyword(keyword))) => match keyword.as_str(css) {
+                "flow" => layout.display = taffy::Display::Block,
+                "block" => layout.display = taffy::Display::Block,
+                "flex" => layout.display = taffy::Display::Flex,
+                "grid" => layout.display = taffy::Display::Grid,
+                keyword => return CascadeError::invalid_keyword(keyword),
+            },
+            (CssProperty::Overflow, N2(Keyword(x), Keyword(y))) => {
+                layout.overflow.x = resolve_overflow(x.as_str(css))?;
+                layout.overflow.y = resolve_overflow(y.as_str(css))?;
+            }
+            (CssProperty::OverflowX, N1(Keyword(x))) => {
+                layout.overflow.x = resolve_overflow(x.as_str(css))?
+            }
+            (CssProperty::OverflowY, N1(Keyword(y))) => {
+                layout.overflow.y = resolve_overflow(y.as_str(css))?
+            }
+            (CssProperty::Position, N1(Keyword(keyword))) => match keyword.as_str(css) {
+                "relative" => layout.position = taffy::Position::Relative,
+                "absolute" => layout.position = taffy::Position::Absolute,
+                keyword => return CascadeError::invalid_keyword(keyword),
+            },
+            (CssProperty::Inset, N4(top, right, bottom, left)) => {
+                layout.inset.top = lengthp_auto(top, self)?;
+                layout.inset.right = lengthp_auto(right, self)?;
+                layout.inset.bottom = lengthp_auto(bottom, self)?;
+                layout.inset.left = lengthp_auto(left, self)?;
+            }
+            (CssProperty::Left, N1(value)) => layout.inset.left = lengthp_auto(value, self)?,
+            (CssProperty::Right, N1(value)) => layout.inset.right = lengthp_auto(value, self)?,
+            (CssProperty::Top, N1(value)) => layout.inset.top = lengthp_auto(value, self)?,
+            (CssProperty::Bottom, N1(value)) => layout.inset.bottom = lengthp_auto(value, self)?,
+            (CssProperty::Width, N1(value)) => layout.size.width = dimension(value, self)?,
+            (CssProperty::Height, N1(value)) => layout.size.height = dimension(value, self)?,
+            (CssProperty::MinWidth, N1(value)) => layout.min_size.width = dimension(value, self)?,
+            (CssProperty::MinHeight, N1(value)) => layout.min_size.height = dimension(value, self)?,
+            (CssProperty::MaxWidth, N1(value)) => layout.max_size.width = dimension(value, self)?,
+            (CssProperty::MaxHeight, N1(value)) => layout.max_size.height = dimension(value, self)?,
+            (CssProperty::AspectRatio, _) => {
+                // TODO:
+                // layout.aspect_ratio = None;
+                return Err(CascadeError::PropertyNotSupported);
+            }
+            (CssProperty::Margin, N4(top, right, bottom, left)) => {
+                layout.margin.top = lengthp_auto(top, self)?;
+                layout.margin.right = lengthp_auto(right, self)?;
+                layout.margin.bottom = lengthp_auto(bottom, self)?;
+                layout.margin.left = lengthp_auto(left, self)?;
+            }
+            (CssProperty::Margin, N3(top, horizontal, bottom)) => {
+                layout.margin.top = lengthp_auto(top, self)?;
+                layout.margin.right = lengthp_auto(horizontal, self)?;
+                layout.margin.bottom = lengthp_auto(bottom, self)?;
+                layout.margin.left = lengthp_auto(horizontal, self)?;
+            }
+            (CssProperty::Margin, N2(vertical, horizontal)) => {
+                layout.margin.top = lengthp_auto(vertical, self)?;
+                layout.margin.right = lengthp_auto(horizontal, self)?;
+                layout.margin.bottom = lengthp_auto(vertical, self)?;
+                layout.margin.left = lengthp_auto(horizontal, self)?;
+            }
+            (CssProperty::Margin, N1(value)) => {
+                layout.margin.top = lengthp_auto(value, self)?;
+                layout.margin.right = lengthp_auto(value, self)?;
+                layout.margin.bottom = lengthp_auto(value, self)?;
+                layout.margin.left = lengthp_auto(value, self)?;
+            }
+            (CssProperty::MarginTop, N1(value)) => {
+                layout.margin.top = lengthp_auto(value, self)?;
+            }
+            (CssProperty::MarginRight, N1(value)) => {
+                layout.margin.right = lengthp_auto(value, self)?;
+            }
+            (CssProperty::MarginBottom, N1(value)) => {
+                layout.margin.bottom = lengthp_auto(value, self)?;
+            }
+            (CssProperty::MarginLeft, N1(value)) => {
+                layout.margin.left = lengthp_auto(value, self)?;
+            }
 
-        (CssProperty::Border, N4(top, right, bottom, left)) => {
-            layout.border.top = resolve_lp(css, top, ctx);
-            layout.border.right = resolve_lp(css, right, ctx);
-            layout.border.bottom = resolve_lp(css, bottom, ctx);
-            layout.border.left = resolve_lp(css, left, ctx);
-        }
-        (CssProperty::Border, N3(top, horizontal, bottom)) => {
-            layout.border.top = resolve_lp(css, top, ctx);
-            layout.border.right = resolve_lp(css, horizontal, ctx);
-            layout.border.bottom = resolve_lp(css, bottom, ctx);
-            layout.border.left = resolve_lp(css, horizontal, ctx);
-        }
-        (CssProperty::Border, N2(vertical, horizontal)) => {
-            layout.border.top = resolve_lp(css, vertical, ctx);
-            layout.border.right = resolve_lp(css, horizontal, ctx);
-            layout.border.bottom = resolve_lp(css, vertical, ctx);
-            layout.border.left = resolve_lp(css, horizontal, ctx);
-        }
-        (CssProperty::Border, N1(value)) => {
-            layout.border.top = resolve_lp(css, value, ctx);
-            layout.border.right = resolve_lp(css, value, ctx);
-            layout.border.bottom = resolve_lp(css, value, ctx);
-            layout.border.left = resolve_lp(css, value, ctx);
-        }
-        (CssProperty::BorderTopWidth, N1(value)) => {
-            layout.border.top = resolve_lp(css, value, ctx);
-        }
-        (CssProperty::BorderRightWidth, N1(value)) => {
-            layout.border.right = resolve_lp(css, value, ctx);
-        }
-        (CssProperty::BorderLeftWidth, N1(value)) => {
-            layout.border.bottom = resolve_lp(css, value, ctx);
-        }
-        (CssProperty::BorderBottomWidth, N1(value)) => {
-            layout.border.left = resolve_lp(css, value, ctx);
-        }
-        (CssProperty::AlignContent, N1(Keyword(keyword))) => {
-            layout.align_content = map_align_content(keyword.as_str(css))
-        }
-        (CssProperty::AlignItems, N1(Keyword(keyword))) => {
-            layout.align_items = map_align_items(keyword.as_str(css))
-        }
-        (CssProperty::AlignSelf, N1(Keyword(keyword))) => {
-            layout.align_self = map_align_items(keyword.as_str(css))
-        }
-        (CssProperty::JustifyContent, N1(Keyword(keyword))) => {
-            layout.justify_content = map_align_content(keyword.as_str(css))
-        }
-        (CssProperty::JustifyItems, N1(Keyword(keyword))) => {
-            layout.justify_items = map_align_items(keyword.as_str(css))
-        }
-        (CssProperty::JustifySelf, N1(Keyword(keyword))) => {
-            layout.justify_self = map_align_items(keyword.as_str(css))
-        }
-        (CssProperty::Gap, N2(column, row)) => {
-            layout.gap.width = column.resolve(css, ctx);
-            layout.gap.height = row.resolve(css, ctx);
-        }
-        (CssProperty::ColumnGap, N1(column)) => {
-            layout.gap.width = column.resolve(css, ctx);
-        }
-        (CssProperty::RowGap, N1(row)) => {
-            layout.gap.height = row.resolve(css, ctx);
-        }
-        (CssProperty::FlexDirection, N1(Keyword(keyword))) => {
-            layout.flex_direction = match keyword.as_str(css) {
-                "row" => taffy::FlexDirection::Row,
-                "row-reverse" => taffy::FlexDirection::RowReverse,
-                "column" => taffy::FlexDirection::Column,
-                "column-reverse" => taffy::FlexDirection::ColumnReverse,
-                keyword => {
-                    error!("flex-direction: {keyword}; not supported");
-                    return;
+            (CssProperty::Padding, N4(top, right, bottom, left)) => {
+                layout.padding.top = lengthp(top, self)?;
+                layout.padding.right = lengthp(right, self)?;
+                layout.padding.bottom = lengthp(bottom, self)?;
+                layout.padding.left = lengthp(left, self)?;
+            }
+            (CssProperty::Padding, N3(top, horizontal, bottom)) => {
+                layout.padding.top = lengthp(top, self)?;
+                layout.padding.right = lengthp(horizontal, self)?;
+                layout.padding.bottom = lengthp(bottom, self)?;
+                layout.padding.left = lengthp(horizontal, self)?;
+            }
+            (CssProperty::Padding, N2(vertical, horizontal)) => {
+                layout.padding.top = lengthp(vertical, self)?;
+                layout.padding.right = lengthp(horizontal, self)?;
+                layout.padding.bottom = lengthp(vertical, self)?;
+                layout.padding.left = lengthp(horizontal, self)?;
+            }
+            (CssProperty::Padding, N1(value)) => {
+                layout.padding.top = lengthp(value, self)?;
+                layout.padding.right = lengthp(value, self)?;
+                layout.padding.bottom = lengthp(value, self)?;
+                layout.padding.left = lengthp(value, self)?;
+            }
+            (CssProperty::PaddingTop, N1(value)) => {
+                layout.padding.top = lengthp(value, self)?;
+            }
+            (CssProperty::PaddingRight, N1(value)) => {
+                layout.padding.right = lengthp(value, self)?;
+            }
+            (CssProperty::PaddingBottom, N1(value)) => {
+                layout.padding.bottom = lengthp(value, self)?;
+            }
+            (CssProperty::PaddingLeft, N1(value)) => {
+                layout.padding.left = lengthp(value, self)?;
+            }
+
+            (CssProperty::Border, N4(top, right, bottom, left)) => {
+                layout.border.top = lengthp(top, self)?;
+                layout.border.right = lengthp(right, self)?;
+                layout.border.bottom = lengthp(bottom, self)?;
+                layout.border.left = lengthp(left, self)?;
+            }
+            (CssProperty::Border, N3(top, horizontal, bottom)) => {
+                layout.border.top = lengthp(top, self)?;
+                layout.border.right = lengthp(horizontal, self)?;
+                layout.border.bottom = lengthp(bottom, self)?;
+                layout.border.left = lengthp(horizontal, self)?;
+            }
+            (CssProperty::Border, N2(vertical, horizontal)) => {
+                layout.border.top = lengthp(vertical, self)?;
+                layout.border.right = lengthp(horizontal, self)?;
+                layout.border.bottom = lengthp(vertical, self)?;
+                layout.border.left = lengthp(horizontal, self)?;
+            }
+            (CssProperty::Border, N1(value)) => {
+                layout.border.top = lengthp(value, self)?;
+                layout.border.right = lengthp(value, self)?;
+                layout.border.bottom = lengthp(value, self)?;
+                layout.border.left = lengthp(value, self)?;
+            }
+            (CssProperty::BorderTopWidth, N1(value)) => {
+                layout.border.top = lengthp(value, self)?;
+            }
+            (CssProperty::BorderRightWidth, N1(value)) => {
+                layout.border.right = lengthp(value, self)?;
+            }
+            (CssProperty::BorderLeftWidth, N1(value)) => {
+                layout.border.bottom = lengthp(value, self)?;
+            }
+            (CssProperty::BorderBottomWidth, N1(value)) => {
+                layout.border.left = lengthp(value, self)?;
+            }
+            (CssProperty::AlignContent, N1(Keyword(keyword))) => {
+                layout.align_content = map_align_content(keyword.as_str(css))?
+            }
+            (CssProperty::AlignItems, N1(Keyword(keyword))) => {
+                layout.align_items = map_align_items(keyword.as_str(css))?
+            }
+            (CssProperty::AlignSelf, N1(Keyword(keyword))) => {
+                layout.align_self = map_align_items(keyword.as_str(css))?
+            }
+            (CssProperty::JustifyContent, N1(Keyword(keyword))) => {
+                layout.justify_content = map_align_content(keyword.as_str(css))?
+            }
+            (CssProperty::JustifyItems, N1(Keyword(keyword))) => {
+                layout.justify_items = map_align_items(keyword.as_str(css))?
+            }
+            (CssProperty::JustifySelf, N1(Keyword(keyword))) => {
+                layout.justify_self = map_align_items(keyword.as_str(css))?
+            }
+            (CssProperty::Gap, N2(column, row)) => {
+                layout.gap.width = lengthp(column, self)?;
+                layout.gap.height = lengthp(row, self)?;
+            }
+            (CssProperty::Gap, N1(gap)) => {
+                layout.gap.width = lengthp(gap, self)?;
+                layout.gap.height = lengthp(gap, self)?;
+            }
+            (CssProperty::ColumnGap, N1(column)) => {
+                layout.gap.width = lengthp(column, self)?;
+            }
+            (CssProperty::RowGap, N1(row)) => {
+                layout.gap.height = lengthp(row, self)?;
+            }
+            (CssProperty::FlexDirection, N1(Keyword(keyword))) => {
+                layout.flex_direction = match keyword.as_str(css) {
+                    "row" => taffy::FlexDirection::Row,
+                    "row-reverse" => taffy::FlexDirection::RowReverse,
+                    "column" => taffy::FlexDirection::Column,
+                    "column-reverse" => taffy::FlexDirection::ColumnReverse,
+                    keyword => return CascadeError::invalid_keyword(keyword),
                 }
             }
-        }
-        (CssProperty::FlexWrap, N1(Keyword(keyword))) => {
-            layout.flex_wrap = match keyword.as_str(css) {
-                "row" => taffy::FlexWrap::Wrap,
-                "nowrap" => taffy::FlexWrap::NoWrap,
-                "wrap-reverse" => taffy::FlexWrap::WrapReverse,
-                keyword => {
-                    error!("flex-wrap: {keyword}; not supported");
-                    return;
+            (CssProperty::FlexWrap, N1(Keyword(keyword))) => {
+                layout.flex_wrap = match keyword.as_str(css) {
+                    "row" => taffy::FlexWrap::Wrap,
+                    "nowrap" => taffy::FlexWrap::NoWrap,
+                    "wrap-reverse" => taffy::FlexWrap::WrapReverse,
+                    keyword => return CascadeError::invalid_keyword(keyword),
                 }
             }
+            (CssProperty::FlexBasis, N1(value)) => layout.flex_basis = dimension(value, self)?,
+            (CssProperty::FlexGrow, N1(Number(value))) => layout.flex_grow = *value,
+            (CssProperty::FlexShrink, N1(Number(value))) => layout.flex_shrink = *value,
+            _ => return Err(CascadeError::PropertyNotSupported),
         }
-        (CssProperty::FlexBasis, N1(value)) => layout.flex_basis = value.resolve(css, ctx),
-        (CssProperty::FlexGrow, N1(Number(value))) => layout.flex_grow = *value,
-        (CssProperty::FlexShrink, N1(Number(value))) => layout.flex_shrink = *value,
-        // TODO: grid
-        _ => {
-            debug!("property2 {property:?} not supported")
+        Ok(())
+    }
+}
+
+fn resolve_color(value: &CssValue, cascade: &Cascade) -> Result<[u8; 4], CascadeError> {
+    let value = match value {
+        CssValue::Color(color) => *color,
+        CssValue::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return resolve_color(value, cascade);
         }
-    }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
 }
 
-trait MyResolver<T> {
-    fn resolve(&self, css: &str, context: SizeContext) -> T;
-}
-
-impl MyResolver<Dimension> for &CssValue {
-    fn resolve(&self, css: &str, context: SizeContext) -> Dimension {
-        dimension(css, self, context)
-    }
-}
-
-impl MyResolver<LengthPercentageAuto> for &CssValue {
-    fn resolve(&self, css: &str, context: SizeContext) -> LengthPercentageAuto {
-        resolve_lpa(css, self, context)
-    }
-}
-
-impl MyResolver<taffy::LengthPercentage> for &CssValue {
-    fn resolve(&self, css: &str, context: SizeContext) -> taffy::LengthPercentage {
-        resolve_lp(css, self, context)
-    }
-}
-
-fn dimension(css: &str, value: &CssValue, context: SizeContext) -> Dimension {
-    type Result = Dimension;
-    match value {
-        CssValue::Dimension(dimension) => Result::Length(resolve_length2(css, *dimension, context)),
-        CssValue::Percentage(value) => Result::Percent(*value),
-        Keyword(keyword) => match keyword.as_str(css) {
-            "auto" => Result::Auto,
-            keyword => {
-                error!("keyword {keyword} not supported");
-                Result::Auto
-            }
-        },
-        _ => {
-            error!("value {value:?} not supported");
-            Result::Auto
+fn resolve_length(value: &CssValue, cascade: &Cascade, base: f32) -> Result<f32, CascadeError> {
+    let value = match value {
+        CssValue::Zero => 0.0,
+        CssValue::Dimension(dimension) => parse_dimension(dimension, cascade)?,
+        CssValue::Percentage(percent) => percent * base,
+        Number(value) => *value,
+        CssValue::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return resolve_length(value, cascade, base);
         }
-    }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
 }
 
-fn resolve_lp(css: &str, value: &CssValue, context: SizeContext) -> taffy::LengthPercentage {
-    type Result = taffy::LengthPercentage;
-    match value {
-        CssValue::Dimension(dimension) => Result::Length(resolve_length2(css, *dimension, context)),
-        CssValue::Percentage(value) => Result::Percent(*value),
-        _ => {
-            error!("value {value:?} not supported");
-            Result::ZERO
-        }
-    }
-}
-
-fn resolve_lpa(css: &str, value: &CssValue, context: SizeContext) -> LengthPercentageAuto {
-    type Result = LengthPercentageAuto;
-    match value {
-        CssValue::Dimension(dimension) => Result::Length(resolve_length2(css, *dimension, context)),
-        CssValue::Percentage(value) => Result::Percent(*value),
-        Keyword(keyword) => match keyword.as_str(css) {
-            "auto" => Result::Auto,
-            keyword => {
-                error!("keyword {keyword} not supported");
-                Result::Auto
-            }
-        },
-        _ => {
-            error!("value {value:?} not supported");
-            Result::Auto
-        }
-    }
-}
-
-fn resolve_length2(css: &str, dimension: CssDimension, context: SizeContext) -> f32 {
+fn parse_dimension(dimension: &CssDimension, cascade: &Cascade) -> Result<f32, CascadeError> {
     let value = dimension.value;
-    match dimension.unit.as_str(css) {
+    let sizes = cascade.sizes;
+    let value = match dimension.unit.as_str(&cascade.css.source) {
         "px" => value,
-        "em" => context.parent_font_size * value,
-        "rem" => context.root_font_size * value,
-        "vw" => context.viewport_width * value / 100.0,
-        "vh" => context.viewport_height * value / 100.0,
-        value => {
-            error!("length value {value:?} not supported");
-            context.parent_font_size
+        "em" => sizes.parent_font_size * value,
+        "rem" => sizes.root_font_size * value,
+        "vw" => sizes.viewport_width * value / 100.0,
+        "vh" => sizes.viewport_height * value / 100.0,
+        _ => {
+            return Err(CascadeError::DimensionUnitsNotSupported);
         }
-    }
+    };
+    Ok(value)
 }
 
-fn map_overflow2(keyword: &str) -> Overflow {
-    match keyword {
+fn dimension(value: &CssValue, cascade: &Cascade) -> Result<Dimension, CascadeError> {
+    let value = match value {
+        CssValue::Dimension(dimension) => {
+            let length = parse_dimension(dimension, cascade)?;
+            Dimension::Length(length)
+        }
+        CssValue::Percentage(value) => Dimension::Percent(*value),
+        Keyword(keyword) if keyword.as_str(&cascade.css.source) == "auto" => Dimension::Auto,
+        CssValue::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return dimension(value, cascade);
+        }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
+}
+
+fn lengthp(value: &CssValue, cascade: &Cascade) -> Result<LengthPercentage, CascadeError> {
+    let value = match value {
+        CssValue::Dimension(dimension) => {
+            let length = parse_dimension(dimension, cascade)?;
+            LengthPercentage::Length(length)
+        }
+        CssValue::Percentage(value) => LengthPercentage::Percent(*value),
+        CssValue::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return lengthp(value, cascade);
+        }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
+}
+
+fn lengthp_auto(value: &CssValue, cascade: &Cascade) -> Result<LengthPercentageAuto, CascadeError> {
+    let value = match value {
+        CssValue::Dimension(dimension) => {
+            let length = parse_dimension(dimension, cascade)?;
+            LengthPercentageAuto::Length(length)
+        }
+        CssValue::Percentage(value) => LengthPercentageAuto::Percent(*value),
+        Keyword(keyword) if keyword.as_str(&cascade.css.source) == "auto" => {
+            LengthPercentageAuto::Auto
+        }
+        CssValue::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return lengthp_auto(value, cascade);
+        }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
+}
+
+fn resolve_overflow(keyword: &str) -> Result<Overflow, CascadeError> {
+    let overflow = match keyword {
         "visible" => Overflow::Visible,
         "hidden" => Overflow::Hidden,
         "clip" => Overflow::Clip,
         "scroll" => Overflow::Scroll,
         "auto" => Overflow::Scroll,
-        _ => {
-            error!("overflow keyword {keyword} not supported");
-            Overflow::Visible
-        }
-    }
+        keyword => return CascadeError::invalid_keyword(keyword),
+    };
+    Ok(overflow)
 }
 
-fn map_align_items(keyword: &str) -> Option<taffy::AlignItems> {
+fn map_align_items(keyword: &str) -> Result<Option<taffy::AlignItems>, CascadeError> {
     let align = match keyword {
-        "normal" => return None,
+        "normal" => return Ok(None),
         "start" => taffy::AlignItems::Start,
         "end" => taffy::AlignItems::End,
         "flex-start" => taffy::AlignItems::FlexStart,
@@ -526,17 +602,14 @@ fn map_align_items(keyword: &str) -> Option<taffy::AlignItems> {
         "center" => taffy::AlignItems::Center,
         "baseline" => taffy::AlignItems::Baseline,
         "stretch" => taffy::AlignItems::Stretch,
-        _ => {
-            error!("align-items keyword {keyword} not supported");
-            return None;
-        }
+        keyword => return CascadeError::invalid_keyword(keyword),
     };
-    Some(align)
+    Ok(Some(align))
 }
 
-fn map_align_content(keyword: &str) -> Option<taffy::AlignContent> {
+fn map_align_content(keyword: &str) -> Result<Option<taffy::AlignContent>, CascadeError> {
     let align = match keyword {
-        "normal" => return None,
+        "normal" => return Ok(None),
         "start" => taffy::AlignContent::Start,
         "end" => taffy::AlignContent::End,
         "flex-start" => taffy::AlignContent::FlexStart,
@@ -546,10 +619,7 @@ fn map_align_content(keyword: &str) -> Option<taffy::AlignContent> {
         "space-between" => taffy::AlignContent::SpaceBetween,
         "space-evenly" => taffy::AlignContent::SpaceEvenly,
         "space-around" => taffy::AlignContent::SpaceAround,
-        _ => {
-            error!("align-items keyword {keyword} not supported");
-            return None;
-        }
+        keyword => return CascadeError::invalid_keyword(keyword),
     };
-    Some(align)
+    Ok(Some(align))
 }

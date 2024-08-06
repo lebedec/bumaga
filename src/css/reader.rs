@@ -36,6 +36,7 @@ pub struct MyStyle {
 pub struct MyProperty {
     pub name: CssProperty,
     pub values: CssValues,
+    pub has_vars: bool,
 }
 
 impl MyProperty {
@@ -76,10 +77,12 @@ pub struct MySelector {
 
 #[derive(Debug)]
 pub enum MyComponent {
+    All,
     Id(CssSpan),
     Class(CssSpan),
     Type(CssSpan),
     Attribute(CssSpan, MyMatcher, CssSpan),
+    Root,
     PseudoClass(CssSpan),
     PseudoElement(CssSpan),
     Combinator(char),
@@ -153,8 +156,12 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                                 for simple in component.into_inner() {
                                     let simple_rule = simple.as_rule();
                                     let mut iter = simple.into_inner();
-                                    let ident = iter.next().unwrap().as_span().into();
+                                    let ident = iter
+                                        .next()
+                                        .map(|pair| pair.as_span().into())
+                                        .unwrap_or(CssSpan::empty());
                                     let component = match simple_rule {
+                                        Rule::All => MyComponent::All,
                                         Rule::Id => MyComponent::Id(ident),
                                         Rule::Class => MyComponent::Class(ident),
                                         Rule::Type => MyComponent::Type(ident),
@@ -178,6 +185,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                                             MyComponent::Attribute(ident, matcher, search)
                                         }
                                         Rule::PseudoClass => MyComponent::PseudoClass(ident),
+                                        Rule::Root => MyComponent::Root,
                                         Rule::PseudoElement => MyComponent::PseudoElement(ident),
                                         _ => unreachable!(),
                                     };
@@ -219,13 +227,18 @@ fn read_declaration(pair: Pair<Rule>) -> Vec<MyProperty> {
 
         let name = CssProperty::from(name.as_span());
         let mut shorthands: Vec<CssShorthand> = values.into_inner().map(read_shorthand).collect();
+        let has_vars = shorthands.iter().any(|shorthand| shorthand.has_vars());
         let values = if shorthands.len() == 1 {
             CssValues::One(shorthands.remove(0))
         } else {
             CssValues::Multiple(shorthands)
         };
 
-        declaration.push(MyProperty { name, values })
+        declaration.push(MyProperty {
+            name,
+            values,
+            has_vars,
+        })
     }
     declaration
 }
@@ -336,6 +349,12 @@ mod tests {
     use crate::css::model::{CssShorthand, CssValue};
     use crate::css::reader::read_css;
     use std::time::Instant;
+
+    #[test]
+    pub fn test_root_selector() {
+        let css = ":root {}";
+        let present = read_css(css).expect("must be valid");
+    }
 
     #[test]
     pub fn test_simple_rule() {

@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::{Keys, MouseButton, TextStyle};
 use crate::api::{Fonts, Input};
+use crate::{Keys, MouseButton, TextStyle};
 
 impl<'f> Input<'f> {
     pub fn new() -> Input<'f> {
         Input {
             fonts: None,
-            value: Value::Null,
+            value: Value::Object(Map::new()),
             time: Duration::from_micros(0),
             keys: vec![],
             viewport: [800.0, 600.0],

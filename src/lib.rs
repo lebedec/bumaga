@@ -8,6 +8,7 @@ mod html;
 mod input;
 mod math;
 mod models;
+mod query;
 mod rendering;
 mod state;
 mod styles;

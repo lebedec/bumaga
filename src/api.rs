@@ -2,24 +2,26 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use serde_json::Value;
-pub use taffy::Layout;
-
-use crate::css::Css;
-use crate::html::Dom;
+use crate::css::{Css, CssValue};
+use crate::html::Html;
 use crate::math::Mat4;
 use crate::models::{ElementId, Object};
 use crate::state::State;
 use crate::value;
+use serde_json::Value;
+pub use taffy::Layout;
+use taffy::{NodeId, TaffyTree};
 pub use value::ValueExtensions;
 
 /// Components are reusable parts of UI that define views,
 /// handle user input and store UI state between interactions.
 pub struct Component {
     pub(crate) css: Source<Css>,
-    pub(crate) html: Source<Dom>,
+    pub(crate) html: Source<Html>,
     pub(crate) state: State,
     pub(crate) resources: String,
+    pub(crate) tree: TaffyTree<Element>,
+    pub(crate) root: NodeId,
 }
 
 pub struct Source<T> {

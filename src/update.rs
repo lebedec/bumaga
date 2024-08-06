@@ -13,9 +13,10 @@ use taffy::{
 };
 
 use crate::css::read_css_unchecked;
-use crate::html::{read_html_unchecked, Dom};
+use crate::html::{read_html_unchecked, Html};
 use crate::input::FakeFonts;
-use crate::models::{ElementId, Object, SizeContext};
+use crate::models::{ElementId, Object, Sizes};
+use crate::rendering::RenderError;
 use crate::state::State;
 use crate::styles::create_element;
 use crate::{Component, Element, Fonts, Input, Keys, Output, Source, LEFT_MOUSE_BUTTON};
@@ -47,45 +48,16 @@ impl Component {
                 return frame;
             }
         };
-        let mut rendering = TaffyTree::new();
-        let [viewport_width, viewport_height] = input.viewport;
-        let viewport_id = ElementId::fake();
-        let viewport_layout = Style {
-            size: Size {
-                width: length(viewport_width),
-                height: length(viewport_height),
-            },
-            ..Default::default()
-        };
-        let fake_object = Object::fake();
-        let viewport_view = create_element(viewport_id, fake_object);
-        let context = SizeContext {
-            root_font_size: viewport_view.text_style.font_size,
-            parent_font_size: viewport_view.text_style.font_size,
-            viewport_width,
-            viewport_height,
-        };
-        let viewport = rendering.new_leaf_with_context(viewport_layout, viewport_view);
-        let viewport = match viewport {
-            Ok(viewport) => viewport,
+
+        let (root, tree) = match self.render(&mut input, &mut value) {
+            Ok(tree) => tree,
             Err(error) => {
-                error!("unable to create viewport, {error:?}");
+                error!("unable to render component tree, {error:?}");
                 return frame;
             }
         };
-        let html = self.html.content.clone();
-        let body = html.children.last().cloned().expect("body must be found");
-        self.state.active_animators = take(&mut self.state.animators);
-        self.render_tree(viewport, body, &mut value, &input, context, &mut rendering);
-        let result = rendering.compute_layout_with_measure(
-            viewport,
-            Size::MAX_CONTENT,
-            |size, space, _, view, _| input.measure_text(size, space, view),
-        );
-        if let Err(error) = result {
-            error!("unable to layout component, {error:?}");
-            return frame;
-        };
+        self.tree = tree;
+        self.root = root;
 
         fn process(
             tree: &TaffyTree<Element>,
@@ -190,10 +162,9 @@ impl Component {
                 }
             }
         }
-        let body = rendering.child_ids(viewport).next().expect("must be");
         process(
-            &rendering,
-            body,
+            &self.tree,
+            self.root,
             &input,
             &mut frame,
             &mut self.state,
@@ -229,38 +200,6 @@ impl<'f> Input<'f> {
             .iter()
             .position(|key_down| key_down == &key)
             .is_some()
-    }
-
-    fn measure_text(
-        &mut self,
-        size: Size<Option<f32>>,
-        space: Size<AvailableSpace>,
-        element: Option<&mut Element>,
-    ) -> Size<f32> {
-        if let Size {
-            width: Some(width),
-            height: Some(height),
-        } = size
-        {
-            return Size { width, height };
-        }
-        let element = match element {
-            None => return Size::ZERO,
-            Some(element) => element,
-        };
-        if let Some(text) = element.html.text.as_ref() {
-            let max_width = size.width.map(Some).unwrap_or_else(|| match space.width {
-                AvailableSpace::MinContent => Some(0.0),
-                AvailableSpace::MaxContent => None,
-                AvailableSpace::Definite(width) => Some(width),
-            });
-            let [width, height] = match self.fonts.as_mut() {
-                None => FakeFonts.measure(&text, &element.text_style, max_width),
-                Some(fonts) => fonts.measure(&text, &element.text_style, max_width),
-            };
-            return Size { width, height };
-        }
-        Size::ZERO
     }
 }
 

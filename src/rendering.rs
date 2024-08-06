@@ -1,29 +1,80 @@
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem;
+use std::mem::take;
 use std::process::id;
 
+use crate::css::{match_style, CssSpan, CssValue};
+use crate::html::Html;
+use crate::input::FakeFonts;
+use crate::models::{ElementId, Object, Sizes};
+use crate::state::State;
+use crate::styles::{create_element, default_layout_style, inherit, Cascade};
+use crate::{Call, Component, Element, Fonts, Input, ValueExtensions};
 use log::error;
 use serde_json::{Map, Value};
-use taffy::{AlignItems, Dimension, Display, JustifyContent, NodeId, Size, Style, TaffyTree};
-
-use crate::css::match_rule_new;
-use crate::html::Dom;
-use crate::models::{ElementId, Object, SizeContext};
-use crate::state::State;
-use crate::styles::{
-    apply_element_rules2, apply_layout_rules2, create_element, default_layout_style, inherit,
+use taffy::prelude::length;
+use taffy::style_helpers::TaffyMaxContent;
+use taffy::{
+    AlignItems, AvailableSpace, Dimension, Display, JustifyContent, NodeId, Size, Style,
+    TaffyError, TaffyTree,
 };
-use crate::{Call, Component, Element, Input, ValueExtensions};
+
+#[derive(Debug)]
+pub enum RenderError {
+    Taffy(TaffyError),
+}
+
+impl From<TaffyError> for RenderError {
+    fn from(error: TaffyError) -> Self {
+        RenderError::Taffy(error)
+    }
+}
 
 impl Component {
-    pub fn render_tree(
+    pub fn render(
+        &mut self,
+        input: &mut Input,
+        globals: &mut Map<String, Value>,
+    ) -> Result<(NodeId, TaffyTree<Element>), RenderError> {
+        let mut rendering = TaffyTree::new();
+        let [viewport_width, viewport_height] = input.viewport;
+        let root_id = ElementId::fake();
+        let root_layout = Style {
+            size: Size {
+                width: length(viewport_width),
+                height: length(viewport_height),
+            },
+            ..Default::default()
+        };
+        let root = create_element(root_id, Object::tag(":root"));
+        let context = Sizes {
+            root_font_size: root.text_style.font_size,
+            parent_font_size: root.text_style.font_size,
+            viewport_width,
+            viewport_height,
+        };
+        let root = rendering.new_leaf_with_context(root_layout, root)?;
+        let html = self.html.content.clone();
+        // TODO: determine body element
+        let body = html.children.last().cloned().expect("body must be found");
+        self.state.active_animators = take(&mut self.state.animators);
+        self.render_tree(root, body, globals, input, context, &mut rendering);
+        rendering.compute_layout_with_measure(
+            root,
+            Size::MAX_CONTENT,
+            |size, space, _, view, _| measure_text(input, size, space, view),
+        )?;
+        return Ok((root, rendering));
+    }
+
+    fn render_tree(
         &mut self,
         parent_id: NodeId,
-        current: Dom,
+        current: Html,
         globals: &mut Map<String, Value>,
         input: &Input,
-        context: SizeContext,
+        context: Sizes,
         layout: &mut TaffyTree<Element>,
     ) {
         if current.text.is_some() {
@@ -36,7 +87,7 @@ impl Component {
     fn render_text(
         &mut self,
         parent_id: NodeId,
-        current: Dom,
+        current: Html,
         input: &Input,
         globals: &mut Map<String, Value>,
         layout: &mut TaffyTree<Element>,
@@ -55,10 +106,10 @@ impl Component {
     pub fn render_template(
         &mut self,
         parent_id: NodeId,
-        current: Dom,
+        current: Html,
         globals: &mut Map<String, Value>,
         input: &Input,
-        context: SizeContext,
+        context: Sizes,
         layout: &mut TaffyTree<Element>,
     ) {
         if let Some(pipe) = current.attrs.get("?") {
@@ -89,17 +140,16 @@ impl Component {
         &mut self,
         element_id: ElementId,
         parent_id: NodeId,
-        template: &Dom,
+        template: &Html,
         globals: &mut Map<String, Value>,
         input: &Input,
-        context: SizeContext,
-        layout: &mut TaffyTree<Element>,
+        sizes: Sizes,
+        tree: &mut TaffyTree<Element>,
     ) {
-        let current_id = layout
+        let current_id = tree
             .new_leaf(default_layout_style())
             .expect("id must be created");
-        layout
-            .add_child(parent_id, current_id)
+        tree.add_child(parent_id, current_id)
             .expect("child must be added");
 
         let mut current = template.clone();
@@ -119,61 +169,37 @@ impl Component {
         let mut element = create_element(element_id, object);
 
         // APPLY STYLES
-        let mut layout_style = default_layout_style();
+        let mut layout = default_layout_style();
         // preset element context for CSS matching process
-        layout
-            .set_node_context(current_id, Some(element.clone()))
+        tree.set_node_context(current_id, Some(element.clone()))
             .expect("context must be set");
-        let parent = layout.get_node_context(parent_id).expect("context must be");
+        let parent = tree.get_node_context(parent_id).expect("context must be");
         // default html styles
         match element.html.tag.as_str() {
             "input" => {
-                layout_style.display = Display::Flex;
-                layout_style.align_items = Some(AlignItems::Center);
+                layout.display = Display::Flex;
+                layout.align_items = Some(AlignItems::Center);
             }
             _ => {}
         }
 
-        let css = &self.css.content.source;
-        for style in &self.css.content.styles {
-            if match_rule_new(css, &style, current_id, layout) {
-                apply_layout_rules2(css, style, &mut layout_style, context);
-                apply_element_rules2(css, style, &parent, &mut element, context, &self.resources);
-                //let props = &ruleset.style.declarations.declarations;
-                //apply_layout_rules(props, &mut layout_style, context);
-                //apply_element_rules(props, &parent, &mut element, context, &self.resources);
-                // apply_animation_rules(
-                //     props,
-                //     &mut element,
-                //     &mut self.state.active_animators,
-                //     &mut self.state.animators,
-                //     &self.presentation_old.content.animations,
-                // );
-            }
-        }
-        // let animators = self.state.load_animators_mut(element_id);
-        // for animator in animators {
-        //     let props = animator.update(input.time.as_secs_f32());
-        //     //apply_layout_rules(&props, &mut layout_style, context);
-        //     //apply_element_rules(&props, &parent, &mut element, context, &self.resources);
-        // }
+        let mut cascade = Cascade::new(&self.css.content, sizes, &self.resources);
+        cascade.apply_styles(current_id, tree, parent, &mut layout, &mut element);
 
         self.render_output_bindings(&mut element, globals);
 
         // final commit of style changes
-        layout
-            .set_style(current_id, layout_style)
+        tree.set_style(current_id, layout)
             .expect("style must be updated");
-        layout
-            .set_node_context(current_id, Some(element.clone()))
+        tree.set_node_context(current_id, Some(element.clone()))
             .expect("context must be set");
 
         match element.html.tag.as_str() {
             "img" => {
-                self.render_img(current_id, &element, layout);
+                self.render_img(current_id, &element, tree);
             }
             "input" => {
-                self.render_input(current_id, &element, globals, layout);
+                self.render_input(current_id, &element, globals, tree);
             }
             "area" => {}
             "base" => {}
@@ -191,9 +217,9 @@ impl Component {
             "wbr" => {}
             _ => {
                 for child in template.children.clone() {
-                    let mut context = context;
+                    let mut context = sizes;
                     context.parent_font_size = element.text_style.font_size;
-                    self.render_tree(current_id, child, globals, input, context, layout);
+                    self.render_tree(current_id, child, globals, input, context, tree);
                 }
             }
         }
@@ -263,6 +289,38 @@ impl Component {
                 element.listeners.insert(event.to_string(), output);
             }
         }
+    }
+}
+
+struct ObjectContext<'a> {
+    css: &'a str,
+    sizes: Sizes,
+    variables: HashMap<CssSpan, CssValue>,
+}
+
+impl<'a> ObjectContext<'a> {
+    pub fn new(css: &'a str, sizes: Sizes) -> Self {
+        Self {
+            css,
+            sizes,
+            variables: HashMap::new(),
+        }
+    }
+
+    pub fn create(&self) -> Self {
+        Self {
+            css: self.css,
+            sizes: self.sizes,
+            variables: HashMap::new(),
+        }
+    }
+
+    pub fn push_variable(&mut self, name: CssSpan, variable: CssValue) {
+        self.variables.insert(name, variable);
+    }
+
+    pub fn get_variable(&self, name: CssSpan) -> Option<&CssValue> {
+        self.variables.get(&name)
     }
 }
 
@@ -475,4 +533,36 @@ impl Repetition {
             values: vec![Value::Null],
         }
     }
+}
+
+fn measure_text(
+    input: &mut Input,
+    size: Size<Option<f32>>,
+    space: Size<AvailableSpace>,
+    element: Option<&mut Element>,
+) -> Size<f32> {
+    if let Size {
+        width: Some(width),
+        height: Some(height),
+    } = size
+    {
+        return Size { width, height };
+    }
+    let element = match element {
+        None => return Size::ZERO,
+        Some(element) => element,
+    };
+    if let Some(text) = element.html.text.as_ref() {
+        let max_width = size.width.map(Some).unwrap_or_else(|| match space.width {
+            AvailableSpace::MinContent => Some(0.0),
+            AvailableSpace::MaxContent => None,
+            AvailableSpace::Definite(width) => Some(width),
+        });
+        let [width, height] = match input.fonts.as_mut() {
+            None => FakeFonts.measure(&text, &element.text_style, max_width),
+            Some(fonts) => fonts.measure(&text, &element.text_style, max_width),
+        };
+        return Size { width, height };
+    }
+    Size::ZERO
 }

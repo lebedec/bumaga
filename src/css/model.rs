@@ -1,7 +1,8 @@
 use log::warn;
+use pest::pratt_parser::Op;
 use pest::Span;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CssSpan {
     start: usize,
     end: usize,
@@ -74,6 +75,17 @@ impl CssShorthand {
         warn!("takes css  shorthand as single value");
         value
     }
+
+    #[inline]
+    pub fn has_vars(&self) -> bool {
+        match self {
+            Self::N1(a) => a.is_var(),
+            Self::N2(a, b) => [a, b].into_iter().any(CssValue::is_var),
+            Self::N3(a, b, c) => [a, b, c].into_iter().any(CssValue::is_var),
+            Self::N4(a, b, c, d) => [a, b, c, d].into_iter().any(CssValue::is_var),
+            Self::N(values) => values.iter().any(CssValue::is_var),
+        }
+    }
 }
 
 // Used to optimize frequently used or complex values.
@@ -100,6 +112,19 @@ impl CssValue {
             CssValue::Keyword(span) => Some(*span),
             _ => None,
         }
+    }
+
+    #[inline(always)]
+    pub fn as_var(&self) -> Option<CssVariable> {
+        match self {
+            CssValue::Var(variable) => Some(*variable),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn is_var(&self) -> bool {
+        self.as_var().is_some()
     }
 
     #[inline(always)]
