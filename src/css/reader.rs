@@ -270,10 +270,11 @@ fn read_value(pair: Pair<Rule>) -> CssValue {
         Rule::Zero => CssValue::Zero,
         Rule::Time => CssValue::Time(read_seconds(pair)),
         Rule::Percentage => CssValue::Percentage(read_number(pair) / 100.0),
-        Rule::Dimension => CssValue::Dimension(read_dimension(pair)),
+        Rule::Dimension => CssValue::Dim(read_dimension(pair)),
         Rule::Number => CssValue::Number(read_number(pair)),
         Rule::Var => CssValue::Var(read_variable(pair)),
         Rule::Calc => CssValue::Raw(pair.as_span().into()),
+        Rule::String => CssValue::String(pair.into_inner().next().unwrap().as_span().into()),
         Rule::Raw => match pair.as_str() {
             "inherit" => CssValue::Inherit,
             "initial" => CssValue::Initial,

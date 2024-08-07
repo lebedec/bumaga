@@ -8,10 +8,11 @@ use crate::html::Html;
 use crate::math::Mat4;
 use crate::models::{ElementId, Object};
 use crate::state::State;
+use crate::styles::Scrolling;
 use crate::value;
 use serde_json::Value;
 pub use taffy::Layout;
-use taffy::{NodeId, TaffyTree};
+use taffy::{LengthPercentage, NodeId, TaffyTree};
 pub use value::ValueExtensions;
 
 /// Components are reusable parts of UI that define views,
@@ -40,6 +41,7 @@ pub struct Input<'f> {
     pub(crate) mouse_position: [f32; 2],
     pub(crate) mouse_buttons_down: Vec<MouseButton>,
     pub(crate) mouse_buttons_up: Vec<MouseButton>,
+    pub(crate) mouse_wheel: [f32; 2],
     pub(crate) keys_down: Vec<Keys>,
     pub(crate) keys_up: Vec<Keys>,
     pub(crate) keys_pressed: Vec<Keys>,
@@ -94,22 +96,58 @@ pub struct Element {
     pub opacity: f32,
     pub transform: Option<Mat4>,
     pub animator: Animator,
+    pub scrolling: Option<Scrolling>,
+    pub clip: Option<Layout>,
 }
 
 pub type Rgba = [u8; 4];
 
 #[derive(Clone)]
 pub struct Borders {
-    pub top: Option<MyBorder>,
-    pub bottom: Option<MyBorder>,
-    pub right: Option<MyBorder>,
-    pub left: Option<MyBorder>,
+    pub top: MyBorder,
+    pub bottom: MyBorder,
+    pub right: MyBorder,
+    pub left: MyBorder,
+    pub radius: [LengthPercentage; 4],
 }
 
-#[derive(Clone)]
+impl Borders {
+    pub fn top(&self) -> Option<MyBorder> {
+        if self.top.width > 0.0 {
+            Some(self.top)
+        } else {
+            None
+        }
+    }
+
+    pub fn right(&self) -> Option<MyBorder> {
+        if self.right.width > 0.0 {
+            Some(self.right)
+        } else {
+            None
+        }
+    }
+
+    pub fn bottom(&self) -> Option<MyBorder> {
+        if self.bottom.width > 0.0 {
+            Some(self.bottom)
+        } else {
+            None
+        }
+    }
+
+    pub fn left(&self) -> Option<MyBorder> {
+        if self.left.width > 0.0 {
+            Some(self.left)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Default, Copy)]
 pub struct MyBorder {
     pub width: f32,
-    // pub style: LineStyle,
     pub color: Rgba,
 }
 
@@ -142,7 +180,7 @@ pub enum ObjectFit {
     ScaleDown,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TextStyle {
     /// The font family.
     pub font_family: String,

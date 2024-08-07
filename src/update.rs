@@ -18,7 +18,7 @@ use crate::input::FakeFonts;
 use crate::models::{ElementId, Object, Sizes};
 use crate::rendering::RenderError;
 use crate::state::State;
-use crate::styles::create_element;
+use crate::styles::{create_element, Scrolling};
 use crate::{Component, Element, Fonts, Input, Keys, Output, Source, LEFT_MOUSE_BUTTON};
 
 impl Component {
@@ -65,7 +65,8 @@ impl Component {
             input: &Input,
             frame: &mut Output,
             state: &mut State,
-            mut location: Point<f32>,
+            location: Point<f32>,
+            mut clip: Option<Layout>,
         ) {
             let mut layout = *tree.get_final_layout(node);
 
@@ -89,9 +90,21 @@ impl Component {
                 Some(element) => element,
             };
 
+            element.scrolling = Scrolling::ensure(&layout, &element.scrolling);
+            element.layout = layout;
+            element.clip = clip;
+
             // interaction
             element.html.pseudo_classes = HashSet::new();
-            if is_element_contains(&layout, input.mouse_position) {
+            if is_element_contains(&element.layout, input.mouse_position) {
+                if element.scrolling.is_some() {
+                    state.set_scroll(element.id);
+                }
+
+                if let Some(scrolling) = element.scrolling.as_mut() {
+                    scrolling.offset(input.mouse_wheel[0], input.mouse_wheel[1]);
+                }
+
                 element.html.pseudo_classes.insert("hover".to_string());
                 if input.is_mouse_down() {
                     element.html.pseudo_classes.insert("active".to_string());
@@ -143,14 +156,17 @@ impl Component {
             }
             state.save(&element);
 
-            let mut view = element.clone();
-            view.layout = layout;
-            frame.elements.push(view);
-            location = layout.location;
+            frame.elements.push(element.clone());
+            let mut location = element.layout.location;
+            if let Some(scrolling) = element.scrolling.as_ref() {
+                clip = Some(element.layout.clone());
+                location.x -= scrolling.x;
+                location.y -= scrolling.y;
+            }
             match tree.children(node) {
                 Ok(children) => {
                     for child in children {
-                        process(tree, child, input, frame, state, location);
+                        process(tree, child, input, frame, state, location, clip);
                     }
                 }
                 Err(error) => {
@@ -166,6 +182,7 @@ impl Component {
             &mut frame,
             &mut self.state,
             Point::ZERO,
+            None,
         );
         frame
     }

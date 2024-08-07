@@ -1,21 +1,21 @@
-use std::collections::HashMap;
-
-use taffy::{
-    Dimension, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect, Style,
-    TaffyTree,
-};
-
 use crate::animation::{
     AnimationDirection, AnimationFillMode, AnimationIterations, Animator, TimingFunction,
 };
 use crate::css::CssShorthand::{N1, N2, N3, N4};
-use crate::css::CssValue::{Keyword, Number, Time};
+use crate::css::CssValue::{Color, Dim, Keyword, Number, Time};
 use crate::css::{
     match_style, Css, CssDimension, CssProperty, CssSpan, CssValue, CssValues, CssVariable,
     MyProperty, MyStyle,
 };
 use crate::models::{ElementId, Object, Sizes};
-use crate::{Background, Borders, Element, Input, ObjectFit, TextStyle};
+use crate::{Background, Borders, Element, Input, MyBorder, ObjectFit, TextStyle};
+use log::error;
+use std::collections::HashMap;
+use taffy::style_helpers::TaffyZero;
+use taffy::{
+    Dimension, Layout, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect,
+    Style, TaffyTree,
+};
 
 impl TextStyle {
     pub const DEFAULT_FONT_FAMILY: &'static str = "system-ui";
@@ -39,10 +39,11 @@ pub fn create_element(id: ElementId, html: Object) -> Element {
             // clip: Default::default(),
         },
         borders: Borders {
-            top: None,
-            bottom: None,
-            right: None,
-            left: None,
+            top: Default::default(),
+            bottom: Default::default(),
+            right: Default::default(),
+            left: Default::default(),
+            radius: [LengthPercentage::ZERO; 4],
         },
         color: [255, 255, 255, 255],
         text_style: TextStyle {
@@ -58,6 +59,51 @@ pub fn create_element(id: ElementId, html: Object) -> Element {
         opacity: 1.0,
         transform: None,
         animator: Animator::default(),
+        scrolling: None,
+        clip: None,
+    }
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct Scrolling {
+    pub x: f32,
+    pub y: f32,
+    pub scroll_x: f32,
+    pub scroll_y: f32,
+}
+
+impl Scrolling {
+    pub fn ensure(layout: &Layout, current: &Option<Scrolling>) -> Option<Scrolling> {
+        let content = layout.content_size;
+        let size = layout.size;
+        let [x, y] = current
+            .as_ref()
+            .map(|current| [current.x, current.y])
+            .unwrap_or_default();
+        if content.width > size.width || content.height > size.height {
+            let scroll_x = content.width - size.width;
+            let scroll_y = content.height - size.height;
+            let scrolling = Scrolling {
+                x: x.min(scroll_x),
+                y: y.min(scroll_y),
+                scroll_x,
+                scroll_y,
+            };
+            Some(scrolling)
+        } else {
+            None
+        }
+    }
+
+    pub fn offset(&mut self, x: f32, y: f32) {
+        if x != 0.0 {
+            self.x += x.signum() * 50.0;
+            self.x = self.x.min(self.scroll_x).max(0.0);
+        }
+        if y != 0.0 {
+            self.y -= y.signum() * 50.0;
+            self.y = self.y.min(self.scroll_y).max(0.0);
+        }
     }
 }
 
@@ -267,37 +313,31 @@ impl<'c> Cascade<'c> {
                 continue;
             }
             if let Err(error) = self.apply_property(property, layout, element) {
-                // error!("unable to apply property {property:?}, {error:?}")
+                error!("unable to apply property {property:?}, {error:?}")
             }
         }
     }
 
     fn interpolate(&self, a: &MyProperty, b: &MyProperty, t: f32) -> Option<MyProperty> {
         let property = match (a.name, a.as_value(), b.name, b.as_value()) {
-            (
-                CssProperty::Height,
-                CssValue::Dimension(a),
-                CssProperty::Height,
-                CssValue::Dimension(b),
-            ) => MyProperty {
-                name: CssProperty::Height,
-                values: CssValues::One(N1(CssValue::Dimension(CssDimension {
-                    value: a.value + (b.value - a.value) * t,
-                    unit: a.unit,
-                }))),
-            },
-            (
-                CssProperty::Width,
-                CssValue::Dimension(a),
-                CssProperty::Width,
-                CssValue::Dimension(b),
-            ) => MyProperty {
-                name: CssProperty::Width,
-                values: CssValues::One(N1(CssValue::Dimension(CssDimension {
-                    value: a.value + (b.value - a.value) * t,
-                    unit: a.unit,
-                }))),
-            },
+            (CssProperty::Height, CssValue::Dim(a), CssProperty::Height, CssValue::Dim(b)) => {
+                MyProperty {
+                    name: CssProperty::Height,
+                    values: CssValues::One(N1(CssValue::Dim(CssDimension {
+                        value: a.value + (b.value - a.value) * t,
+                        unit: a.unit,
+                    }))),
+                }
+            }
+            (CssProperty::Width, CssValue::Dim(a), CssProperty::Width, CssValue::Dim(b)) => {
+                MyProperty {
+                    name: CssProperty::Width,
+                    values: CssValues::One(N1(CssValue::Dim(CssDimension {
+                        value: a.value + (b.value - a.value) * t,
+                        unit: a.unit,
+                    }))),
+                }
+            }
             (
                 CssProperty::BackgroundColor,
                 CssValue::Color(x),
@@ -351,6 +391,140 @@ impl<'c> Cascade<'c> {
             (CssProperty::FontSize, N1(size)) => {
                 element.text_style.font_size =
                     resolve_length(size, self, self.sizes.parent_font_size)?;
+            }
+            (CssProperty::FontFamily, N1(value)) => {
+                element.text_style.font_family = resolve_string(value, self)?;
+            }
+            (CssProperty::Border, N3(width, _style, color)) => {
+                element.borders.top.width = dimension_length(width, self)?;
+                element.borders.top.color = resolve_color(color, self)?;
+                element.borders.right = element.borders.top;
+                element.borders.bottom = element.borders.top;
+                element.borders.left = element.borders.top;
+            }
+            (CssProperty::BorderTop, N3(width, _style, color)) => {
+                element.borders.top.width = dimension_length(width, self)?;
+                element.borders.top.color = resolve_color(color, self)?;
+            }
+            (CssProperty::BorderRight, N3(width, _style, color)) => {
+                element.borders.right.width = dimension_length(width, self)?;
+                element.borders.right.color = resolve_color(color, self)?;
+            }
+            (CssProperty::BorderBottom, N3(width, _style, color)) => {
+                element.borders.bottom.width = dimension_length(width, self)?;
+                element.borders.bottom.color = resolve_color(color, self)?;
+            }
+            (CssProperty::BorderLeft, N3(width, _style, color)) => {
+                element.borders.left.width = dimension_length(width, self)?;
+                element.borders.left.color = resolve_color(color, self)?;
+            }
+            (CssProperty::BorderWidth, N4(top, right, bottom, left)) => {
+                element.borders.top.width = dimension_length(top, self)?;
+                element.borders.right.width = dimension_length(right, self)?;
+                element.borders.bottom.width = dimension_length(bottom, self)?;
+                element.borders.left.width = dimension_length(left, self)?;
+            }
+            (CssProperty::BorderWidth, N3(top, h, bottom)) => {
+                element.borders.top.width = dimension_length(top, self)?;
+                element.borders.right.width = dimension_length(h, self)?;
+                element.borders.bottom.width = dimension_length(bottom, self)?;
+                element.borders.left.width = dimension_length(h, self)?;
+            }
+            (CssProperty::BorderWidth, N2(v, h)) => {
+                element.borders.top.width = dimension_length(v, self)?;
+                element.borders.right.width = dimension_length(h, self)?;
+                element.borders.bottom.width = dimension_length(v, self)?;
+                element.borders.left.width = dimension_length(h, self)?;
+            }
+            (CssProperty::BorderWidth, N1(value)) => {
+                element.borders.top.width = dimension_length(value, self)?;
+                element.borders.right.width = element.borders.top.width;
+                element.borders.bottom.width = element.borders.top.width;
+                element.borders.left.width = element.borders.top.width;
+            }
+            (CssProperty::BorderTopWidth, N1(value)) => {
+                element.borders.top.width = dimension_length(value, self)?;
+            }
+            (CssProperty::BorderRightWidth, N1(value)) => {
+                element.borders.right.width = dimension_length(value, self)?;
+            }
+            (CssProperty::BorderBottomWidth, N1(value)) => {
+                element.borders.bottom.width = dimension_length(value, self)?;
+            }
+            (CssProperty::BorderLeftWidth, N1(value)) => {
+                element.borders.left.width = dimension_length(value, self)?;
+            }
+            (CssProperty::BorderColor, N4(top, right, bottom, left)) => {
+                element.borders.top.color = resolve_color(top, self)?;
+                element.borders.right.color = resolve_color(right, self)?;
+                element.borders.bottom.color = resolve_color(bottom, self)?;
+                element.borders.left.color = resolve_color(left, self)?;
+            }
+            (CssProperty::BorderColor, N3(top, h, bottom)) => {
+                element.borders.top.color = resolve_color(top, self)?;
+                element.borders.right.color = resolve_color(h, self)?;
+                element.borders.bottom.color = resolve_color(bottom, self)?;
+                element.borders.left.color = resolve_color(h, self)?;
+            }
+            (CssProperty::BorderColor, N2(v, h)) => {
+                element.borders.top.color = resolve_color(v, self)?;
+                element.borders.right.color = resolve_color(h, self)?;
+                element.borders.bottom.color = resolve_color(v, self)?;
+                element.borders.left.color = resolve_color(h, self)?;
+            }
+            (CssProperty::BorderColor, N1(value)) => {
+                element.borders.top.color = resolve_color(value, self)?;
+                element.borders.right.color = element.borders.top.color;
+                element.borders.bottom.color = element.borders.top.color;
+                element.borders.left.color = element.borders.top.color;
+            }
+            (CssProperty::BorderTopColor, N1(value)) => {
+                element.borders.top.color = resolve_color(value, self)?;
+            }
+            (CssProperty::BorderRightColor, N1(value)) => {
+                element.borders.right.color = resolve_color(value, self)?;
+            }
+            (CssProperty::BorderBottomColor, N1(value)) => {
+                element.borders.bottom.color = resolve_color(value, self)?;
+            }
+            (CssProperty::BorderLeftColor, N1(value)) => {
+                element.borders.left.color = resolve_color(value, self)?;
+            }
+            (CssProperty::BorderRadius, N4(a, b, c, d)) => {
+                element.borders.radius[0] = lengthp(a, self)?;
+                element.borders.radius[1] = lengthp(b, self)?;
+                element.borders.radius[2] = lengthp(c, self)?;
+                element.borders.radius[3] = lengthp(d, self)?;
+            }
+            (CssProperty::BorderRadius, N3(a, b, c)) => {
+                element.borders.radius[0] = lengthp(a, self)?;
+                element.borders.radius[1] = lengthp(b, self)?;
+                element.borders.radius[2] = lengthp(c, self)?;
+                element.borders.radius[3] = lengthp(b, self)?;
+            }
+            (CssProperty::BorderRadius, N2(a, b)) => {
+                element.borders.radius[0] = lengthp(a, self)?;
+                element.borders.radius[1] = lengthp(b, self)?;
+                element.borders.radius[2] = lengthp(a, self)?;
+                element.borders.radius[3] = lengthp(b, self)?;
+            }
+            (CssProperty::BorderRadius, N1(value)) => {
+                element.borders.radius[0] = lengthp(value, self)?;
+                element.borders.radius[1] = lengthp(value, self)?;
+                element.borders.radius[2] = lengthp(value, self)?;
+                element.borders.radius[3] = lengthp(value, self)?;
+            }
+            (CssProperty::BorderTopLeftRadius, N1(value)) => {
+                element.borders.radius[0] = lengthp(value, self)?;
+            }
+            (CssProperty::BorderTopRightRadius, N1(value)) => {
+                element.borders.radius[1] = lengthp(value, self)?;
+            }
+            (CssProperty::BorderBottomRightRadius, N1(value)) => {
+                element.borders.radius[2] = lengthp(value, self)?;
+            }
+            (CssProperty::BorderBottomLeftRadius, N1(value)) => {
+                element.borders.radius[3] = lengthp(value, self)?;
             }
             //
             // Animation
@@ -428,6 +602,10 @@ impl<'c> Cascade<'c> {
                 "grid" => layout.display = taffy::Display::Grid,
                 keyword => return CascadeError::invalid_keyword(keyword),
             },
+            (CssProperty::Overflow, N1(Keyword(value))) => {
+                layout.overflow.x = resolve_overflow(value.as_str(css))?;
+                layout.overflow.y = layout.overflow.x;
+            }
             (CssProperty::Overflow, N2(Keyword(x), Keyword(y))) => {
                 layout.overflow.x = resolve_overflow(x.as_str(css))?;
                 layout.overflow.y = resolve_overflow(y.as_str(css))?;
@@ -684,10 +862,22 @@ fn resolve_iterations(
     Ok(value)
 }
 
+fn resolve_string(value: &CssValue, cascade: &Cascade) -> Result<String, CascadeError> {
+    let value = match value {
+        CssValue::String(value) => value.as_str(&cascade.css.source).to_string(),
+        CssValue::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return resolve_string(value, cascade);
+        }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
+}
+
 fn resolve_length(value: &CssValue, cascade: &Cascade, base: f32) -> Result<f32, CascadeError> {
     let value = match value {
         CssValue::Zero => 0.0,
-        CssValue::Dimension(dimension) => parse_dimension(dimension, cascade)?,
+        CssValue::Dim(dimension) => parse_dimension_length(dimension, cascade)?,
         CssValue::Percentage(percent) => percent * base,
         Number(value) => *value,
         CssValue::Var(variable) => {
@@ -699,7 +889,24 @@ fn resolve_length(value: &CssValue, cascade: &Cascade, base: f32) -> Result<f32,
     Ok(value)
 }
 
-fn parse_dimension(dimension: &CssDimension, cascade: &Cascade) -> Result<f32, CascadeError> {
+fn dimension_length(value: &CssValue, cascade: &Cascade) -> Result<f32, CascadeError> {
+    let value = match value {
+        CssValue::Zero => 0.0,
+        CssValue::Dim(dimension) => parse_dimension_length(dimension, cascade)?,
+        Number(value) => *value,
+        CssValue::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return dimension_length(value, cascade);
+        }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
+}
+
+fn parse_dimension_length(
+    dimension: &CssDimension,
+    cascade: &Cascade,
+) -> Result<f32, CascadeError> {
     let value = dimension.value;
     let sizes = cascade.sizes;
     let value = match dimension.unit.as_str(&cascade.css.source) {
@@ -717,8 +924,8 @@ fn parse_dimension(dimension: &CssDimension, cascade: &Cascade) -> Result<f32, C
 
 fn dimension(value: &CssValue, cascade: &Cascade) -> Result<Dimension, CascadeError> {
     let value = match value {
-        CssValue::Dimension(dimension) => {
-            let length = parse_dimension(dimension, cascade)?;
+        CssValue::Dim(dimension) => {
+            let length = parse_dimension_length(dimension, cascade)?;
             Dimension::Length(length)
         }
         CssValue::Percentage(value) => Dimension::Percent(*value),
@@ -734,8 +941,8 @@ fn dimension(value: &CssValue, cascade: &Cascade) -> Result<Dimension, CascadeEr
 
 fn lengthp(value: &CssValue, cascade: &Cascade) -> Result<LengthPercentage, CascadeError> {
     let value = match value {
-        CssValue::Dimension(dimension) => {
-            let length = parse_dimension(dimension, cascade)?;
+        CssValue::Dim(dimension) => {
+            let length = parse_dimension_length(dimension, cascade)?;
             LengthPercentage::Length(length)
         }
         CssValue::Percentage(value) => LengthPercentage::Percent(*value),
@@ -750,8 +957,8 @@ fn lengthp(value: &CssValue, cascade: &Cascade) -> Result<LengthPercentage, Casc
 
 fn lengthp_auto(value: &CssValue, cascade: &Cascade) -> Result<LengthPercentageAuto, CascadeError> {
     let value = match value {
-        CssValue::Dimension(dimension) => {
-            let length = parse_dimension(dimension, cascade)?;
+        CssValue::Dim(dimension) => {
+            let length = parse_dimension_length(dimension, cascade)?;
             LengthPercentageAuto::Length(length)
         }
         CssValue::Percentage(value) => LengthPercentageAuto::Percent(*value),

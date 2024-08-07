@@ -17,6 +17,7 @@ impl<'f> Input<'f> {
             mouse_position: [0.0, 0.0],
             mouse_buttons_down: vec![],
             mouse_buttons_up: vec![],
+            mouse_wheel: [0.0, 0.0],
             keys_down: vec![],
             keys_up: vec![],
             keys_pressed: vec![],
@@ -63,6 +64,11 @@ impl<'f> Input<'f> {
 
     pub fn mouse_position(mut self, mouse_position: [f32; 2]) -> Self {
         self.mouse_position = mouse_position;
+        self
+    }
+
+    pub fn mouse_wheel(mut self, mouse_wheel: [f32; 2]) -> Self {
+        self.mouse_wheel = mouse_wheel;
         self
     }
 

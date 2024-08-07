@@ -65,13 +65,21 @@ header > span {
 input {
     background: #394651;
     height: 3rem;
-    outline: none;
-    animation: 2s linear infinite HeightAnimation;
+    /*animation: 2s linear infinite HeightAnimation;*/
 }
 
 input:focus {
-    border: 2px solid white;
-    animation: 2s linear infinite WidthAnimation;
+    border: 2px solid #ffffff;
+    /*animation: 2s linear infinite WidthAnimation;*/
+}
+
+.scroll {
+    background: #345878;
+    height: 175px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    overflow: scroll;
 }
 
 @keyframes HeightAnimation {

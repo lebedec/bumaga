@@ -104,10 +104,11 @@ pub enum CssValue {
     Zero,
     Percentage(f32),
     Time(f32),
-    Dimension(CssDimension),
+    Dim(CssDimension),
     Number(f32),
     Color([u8; 4]),
     Var(CssVariable),
+    String(CssSpan),
     Raw(CssSpan),
 }
 

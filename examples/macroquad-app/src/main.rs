@@ -55,13 +55,20 @@ async fn main() {
 }
 
 fn draw_element(element: &Element, fonts: &FontSystem) {
-    draw_rectangle(
-        element.layout.location.x,
-        element.layout.location.y,
-        element.layout.size.width,
-        element.layout.size.height,
-        color(&element.background.color),
-    );
+    let x = element.layout.location.x;
+    let y = element.layout.location.y;
+    let w = element.layout.size.width;
+    let h = element.layout.size.height;
+    if let Some(clip) = element.clip {
+        let cx = clip.location.x;
+        let cy = clip.location.y;
+        let cw = clip.size.width;
+        let ch = clip.size.height;
+        if !(x >= cx && x + w <= cx + cw && y >= cy && y + h <= cy + ch) {
+            return;
+        }
+    }
+    draw_rectangle(x, y, w, h, color(&element.background.color));
     draw_borders(&element);
     // draw_line()
     if let Some(text) = element.html.text.as_ref() {
@@ -86,16 +93,16 @@ fn draw_borders(element: &Element) {
     let y = layout.location.y;
     let w = layout.size.width;
     let h = layout.size.height;
-    if let Some(border) = borders.top.as_ref() {
+    if let Some(border) = borders.top() {
         draw_line(x, y, x + w, y, border.width, color(&border.color))
     }
-    if let Some(border) = borders.bottom.as_ref() {
+    if let Some(border) = borders.bottom() {
         draw_line(x, y + h, x + w, y + h, border.width, color(&border.color))
     }
-    if let Some(border) = borders.left.as_ref() {
+    if let Some(border) = borders.left() {
         draw_line(x, y, x, y + h, border.width, color(&border.color))
     }
-    if let Some(border) = borders.left.as_ref() {
+    if let Some(border) = borders.right() {
         draw_line(x + w, y, x + w, y + h, border.width, color(&border.color))
     }
 }
@@ -136,6 +143,8 @@ pub fn user_input<'f>() -> Input<'f> {
     let keys_up = get_keys_released().into_iter().map(map_keycode).collect();
     let keys_pressed = get_keys_pressed().into_iter().map(map_keycode).collect();
     let mouse_position = mouse_position().into();
+    let wheel = mouse_wheel();
+
     let mut buttons_down = vec![];
     let mut buttons_up = vec![];
     let buttons = [
@@ -156,6 +165,7 @@ pub fn user_input<'f>() -> Input<'f> {
         .mouse_position(mouse_position)
         .mouse_buttons_down(buttons_down)
         .mouse_buttons_up(buttons_up)
+        .mouse_wheel([wheel.0, wheel.1])
         .characters(characters)
         .keys_down(keys_down)
         .keys_up(keys_up)

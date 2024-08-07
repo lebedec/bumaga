@@ -79,7 +79,7 @@ Values = { Shorthand ~ ("," ~ Shorthand)* }
 
 Shorthand = ${ Value ~ (WHITESPACE ~ Value)* }
 
-Value = _{  Var | Calc |  Rgba | Rgb | Color |  Keyword | Percentage | Time | Dimension | Number | Zero | Raw }
+Value = _{  Var | Calc |  Rgba | Rgb | Color |  Keyword | Percentage | Time | Dimension | Number | Zero | String | Raw }
 
 Rgba = { "rgba(" ~ (Number+ ~ "," ~ WHITESPACE*){3} ~ Number ~ ")" }
 
@@ -110,5 +110,9 @@ Keyword = { "-"? ~ "-"? ~ (ASCII_ALPHA | "-" | "_")+ }
 Calc = @{ "calc(" ~ (!")" ~ ANY)* ~ ")"*  }
 
 Operator = { "+" | "-" | "*" | "/" }
+
+String = { "\"" ~ StringLiteral ~ "\"" }
+
+StringLiteral = @{ (!"\"" ~ ANY)* }
 
 Raw = { (!(";" | "," | "}") ~ ANY)+ }
