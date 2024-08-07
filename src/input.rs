@@ -1,7 +1,7 @@
+use log::error;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::time::Duration;
-
-use serde_json::{Map, Value};
 
 use crate::api::{Fonts, Input};
 use crate::{Keys, MouseButton, TextStyle};
@@ -10,7 +10,7 @@ impl<'f> Input<'f> {
     pub fn new() -> Input<'f> {
         Input {
             fonts: None,
-            value: Value::Object(Map::new()),
+            value: Map::new(),
             time: Duration::from_micros(0),
             keys: vec![],
             viewport: [800.0, 600.0],
@@ -38,7 +38,13 @@ impl<'f> Input<'f> {
     }
 
     pub fn value(mut self, value: Value) -> Self {
-        self.value = value;
+        self.value = match value {
+            Value::Object(value) => value,
+            _ => {
+                error!("unable to set input value, must be JSON object");
+                return self;
+            }
+        };
         self
     }
 

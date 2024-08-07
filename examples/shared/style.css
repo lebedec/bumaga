@@ -65,7 +65,11 @@ header > span {
 input {
     background: #394651;
     height: 3rem;
-    /*animation: 2s linear infinite HeightAnimation;*/
+    animation: 2s linear infinite HeightAnimation;
+}
+
+input:hover {
+    border: 1px solid #ff00ff;
 }
 
 input:focus {

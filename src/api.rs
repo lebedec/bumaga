@@ -4,13 +4,14 @@ use std::time::{Duration, SystemTime};
 
 use crate::animation::Animator;
 use crate::css::{Css, CssSpan, CssValue};
+pub use crate::error::ComponentError;
 use crate::html::Html;
 use crate::math::Mat4;
 use crate::models::{ElementId, Object};
 use crate::state::State;
 use crate::styles::Scrolling;
 use crate::value;
-use serde_json::Value;
+use serde_json::{Map, Value};
 pub use taffy::Layout;
 use taffy::{LengthPercentage, NodeId, TaffyTree};
 pub use value::ValueExtensions;
@@ -34,7 +35,7 @@ pub struct Source<T> {
 
 pub struct Input<'f> {
     pub(crate) fonts: Option<&'f mut dyn Fonts>,
-    pub(crate) value: Value,
+    pub(crate) value: Map<String, Value>,
     pub(crate) time: Duration,
     pub(crate) keys: Vec<String>,
     pub(crate) viewport: [f32; 2],
@@ -50,6 +51,8 @@ pub struct Input<'f> {
 }
 
 pub struct Output {
+    pub hover: Option<NodeId>,
+    pub scroll: Option<NodeId>,
     pub calls: Vec<Call>,
     pub elements: Vec<Element>,
 }

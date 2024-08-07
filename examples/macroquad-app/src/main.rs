@@ -36,7 +36,7 @@ async fn main() {
             .time(Duration::from_millis(16))
             .value(value)
             .pipe("done", move |value| done.contains(&value).into());
-        let output = component.update(input);
+        let output = component.update(input).unwrap();
         for element in output.elements {
             draw_element(&element, &fonts);
         }

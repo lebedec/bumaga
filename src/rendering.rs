@@ -10,7 +10,7 @@ use crate::input::FakeFonts;
 use crate::models::{ElementId, Object, Sizes};
 use crate::state::State;
 use crate::styles::{create_element, default_layout_style, inherit, Cascade};
-use crate::{Call, Component, Element, Fonts, Input, ValueExtensions};
+use crate::{Call, Component, ComponentError, Element, Fonts, Input, ValueExtensions};
 use log::error;
 use serde_json::{Map, Value};
 use taffy::prelude::length;
@@ -20,23 +20,11 @@ use taffy::{
     TaffyError, TaffyTree,
 };
 
-#[derive(Debug)]
-pub enum RenderError {
-    Taffy(TaffyError),
-}
-
-impl From<TaffyError> for RenderError {
-    fn from(error: TaffyError) -> Self {
-        RenderError::Taffy(error)
-    }
-}
-
 impl Component {
-    pub fn render(
+    pub fn render_tree(
         &mut self,
         input: &mut Input,
-        globals: &mut Map<String, Value>,
-    ) -> Result<(NodeId, TaffyTree<Element>), RenderError> {
+    ) -> Result<(NodeId, TaffyTree<Element>), ComponentError> {
         let mut rendering = TaffyTree::new();
         let [viewport_width, viewport_height] = input.viewport;
         let root_id = ElementId::fake();
@@ -59,28 +47,22 @@ impl Component {
         // TODO: determine body element
         let body = html.children.last().cloned().expect("body must be found");
         // self.state.active_animators = take(&mut self.state.animators);
-        self.render_tree(root, body, globals, input, context, &mut rendering);
-        rendering.compute_layout_with_measure(
-            root,
-            Size::MAX_CONTENT,
-            |size, space, _, view, _| measure_text(input, size, space, view),
-        )?;
+        self.render_tree_node(root, body, input, context, &mut rendering);
         return Ok((root, rendering));
     }
 
-    fn render_tree(
+    fn render_tree_node(
         &mut self,
         parent_id: NodeId,
         current: Html,
-        globals: &mut Map<String, Value>,
-        input: &Input,
+        input: &mut Input,
         context: Sizes,
         layout: &mut TaffyTree<Element>,
     ) {
         if current.text.is_some() {
-            self.render_text(parent_id, current, input, globals, layout);
+            self.render_text(parent_id, current, input, layout);
         } else {
-            self.render_template(parent_id, current, globals, input, context, layout)
+            self.render_template(parent_id, current, input, context, layout)
         }
     }
 
@@ -89,12 +71,11 @@ impl Component {
         parent_id: NodeId,
         current: Html,
         input: &Input,
-        globals: &mut Map<String, Value>,
         layout: &mut TaffyTree<Element>,
     ) {
         let element_id = ElementId::from(&current);
         let text = current.text.unwrap_or_default();
-        let text = interpolate_string(&text, globals, input);
+        let text = interpolate_string(&text, input);
         let style = default_layout_style();
         let object = Object::text(text);
         let mut element = create_element(element_id, object);
@@ -107,32 +88,31 @@ impl Component {
         &mut self,
         parent_id: NodeId,
         current: Html,
-        globals: &mut Map<String, Value>,
-        input: &Input,
+        input: &mut Input,
         context: Sizes,
         layout: &mut TaffyTree<Element>,
     ) {
         if let Some(pipe) = current.attrs.get("?") {
-            if !is_something(Some(&get_object_value(pipe, globals, input))) {
+            if !is_something(Some(&get_object_value(pipe, input))) {
                 return;
             }
         }
         if let Some(ident) = current.attrs.get("!") {
-            if is_something(globals.get(ident)) {
+            if is_something(input.value.get(ident)) {
                 return;
             }
         }
-        let repetition = Repetition::from(&globals, current.attrs.get("*"));
+        let repetition = Repetition::from(&input.value, current.attrs.get("*"));
         for repeat_value in repetition.values {
             // PUSH STATE
-            globals.insert(repetition.key.to_string(), repeat_value.clone());
+            input
+                .value
+                .insert(repetition.key.to_string(), repeat_value.clone());
             // RENDER
             let element_id = ElementId::hash(&current, &repeat_value);
-            self.render_element(
-                element_id, parent_id, &current, globals, input, context, layout,
-            );
+            self.render_element(element_id, parent_id, &current, input, context, layout);
             // POP STATE
-            globals.remove(&repetition.key);
+            input.value.remove(&repetition.key);
         }
     }
 
@@ -141,8 +121,7 @@ impl Component {
         element_id: ElementId,
         parent_id: NodeId,
         template: &Html,
-        globals: &mut Map<String, Value>,
-        input: &Input,
+        input: &mut Input,
         sizes: Sizes,
         tree: &mut TaffyTree<Element>,
     ) {
@@ -155,7 +134,7 @@ impl Component {
         let mut current = template.clone();
         for (key, pipe) in &template.attrs {
             if key.starts_with("data-") || key.starts_with("value") {
-                let string = get_object_value(&pipe, globals, input).as_string();
+                let string = get_object_value(&pipe, input).as_string();
                 current.attrs.insert(key.clone(), string.into());
             }
         }
@@ -182,7 +161,7 @@ impl Component {
         let mut cascade = Cascade::new(&self.css.content, sizes, &self.resources);
         cascade.apply_styles(input, current_id, tree, parent, &mut layout, &mut element);
 
-        self.render_output_bindings(&mut element, globals);
+        self.render_output_bindings(&mut element, &input);
 
         // final commit of style changes
         tree.set_style(current_id, layout)
@@ -216,7 +195,7 @@ impl Component {
                 for child in template.children.clone() {
                     let mut context = sizes;
                     context.parent_font_size = element.text_style.font_size;
-                    self.render_tree(current_id, child, globals, input, context, tree);
+                    self.render_tree_node(current_id, child, input, context, tree);
                 }
             }
         }
@@ -271,14 +250,14 @@ impl Component {
     /// Configures the elements or adjust their behavior in various ways to meet HTML experience.
     ///
     /// see details: https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes
-    fn render_output_bindings(&self, element: &mut Element, globals: &mut Map<String, Value>) {
+    fn render_output_bindings(&self, element: &mut Element, input: &Input) {
         let events: &[&str] = match element.html.tag.as_ref() {
             "input" => &["oninput", "onchange"],
             _ => &["onclick"],
         };
         for event in events {
             if let Some(expr) = element.html.attrs.get(*event) {
-                let output = eval_call(expr, globals);
+                let output = eval_call(expr, input);
                 element.listeners.insert(event.to_string(), output);
             }
         }
@@ -392,7 +371,7 @@ fn integer_decode(val: f64) -> (u64, i16, i8) {
     (mantissa, exponent, sign)
 }
 
-pub fn get_object_value(pipe: &str, global: &Map<String, Value>, input: &Input) -> Value {
+pub fn get_object_value(pipe: &str, input: &Input) -> Value {
     let mut value = Value::Null;
     let segments: Vec<&str> = pipe.split("|").map(&str::trim).collect();
     let getters = match segments.get(0) {
@@ -412,7 +391,7 @@ pub fn get_object_value(pipe: &str, global: &Map<String, Value>, input: &Input) 
             getters
         }
     };
-    let mut scope = global;
+    let mut scope = &input.value;
     for i in 0..getters.len() - 1 {
         let getter = &getters[i];
         scope = match scope.get(getter).and_then(|v| v.as_object()) {
@@ -440,14 +419,14 @@ pub fn get_object_value(pipe: &str, global: &Map<String, Value>, input: &Input) 
     value
 }
 
-pub fn interpolate_string(string: &str, value: &Map<String, Value>, input: &Input) -> String {
+pub fn interpolate_string(string: &str, input: &Input) -> String {
     let mut result = String::new();
     let mut field = false;
     let mut pipe = String::new();
     for ch in string.chars() {
         if field {
             if ch == '}' {
-                result += &get_object_value(&pipe, value, input).as_string();
+                result += &get_object_value(&pipe, input).as_string();
                 field = false;
             } else {
                 pipe.push(ch);
@@ -465,7 +444,7 @@ pub fn interpolate_string(string: &str, value: &Map<String, Value>, input: &Inpu
     result
 }
 
-fn eval_call(expression: &str, global_value: &Map<String, Value>) -> Call {
+fn eval_call(expression: &str, input: &Input) -> Call {
     let mut function = String::new();
     let mut arguments = vec![];
     let mut is_function = true;
@@ -482,7 +461,7 @@ fn eval_call(expression: &str, global_value: &Map<String, Value>) -> Call {
                 let value = arg.trim().replace("'", "\"");
                 let value: Value = match serde_json::from_str(&value) {
                     Ok(value) => value,
-                    Err(_) => global_value.get(&value).cloned().unwrap_or(Value::Null),
+                    Err(_) => input.value.get(&value).cloned().unwrap_or(Value::Null),
                 };
                 arguments.push(value);
                 arg = String::new();
@@ -526,36 +505,4 @@ impl Repetition {
             values: vec![Value::Null],
         }
     }
-}
-
-fn measure_text(
-    input: &mut Input,
-    size: Size<Option<f32>>,
-    space: Size<AvailableSpace>,
-    element: Option<&mut Element>,
-) -> Size<f32> {
-    if let Size {
-        width: Some(width),
-        height: Some(height),
-    } = size
-    {
-        return Size { width, height };
-    }
-    let element = match element {
-        None => return Size::ZERO,
-        Some(element) => element,
-    };
-    if let Some(text) = element.html.text.as_ref() {
-        let max_width = size.width.map(Some).unwrap_or_else(|| match space.width {
-            AvailableSpace::MinContent => Some(0.0),
-            AvailableSpace::MaxContent => None,
-            AvailableSpace::Definite(width) => Some(width),
-        });
-        let [width, height] = match input.fonts.as_mut() {
-            None => FakeFonts.measure(&text, &element.text_style, max_width),
-            Some(fonts) => fonts.measure(&text, &element.text_style, max_width),
-        };
-        return Size { width, height };
-    }
-    Size::ZERO
 }

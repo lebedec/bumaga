@@ -4,6 +4,7 @@ mod animation;
 mod api;
 mod component;
 mod css;
+mod error;
 mod html;
 mod input;
 mod math;
