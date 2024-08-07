@@ -1,20 +1,21 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
+use serde_json::{Map, Value};
+pub use taffy::Layout;
+use taffy::{NodeId, TaffyTree};
+
+pub use value::ValueExtensions;
+
 use crate::animation::Animator;
-use crate::css::{Css, CssSpan, CssValue};
+use crate::css::Css;
 pub use crate::error::ComponentError;
 use crate::html::Html;
-use crate::math::Mat4;
 use crate::models::{ElementId, Object};
 use crate::state::State;
 use crate::styles::Scrolling;
 use crate::value;
-use serde_json::{Map, Value};
-pub use taffy::Layout;
-use taffy::{LengthPercentage, NodeId, TaffyTree};
-pub use value::ValueExtensions;
 
 /// Components are reusable parts of UI that define views,
 /// handle user input and store UI state between interactions.
@@ -97,10 +98,49 @@ pub struct Element {
     pub text_style: TextStyle,
     pub listeners: HashMap<String, Call>,
     pub opacity: f32,
-    pub transform: Option<Mat4>,
+    pub transforms: Vec<TransformFunction>,
     pub animator: Animator,
     pub scrolling: Option<Scrolling>,
     pub clip: Option<Layout>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Length {
+    Number(f32),
+    Percent(f32),
+}
+
+impl Length {
+    #[inline(always)]
+    pub fn resolve(&self, base: f32) -> f32 {
+        match *self {
+            Length::Number(value) => value,
+            Length::Percent(value) => value * base,
+        }
+    }
+
+    pub fn px(value: f32) -> Self {
+        Self::Number(value)
+    }
+
+    pub fn percent(value: f32) -> Self {
+        Self::Percent(value)
+    }
+
+    pub fn zero() -> Self {
+        Self::Number(0.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TransformFunction {
+    Translate { x: Length, y: Length, z: f32 },
+}
+
+impl TransformFunction {
+    pub fn translate(x: Length, y: Length, z: f32) -> Self {
+        Self::Translate { x, y, z }
+    }
 }
 
 pub type Rgba = [u8; 4];
@@ -111,7 +151,7 @@ pub struct Borders {
     pub bottom: MyBorder,
     pub right: MyBorder,
     pub left: MyBorder,
-    pub radius: [LengthPercentage; 4],
+    pub radius: [Length; 4],
 }
 
 impl Borders {

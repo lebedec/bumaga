@@ -82,13 +82,13 @@ impl CssShorthand {
     }
 
     #[inline]
-    pub fn has_vars(&self) -> bool {
+    pub fn values(&self) -> Vec<&CssValue> {
         match self {
-            Self::N1(a) => a.is_var(),
-            Self::N2(a, b) => [a, b].into_iter().any(CssValue::is_var),
-            Self::N3(a, b, c) => [a, b, c].into_iter().any(CssValue::is_var),
-            Self::N4(a, b, c, d) => [a, b, c, d].into_iter().any(CssValue::is_var),
-            Self::N(values) => values.iter().any(CssValue::is_var),
+            Self::N1(a) => vec![a],
+            Self::N2(a, b) => vec![a, b],
+            Self::N3(a, b, c) => vec![a, b, c],
+            Self::N4(a, b, c, d) => vec![a, b, c, d],
+            Self::N(values) => values.iter().collect(),
         }
     }
 }
@@ -108,6 +108,7 @@ pub enum CssValue {
     Number(f32),
     Color([u8; 4]),
     Var(CssVariable),
+    Function(CssFunction),
     String(CssSpan),
     Raw(CssSpan),
 }
@@ -141,6 +142,18 @@ impl CssValue {
             _ => None,
         }
     }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct CssFunction {
+    pub name: CssSpan,
+    pub arguments: ArgumentsRef,
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct ArgumentsRef {
+    pub ptr: usize,
+    pub len: usize,
 }
 
 #[derive(Clone, Copy, Debug)]

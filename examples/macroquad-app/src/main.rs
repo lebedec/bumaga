@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use bumaga::{
     Borders, Component, Element, Fonts, Input, Keys, Layout, MyBorder, Rgba, TextStyle,
-    ValueExtensions,
+    TransformFunction, ValueExtensions,
 };
 
 #[macroquad::main("macroquad bumaga example")]
@@ -55,10 +55,20 @@ async fn main() {
 }
 
 fn draw_element(element: &Element, fonts: &FontSystem) {
-    let x = element.layout.location.x;
-    let y = element.layout.location.y;
+    let mut x = element.layout.location.x;
+    let mut y = element.layout.location.y;
     let w = element.layout.size.width;
     let h = element.layout.size.height;
+    for transform in &element.transforms {
+        match transform {
+            TransformFunction::Translate { x: tx, y: ty, .. } => {
+                let tx = tx.resolve(element.layout.size.width);
+                let ty = ty.resolve(element.layout.size.height);
+                x += tx;
+                y += ty;
+            }
+        }
+    }
     if let Some(clip) = element.clip {
         let cx = clip.location.x;
         let cy = clip.location.y;

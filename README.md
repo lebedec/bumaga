@@ -14,6 +14,12 @@ The development of this library possible thanks to work of Rust enthusiasts:
 [pest](https://github.com/pest-parser/pest),
 [taffy](https://github.com/DioxusLabs/taffy), other 🔥 🚀
 
+# TODO:
+
+- transform (move location calculation to client side think about tree)
+- rework output tree traverse
+- transition
+
 ## What it is not
 
 + Not a HTML/CSS/script engine or full spec implemenation (look [sciter](https://github.com/sciter-sdk/rust-sciter) if

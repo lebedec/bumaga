@@ -1,6 +1,7 @@
 use crate::css::model::{
     CssDimension, CssProperty, CssShorthand, CssSpan, CssValue, CssValues, CssVariable,
 };
+use crate::css::{ArgumentsRef, CssFunction};
 use log::error;
 use pest::error::Error;
 use pest::iterators::Pair;
@@ -67,6 +68,21 @@ pub struct Css {
     pub source: String,
     pub styles: Vec<MyStyle>,
     pub animations: HashMap<String, MyAnimation>,
+    pub arguments: Vec<CssValue>,
+}
+
+impl Css {
+    pub fn as_str(&self, span: CssSpan) -> &str {
+        span.as_str(&self.source)
+    }
+
+    pub fn as_function(&self, function: &CssFunction) -> (&str, &[CssValue]) {
+        let name = self.as_str(function.name);
+        let start = function.arguments.ptr;
+        let end = start + function.arguments.len;
+        let arguments = &self.arguments[start..end];
+        (name, arguments)
+    }
 }
 
 #[derive(Debug)]
@@ -124,6 +140,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
         .ok_or(ReaderError::EmptyStyleSheet)?;
     let mut styles = vec![];
     let mut animations = HashMap::new();
+    let mut arguments = vec![];
     for rule in stylesheet.into_inner() {
         match rule.as_rule() {
             Rule::Animation => {
@@ -145,7 +162,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                         },
                         _ => unreachable!(),
                     };
-                    let declaration = read_declaration(iter.next().unwrap());
+                    let declaration = read_declaration(iter.next().unwrap(), &mut arguments);
                     keyframes.push(MyKeyframe { step, declaration })
                 }
                 animations.insert(name.as_str().to_string(), MyAnimation { keyframes });
@@ -211,7 +228,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                     }
                     selectors.push(MySelector { components })
                 }
-                let declaration = read_declaration(iter.next().unwrap());
+                let declaration = read_declaration(iter.next().unwrap(), &mut arguments);
                 styles.push(MyStyle {
                     selectors,
                     declaration,
@@ -224,10 +241,11 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
         source: css.to_string(),
         styles,
         animations,
+        arguments,
     })
 }
 
-fn read_declaration(pair: Pair<Rule>) -> Vec<MyProperty> {
+fn read_declaration(pair: Pair<Rule>, arguments: &mut Vec<CssValue>) -> Vec<MyProperty> {
     let mut declaration = vec![];
     for property in pair.into_inner() {
         let mut iter = property.into_inner();
@@ -237,8 +255,10 @@ fn read_declaration(pair: Pair<Rule>) -> Vec<MyProperty> {
         // println!("PROP {} {values:?}", name.as_str());
 
         let name = CssProperty::from(name.as_span());
-        let mut shorthands: Vec<CssShorthand> = values.into_inner().map(read_shorthand).collect();
-        let has_vars = shorthands.iter().any(|shorthand| shorthand.has_vars());
+        let mut shorthands: Vec<CssShorthand> = values
+            .into_inner()
+            .map(|value| read_shorthand(value, arguments))
+            .collect();
         let values = if shorthands.len() == 1 {
             CssValues::One(shorthands.remove(0))
         } else {
@@ -250,8 +270,11 @@ fn read_declaration(pair: Pair<Rule>) -> Vec<MyProperty> {
     declaration
 }
 
-fn read_shorthand(pair: Pair<Rule>) -> CssShorthand {
-    let values: Vec<CssValue> = pair.into_inner().map(read_value).collect();
+fn read_shorthand(pair: Pair<Rule>, arguments: &mut Vec<CssValue>) -> CssShorthand {
+    let values: Vec<CssValue> = pair
+        .into_inner()
+        .map(|value| read_value(value, arguments))
+        .collect();
     match values.len() {
         1 => CssShorthand::N1(values[0]),
         2 => CssShorthand::N2(values[0], values[1]),
@@ -261,7 +284,7 @@ fn read_shorthand(pair: Pair<Rule>) -> CssShorthand {
     }
 }
 
-fn read_value(pair: Pair<Rule>) -> CssValue {
+fn read_value(pair: Pair<Rule>, arguments: &mut Vec<CssValue>) -> CssValue {
     match pair.as_rule() {
         Rule::Keyword => CssValue::Keyword(pair.as_span().into()),
         Rule::Rgba => CssValue::Color(read_color(pair)),
@@ -275,6 +298,24 @@ fn read_value(pair: Pair<Rule>) -> CssValue {
         Rule::Var => CssValue::Var(read_variable(pair)),
         Rule::Calc => CssValue::Raw(pair.as_span().into()),
         Rule::String => CssValue::String(pair.into_inner().next().unwrap().as_span().into()),
+        Rule::Function => {
+            let mut iter = pair.into_inner();
+            let name = iter.next().unwrap().as_span().into();
+            let args = iter.next().unwrap();
+            let mut iter = args.into_inner();
+            let ptr = arguments.len();
+            while let Some(arg) = iter.next() {
+                // TODO: nested functions ?
+                arguments.push(read_value(arg, &mut vec![]));
+            }
+            CssValue::Function(CssFunction {
+                name,
+                arguments: ArgumentsRef {
+                    ptr,
+                    len: arguments.len() - ptr,
+                },
+            })
+        }
         Rule::Raw => match pair.as_str() {
             "inherit" => CssValue::Inherit,
             "initial" => CssValue::Initial,
@@ -372,7 +413,29 @@ mod tests {
 
     #[test]
     pub fn test_root_selector() {
-        let css = ":root {}";
+        let css = r#"
+
+        [dir=rtl] .next {
+            float: left;
+            right: unset;
+            left: var(--page-padding);
+        }
+
+        /* Use the correct buttons for RTL layouts*/
+        [dir=rtl] .previous i.fa-angle-left:before {
+            content: "\f105";
+        }
+
+
+        :root {
+            right: calc(var(--sidebar-resize-indicator-width) * -1);
+            transform: rotate(20deg) translate(30px, 20px) rotate(var(--my-var));
+            content: "\f105";
+            transform: rotate(var(--my-var));
+            height: calc(10px - 10px);
+            background: rgba(0, 0, 0, 0);
+
+        }"#;
         let present = read_css(css).expect("must be valid");
     }
 
@@ -454,7 +517,7 @@ mod tests {
             .map(|span| span.as_str(css));
         println!("BACKGROUND: {:?}", v);
 
-        println!("{:?}", present);
+        println!("{:?}", present.styles);
         assert_eq!(11, present.styles.len());
         assert_eq!(1, present.animations.len())
     }

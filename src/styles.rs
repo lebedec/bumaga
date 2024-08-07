@@ -8,7 +8,9 @@ use crate::css::{
     MyProperty, MyStyle,
 };
 use crate::models::{ElementId, Object, Sizes};
-use crate::{Background, Borders, Element, Input, MyBorder, ObjectFit, TextStyle};
+use crate::{
+    Background, Borders, Element, Input, Length, MyBorder, ObjectFit, TextStyle, TransformFunction,
+};
 use log::error;
 use std::collections::HashMap;
 use taffy::style_helpers::TaffyZero;
@@ -43,7 +45,7 @@ pub fn create_element(id: ElementId, html: Object) -> Element {
             bottom: Default::default(),
             right: Default::default(),
             left: Default::default(),
-            radius: [LengthPercentage::ZERO; 4],
+            radius: [Length::zero(); 4],
         },
         color: [255, 255, 255, 255],
         text_style: TextStyle {
@@ -57,7 +59,7 @@ pub fn create_element(id: ElementId, html: Object) -> Element {
         },
         listeners: HashMap::new(),
         opacity: 1.0,
-        transform: None,
+        transforms: vec![],
         animator: Animator::default(),
         scrolling: None,
         clip: None,
@@ -202,6 +204,7 @@ pub enum CascadeError {
     PropertyNotSupported,
     DimensionUnitsNotSupported,
     ValueNotSupported,
+    TransformFunctionNotSupported,
     VariableNotFound,
     InvalidKeyword(String),
 }
@@ -247,18 +250,6 @@ impl<'c> Cascade<'c> {
         for style in &self.css.styles {
             if match_style(css, &style, node, tree) {
                 self.apply_style(style, parent, layout, element);
-                // apply_layout_rules2(css, style, &mut layout_style, sizes);
-                // apply_element_rules2(css, style, &parent, &mut element, sizes, &self.resources);
-                //let props = &ruleset.style.declarations.declarations;
-                //apply_layout_rules(props, &mut layout_style, context);
-                //apply_element_rules(props, &parent, &mut element, context, &self.resources);
-                // apply_animation_rules(
-                //     props,
-                //     &mut element,
-                //     &mut self.state.active_animators,
-                //     &mut self.state.animators,
-                //     &self.presentation_old.content.animations,
-                // );
             }
         }
         if !element.animator.name.is_empty() {
@@ -491,42 +482,47 @@ impl<'c> Cascade<'c> {
                 element.borders.left.color = resolve_color(value, self)?;
             }
             (CssProperty::BorderRadius, N4(a, b, c, d)) => {
-                element.borders.radius[0] = lengthp(a, self)?;
-                element.borders.radius[1] = lengthp(b, self)?;
-                element.borders.radius[2] = lengthp(c, self)?;
-                element.borders.radius[3] = lengthp(d, self)?;
+                element.borders.radius[0] = length(a, self)?;
+                element.borders.radius[1] = length(b, self)?;
+                element.borders.radius[2] = length(c, self)?;
+                element.borders.radius[3] = length(d, self)?;
             }
             (CssProperty::BorderRadius, N3(a, b, c)) => {
-                element.borders.radius[0] = lengthp(a, self)?;
-                element.borders.radius[1] = lengthp(b, self)?;
-                element.borders.radius[2] = lengthp(c, self)?;
-                element.borders.radius[3] = lengthp(b, self)?;
+                element.borders.radius[0] = length(a, self)?;
+                element.borders.radius[1] = length(b, self)?;
+                element.borders.radius[2] = length(c, self)?;
+                element.borders.radius[3] = length(b, self)?;
             }
             (CssProperty::BorderRadius, N2(a, b)) => {
-                element.borders.radius[0] = lengthp(a, self)?;
-                element.borders.radius[1] = lengthp(b, self)?;
-                element.borders.radius[2] = lengthp(a, self)?;
-                element.borders.radius[3] = lengthp(b, self)?;
+                element.borders.radius[0] = length(a, self)?;
+                element.borders.radius[1] = length(b, self)?;
+                element.borders.radius[2] = length(a, self)?;
+                element.borders.radius[3] = length(b, self)?;
             }
             (CssProperty::BorderRadius, N1(value)) => {
-                element.borders.radius[0] = lengthp(value, self)?;
-                element.borders.radius[1] = lengthp(value, self)?;
-                element.borders.radius[2] = lengthp(value, self)?;
-                element.borders.radius[3] = lengthp(value, self)?;
+                element.borders.radius[0] = length(value, self)?;
+                element.borders.radius[1] = length(value, self)?;
+                element.borders.radius[2] = length(value, self)?;
+                element.borders.radius[3] = length(value, self)?;
             }
             (CssProperty::BorderTopLeftRadius, N1(value)) => {
-                element.borders.radius[0] = lengthp(value, self)?;
+                element.borders.radius[0] = length(value, self)?;
             }
             (CssProperty::BorderTopRightRadius, N1(value)) => {
-                element.borders.radius[1] = lengthp(value, self)?;
+                element.borders.radius[1] = length(value, self)?;
             }
             (CssProperty::BorderBottomRightRadius, N1(value)) => {
-                element.borders.radius[2] = lengthp(value, self)?;
+                element.borders.radius[2] = length(value, self)?;
             }
             (CssProperty::BorderBottomLeftRadius, N1(value)) => {
-                element.borders.radius[3] = lengthp(value, self)?;
+                element.borders.radius[3] = length(value, self)?;
             }
             //
+            // Transform
+            //
+            (CssProperty::Transform, shorthand) => {
+                element.transforms = resolve_transforms(shorthand.values(), self)?;
+            }
             // Animation
             //
             // there is no static shorthand pattern, we should set values by it type and order
@@ -843,12 +839,64 @@ fn resolve_timing(value: &CssValue, cascade: &Cascade) -> Result<TimingFunction,
     Ok(value)
 }
 
+fn resolve_transforms(
+    values: Vec<&CssValue>,
+    cascade: &Cascade,
+) -> Result<Vec<TransformFunction>, CascadeError> {
+    let mut transforms = vec![];
+    for value in values.into_iter() {
+        match value {
+            CssValue::Function(function) => match cascade.css.as_function(function) {
+                ("translate", [x]) => {
+                    let x = length(x, cascade)?;
+                    let y = Length::zero();
+                    let z = 0.0;
+                    transforms.push(TransformFunction::translate(x, y, z))
+                }
+                ("translate", [x, y]) => {
+                    let x = length(x, cascade)?;
+                    let y = length(y, cascade)?;
+                    let z = 0.0;
+                    transforms.push(TransformFunction::translate(x, y, 0.0))
+                }
+                ("translate3d", [x, y, z]) => {
+                    let x = length(x, cascade)?;
+                    let y = length(y, cascade)?;
+                    let z = dimension_length(z, cascade)?;
+                    transforms.push(TransformFunction::translate(x, y, z))
+                }
+                ("translateX", [x]) => {
+                    let x = length(x, cascade)?;
+                    let y = Length::zero();
+                    let z = 0.0;
+                    transforms.push(TransformFunction::translate(x, y, z))
+                }
+                ("translateY", [y]) => {
+                    let x = Length::zero();
+                    let y = length(y, cascade)?;
+                    let z = 0.0;
+                    transforms.push(TransformFunction::translate(x, y, z))
+                }
+                ("translateZ", [z]) => {
+                    let x = Length::zero();
+                    let y = Length::zero();
+                    let z = dimension_length(z, cascade)?;
+                    transforms.push(TransformFunction::translate(x, y, z))
+                }
+                _ => return Err(CascadeError::TransformFunctionNotSupported),
+            },
+            _ => return Err(CascadeError::ValueNotSupported),
+        }
+    }
+    Ok(transforms)
+}
+
 fn resolve_iterations(
     value: &CssValue,
     cascade: &Cascade,
 ) -> Result<AnimationIterations, CascadeError> {
     let value = match value {
-        Keyword(keyword) => match keyword.as_str(&cascade.css.source) {
+        Keyword(keyword) => match cascade.css.as_str(*keyword) {
             "infinite" => AnimationIterations::Infinite,
             _ => return Err(CascadeError::ValueNotSupported),
         },
@@ -933,6 +981,22 @@ fn dimension(value: &CssValue, cascade: &Cascade) -> Result<Dimension, CascadeEr
         CssValue::Var(variable) => {
             let value = cascade.get_variable_value(variable)?;
             return dimension(value, cascade);
+        }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
+}
+
+fn length(value: &CssValue, cascade: &Cascade) -> Result<Length, CascadeError> {
+    let value = match value {
+        CssValue::Dim(dimension) => {
+            let length = parse_dimension_length(dimension, cascade)?;
+            Length::Number(length)
+        }
+        CssValue::Percentage(value) => Length::Percent(*value),
+        CssValue::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return length(value, cascade);
         }
         _ => return Err(CascadeError::ValueNotSupported),
     };

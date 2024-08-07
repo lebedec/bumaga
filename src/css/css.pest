@@ -44,10 +44,8 @@ Type = { Ident }
 
 Attribute = {
     "[" ~ Ident ~ "]" |
-    "[" ~ Ident ~ Matcher ~ "\""? ~ Search ~ "\""? ~ Modifier? ~ "]"
+    "[" ~ Ident ~ Matcher ~ (String | Ident) ~ Modifier? ~ "]"
 }
-
-Search = @{ (!"\"" ~ ANY)* }
 
 Matcher = { ("~" | "|" | "^" | "$" | "*")? ~ "=" }
 
@@ -79,7 +77,26 @@ Values = { Shorthand ~ ("," ~ Shorthand)* }
 
 Shorthand = ${ Value ~ (WHITESPACE ~ Value)* }
 
-Value = _{  Var | Calc |  Rgba | Rgb | Color |  Keyword | Percentage | Time | Dimension | Number | Zero | String | Raw }
+Value = _{
+    Var
+    | Calc
+    | Rgba
+    | Rgb
+    | Function
+    | Color
+    | Keyword
+    | Percentage
+    | Time
+    | Dimension
+    | Number
+    | Zero
+    | String
+    | Raw
+}
+
+Function = ${ Ident ~ "(" ~ Arguments ~ ")" }
+
+Arguments = { Value ~ (WHITESPACE* ~ "," ~ WHITESPACE* ~ Value)* }
 
 Rgba = { "rgba(" ~ (Number+ ~ "," ~ WHITESPACE*){3} ~ Number ~ ")" }
 
@@ -107,7 +124,9 @@ Fallback = { Raw }
 
 Keyword = { "-"? ~ "-"? ~ (ASCII_ALPHA | "-" | "_")+ }
 
-Calc = @{ "calc(" ~ (!")" ~ ANY)* ~ ")"*  }
+Calc = ${ "calc(" ~ Operands ~ ")" }
+
+Operands = { Value ~ (WHITESPACE* ~ Operator ~ WHITESPACE* ~ Value)* }
 
 Operator = { "+" | "-" | "*" | "/" }
 
