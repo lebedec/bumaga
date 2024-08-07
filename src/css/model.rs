@@ -34,7 +34,7 @@ impl From<Span<'_>> for CssSpan {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CssValues {
     One(CssShorthand),
     Multiple(Vec<CssShorthand>),
@@ -170,7 +170,7 @@ pub struct CssVariable {
 
 /// based on https://www.w3.org/Style/CSS/all-properties.en.html
 /// updated 2024-08-04
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CssProperty {
     AccentColor,
     AlignContent,

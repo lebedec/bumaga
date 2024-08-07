@@ -34,7 +34,7 @@ pub struct MyStyle {
     pub declaration: Vec<MyProperty>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MyProperty {
     pub name: CssProperty,
     pub values: CssValues,

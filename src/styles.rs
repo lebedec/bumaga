@@ -63,6 +63,7 @@ pub fn create_element(id: ElementId, html: Object) -> Element {
         animator: Animator::default(),
         scrolling: None,
         clip: None,
+        transitions: HashMap::default(),
     }
 }
 
@@ -247,44 +248,25 @@ impl<'c> Cascade<'c> {
         element: &mut Element,
     ) {
         let css = &self.css.source;
+        let time = input.time.as_secs_f32();
         for style in &self.css.styles {
             if match_style(css, &style, node, tree) {
                 self.apply_style(style, parent, layout, element);
             }
         }
+        let transitions: Vec<MyProperty> = element
+            .transitions
+            .values_mut()
+            .map(|transition| transition.play(time))
+            .collect();
+        for property in transitions {
+            self.apply_property(&property, layout, element).unwrap();
+        }
         if !element.animator.name.is_empty() {
             let key = element.animator.name.as_str(css);
-            if let Some(t) = element.animator.update(input.time.as_secs_f32()) {
-                if let Some(animation) = self.css.animations.get(key) {
-                    let mut a = 0;
-                    let mut b = 0;
-                    for i in 0..animation.keyframes.len() {
-                        let keyframe = &animation.keyframes[i];
-                        if keyframe.step <= t {
-                            a = i;
-                        } else {
-                            b = i;
-                            break;
-                        }
-                    }
-                    if a + 1 == b {
-                        // between a and b
-                        // TODO: property tracks
-                        for k in 0..animation.keyframes[a].declaration.len() {
-                            let sa = animation.keyframes[a].step;
-                            let sb = animation.keyframes[b].step;
-
-                            let pa = &animation.keyframes[a].declaration[k];
-                            let pb = &animation.keyframes[b].declaration[k];
-
-                            let p = self.interpolate(pa, pb, (t - sa) / (sb - sa)).unwrap();
-                            self.apply_property(&p, layout, element).unwrap();
-                        }
-                    } else {
-                        // return a frame (last)
-                        let pa = &animation.keyframes[a].declaration[0];
-                        self.apply_property(pa, layout, element).unwrap();
-                    }
+            if let Some(animation) = self.css.animations.get(key) {
+                for property in element.animator.play(animation, time) {
+                    self.apply_property(&property, layout, element).unwrap()
                 }
             }
         }
@@ -303,60 +285,13 @@ impl<'c> Cascade<'c> {
                 self.push_variable(name, &property.values);
                 continue;
             }
+            if CssProperty::Transition == property.name {
+                // parse transitions
+            }
             if let Err(error) = self.apply_property(property, layout, element) {
                 error!("unable to apply property {property:?}, {error:?}")
             }
         }
-    }
-
-    fn interpolate(&self, a: &MyProperty, b: &MyProperty, t: f32) -> Option<MyProperty> {
-        let property = match (a.name, a.as_value(), b.name, b.as_value()) {
-            (CssProperty::Height, CssValue::Dim(a), CssProperty::Height, CssValue::Dim(b)) => {
-                MyProperty {
-                    name: CssProperty::Height,
-                    values: CssValues::One(N1(CssValue::Dim(CssDimension {
-                        value: a.value + (b.value - a.value) * t,
-                        unit: a.unit,
-                    }))),
-                }
-            }
-            (CssProperty::Width, CssValue::Dim(a), CssProperty::Width, CssValue::Dim(b)) => {
-                MyProperty {
-                    name: CssProperty::Width,
-                    values: CssValues::One(N1(CssValue::Dim(CssDimension {
-                        value: a.value + (b.value - a.value) * t,
-                        unit: a.unit,
-                    }))),
-                }
-            }
-            (
-                CssProperty::BackgroundColor,
-                CssValue::Color(x),
-                CssProperty::BackgroundColor,
-                CssValue::Color(y),
-            ) => {
-                let r = (x[0] as f32 + (y[0] as f32 - x[0] as f32) * t).max(0.0) as u8;
-                let g = (x[1] as f32 + (y[1] as f32 - x[1] as f32) * t).max(0.0) as u8;
-                let b = (x[2] as f32 + (y[2] as f32 - x[2] as f32) * t).max(0.0) as u8;
-                let a = (x[3] as f32 + (y[3] as f32 - x[3] as f32) * t).max(0.0) as u8;
-                MyProperty {
-                    name: CssProperty::BackgroundColor,
-                    values: CssValues::One(N1(CssValue::Color([r, g, b, a]))),
-                }
-            }
-            (CssProperty::Color, CssValue::Color(x), CssProperty::Color, CssValue::Color(y)) => {
-                let r = (x[0] as f32 + (y[0] as f32 - x[0] as f32) * t).max(0.0) as u8;
-                let g = (x[1] as f32 + (y[1] as f32 - x[1] as f32) * t).max(0.0) as u8;
-                let b = (x[2] as f32 + (y[2] as f32 - x[2] as f32) * t).max(0.0) as u8;
-                let a = (x[3] as f32 + (y[3] as f32 - x[3] as f32) * t).max(0.0) as u8;
-                MyProperty {
-                    name: CssProperty::Color,
-                    values: CssValues::One(N1(CssValue::Color([r, g, b, a]))),
-                }
-            }
-            _ => return None,
-        };
-        Some(property)
     }
 
     fn apply_property(
@@ -367,6 +302,10 @@ impl<'c> Cascade<'c> {
     ) -> Result<(), CascadeError> {
         let css = &self.css.source;
         let ctx = self.sizes;
+        if let Some(transition) = element.transitions.get_mut(&property.name) {
+            transition.set(property.values.as_value());
+            return Ok(());
+        }
         // TODO: multiple values
         match (property.name, property.values.as_shorthand()) {
             //
@@ -712,6 +651,7 @@ impl<'c> Cascade<'c> {
                 layout.padding.left = lengthp(value, self)?;
             }
 
+            /*
             (CssProperty::Border, N4(top, right, bottom, left)) => {
                 layout.border.top = lengthp(top, self)?;
                 layout.border.right = lengthp(right, self)?;
@@ -723,18 +663,6 @@ impl<'c> Cascade<'c> {
                 layout.border.right = lengthp(horizontal, self)?;
                 layout.border.bottom = lengthp(bottom, self)?;
                 layout.border.left = lengthp(horizontal, self)?;
-            }
-            (CssProperty::Border, N2(vertical, horizontal)) => {
-                layout.border.top = lengthp(vertical, self)?;
-                layout.border.right = lengthp(horizontal, self)?;
-                layout.border.bottom = lengthp(vertical, self)?;
-                layout.border.left = lengthp(horizontal, self)?;
-            }
-            (CssProperty::Border, N1(value)) => {
-                layout.border.top = lengthp(value, self)?;
-                layout.border.right = lengthp(value, self)?;
-                layout.border.bottom = lengthp(value, self)?;
-                layout.border.left = lengthp(value, self)?;
             }
             (CssProperty::BorderTopWidth, N1(value)) => {
                 layout.border.top = lengthp(value, self)?;
@@ -748,6 +676,18 @@ impl<'c> Cascade<'c> {
             (CssProperty::BorderBottomWidth, N1(value)) => {
                 layout.border.left = lengthp(value, self)?;
             }
+            (CssProperty::Border, N2(vertical, horizontal)) => {
+                layout.border.top = lengthp(vertical, self)?;
+                layout.border.right = lengthp(horizontal, self)?;
+                layout.border.bottom = lengthp(vertical, self)?;
+                layout.border.left = lengthp(horizontal, self)?;
+            }
+            (CssProperty::Border, N1(value)) => {
+                layout.border.top = lengthp(value, self)?;
+                layout.border.right = lengthp(value, self)?;
+                layout.border.bottom = lengthp(value, self)?;
+                layout.border.left = lengthp(value, self)?;
+            }*/
             (CssProperty::AlignContent, N1(Keyword(keyword))) => {
                 layout.align_content = map_align_content(keyword.as_str(css))?
             }

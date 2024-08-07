@@ -16,9 +16,10 @@ The development of this library possible thanks to work of Rust enthusiasts:
 
 # TODO:
 
-- transform (move location calculation to client side think about tree)
-- rework output tree traverse
-- transition
+- hierarchy transforms (move location calculation to client side think about tree)
+    - rework output tree traverse
+- transitions
+- animation property tracks
 
 ## What it is not
 
@@ -95,16 +96,6 @@ should help to understand how it works:
 * TODO: Vulkan
 * TODO: bevy
 * [macroquad](examples/macroquad-app)
-
-# Dev
-
-TODO:
-
-* hierarchy transforms
-* transforms percent
-* transitions
-* input state
-
 
 
 
