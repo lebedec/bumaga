@@ -1,5 +1,6 @@
 use crate::animation::{
-    AnimationDirection, AnimationFillMode, AnimationIterations, Animator, TimingFunction,
+    AnimationDirection, AnimationFillMode, AnimationIterations, AnimationResult, Animator,
+    TimingFunction, Transition,
 };
 use crate::css::Value::{Color, Keyword, Number, Time};
 use crate::css::{match_style, Css, Dim, Property, PropertyKey, Str, Style, Value, Values, Var};
@@ -250,19 +251,31 @@ impl<'c> Cascade<'c> {
                 self.apply_style(style, parent, layout, element);
             }
         }
-        let transitions: Vec<Property> = element
+        let transitions: Vec<AnimationResult> = element
             .transitions
             .values_mut()
-            .map(|transition| transition.play(time))
+            .flat_map(|transition| transition.play(self.css, time))
             .collect();
-        for property in transitions {
-            self.apply_property(&property, layout, element).unwrap();
+        for play in transitions {
+            let result = self.apply_shorthand(play.key, &play.shorthand, layout, element);
+            if let Err(error) = result {
+                error!(
+                    "unable to apply transition result of {:?}, {:?}, {:?}",
+                    play.key, play.shorthand, error
+                );
+            }
         }
         if !element.animator.name.is_empty() {
             let key = element.animator.name.as_str(css);
             if let Some(animation) = self.css.animations.get(key) {
-                for property in element.animator.play(animation, time) {
-                    self.apply_property(&property, layout, element).unwrap()
+                for play in element.animator.play(self.css, animation, time) {
+                    let result = self.apply_shorthand(play.key, &play.shorthand, layout, element);
+                    if let Err(error) = result {
+                        error!(
+                            "unable to apply animation result of {:?}, {:?}, {:?}",
+                            play.key, play.shorthand, error
+                        );
+                    }
                 }
             }
         }
@@ -282,28 +295,74 @@ impl<'c> Cascade<'c> {
                 continue;
             }
             if PropertyKey::Transition == property.key {
-                // parse transitions
+                for shorthand in property.values.to_vec() {
+                    let shorthand = self.css.get_shorthand(shorthand);
+                    let key = match shorthand[0] {
+                        Keyword(name) => {
+                            let key = PropertyKey::parse(name, &self.css.source);
+                            if key.is_css_property() {
+                                key
+                            } else {
+                                error!("invalid transition property value");
+                                continue;
+                            }
+                        }
+                        _ => {
+                            error!("invalid transition property value");
+                            continue;
+                        }
+                    };
+                    let transition = element
+                        .transitions
+                        .entry(key)
+                        .or_insert_with(|| Transition::new(key));
+                    match &shorthand[1..] {
+                        [Time(duration)] => {
+                            transition.set_duration(*duration);
+                        }
+                        [Time(duration), timing] => {
+                            transition.set_duration(*duration);
+                            transition.set_timing(resolve_timing(&timing, self).unwrap());
+                        }
+                        [Time(duration), timing, Time(delay)] => {
+                            transition.set_duration(*duration);
+                            transition.set_timing(resolve_timing(&timing, self).unwrap());
+                            transition.set_delay(*delay);
+                        }
+                        shorthand => {
+                            error!("transition value not supported {shorthand:?}");
+                            continue;
+                        }
+                    }
+                }
+                continue;
             }
-            if let Err(error) = self.apply_property(property, layout, element) {
+            if let Some(transition) = element.transitions.get_mut(&property.key) {
+                let shorthand = self.css.as_shorthand(&property.values);
+                transition.set(property.values.id(), shorthand);
+                continue;
+            }
+            if let Err(error) = self.apply_shorthand(
+                property.key,
+                self.css.as_shorthand(&property.values),
+                layout,
+                element,
+            ) {
                 error!("unable to apply property {property:?}, {error:?}")
             }
         }
     }
 
-    fn apply_property(
+    fn apply_shorthand(
         &mut self,
-        property: &Property,
+        key: PropertyKey,
+        shorthand: &[Value],
         layout: &mut LayoutStyle,
         element: &mut Element,
     ) -> Result<(), CascadeError> {
         let css = &self.css.source;
         let ctx = self.sizes;
-        if let Some(transition) = element.transitions.get_mut(&property.key) {
-            // transition.set(property.values.as_value());
-            return Ok(());
-        }
-        // TODO: multiple values
-        match (property.key, self.css.as_shorthand(&property.values)) {
+        match (key, shorthand) {
             //
             // Element
             //
@@ -740,6 +799,22 @@ impl<'c> Cascade<'c> {
         }
         Ok(())
     }
+
+    // fn apply_property(
+    //     &mut self,
+    //     property: &Property,
+    //     layout: &mut LayoutStyle,
+    //     element: &mut Element,
+    // ) -> Result<(), CascadeError> {
+    //     let css = &self.css.source;
+    //     let ctx = self.sizes;
+    //     self.apply_shorthand(
+    //         property.key,
+    //         self.css.as_shorthand(&property.values),
+    //         layout,
+    //         element,
+    //     )
+    // }
 }
 
 fn resolve_color(value: &Value, cascade: &Cascade) -> Result<[u8; 4], CascadeError> {

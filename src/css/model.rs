@@ -53,10 +53,10 @@ pub struct Animation {
     pub keyframes: Vec<Keyframe>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Keyframe {
     pub key: PropertyKey,
-    pub frames: BTreeMap<u32, Values>,
+    pub frames: BTreeMap<u32, Vec<Value>>,
 }
 
 /// A complex selector is a sequence of one or more simple and/or compound selectors that are
@@ -130,6 +130,31 @@ pub struct Property {
 pub enum Values {
     One(Shorthand),
     Multiple(Vec<Shorthand>),
+}
+
+impl Values {
+    #[inline(always)]
+    pub fn id(&self) -> usize {
+        match self {
+            Values::One(shorthand) => shorthand.ptr,
+            Values::Multiple(shorthands) => shorthands[0].ptr,
+        }
+    }
+
+    pub fn as_shorthand(&self) -> Shorthand {
+        match self {
+            Values::One(shorthand) => *shorthand,
+            Values::Multiple(shorthands) => shorthands[0],
+        }
+    }
+
+    #[inline(always)]
+    pub fn to_vec(&self) -> Vec<Shorthand> {
+        match self {
+            Values::One(shorthand) => vec![*shorthand],
+            Values::Multiple(shorthands) => shorthands.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -828,6 +853,14 @@ pub enum PropertyKey {
 }
 
 impl PropertyKey {
+    pub fn is_css_property(&self) -> bool {
+        match self {
+            Self::Unknown(_) => false,
+            Self::Variable(_) => false,
+            _ => true,
+        }
+    }
+
     pub fn parse(raw: Str, data: &str) -> Self {
         match raw.as_str(data) {
             "accent-color" => Self::AccentColor,

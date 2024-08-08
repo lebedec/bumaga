@@ -71,7 +71,11 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                             key: property.key,
                             frames: BTreeMap::new(),
                         });
-                        keyframe.frames.insert(step, property.values);
+                        // TODO: support multiple value, eliminate clone
+                        let shorthand = property.values.as_shorthand();
+                        let values =
+                            values[shorthand.ptr..(shorthand.ptr + shorthand.len)].to_vec();
+                        keyframe.frames.insert(step, values);
                     }
                 }
                 animations.insert(

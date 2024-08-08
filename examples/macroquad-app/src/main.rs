@@ -1,7 +1,7 @@
 use macroquad::prelude::*;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashSet};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bumaga::{
     Borders, Component, Element, Fonts, Input, Keys, Layout, MyBorder, Rgba, TextStyle,
@@ -24,11 +24,15 @@ async fn main() {
         "create UI using HTML".to_string(),
         "implement engine".to_string(),
     ];
+    for i in 0..100 {
+        todos.push(format!("Todo N{i}"));
+    }
     let mut todo = "Enter a todo".to_string();
 
     loop {
         clear_background(WHITE);
         draw_scene();
+
         let value = json!({"todos": todos, "todo": todo});
         let done = todos_done.clone();
         let input = user_input()
@@ -36,7 +40,17 @@ async fn main() {
             .time(Duration::from_millis(16))
             .value(value)
             .pipe("done", move |value| done.contains(&value).into());
+        let t1 = Instant::now();
         let output = component.update(input).unwrap();
+        println!("bumaga time: {:?}", t1.elapsed());
+        // 42ms original !!! in debug
+        // 1-3ms anmations
+        // 1-3ms save and restore values
+        //
+        // [RELEASE] 6ms original
+        // 2.7 - 5.2 just render tree
+        // 3.5ms (-1.5ms) taffy layout
+
         for element in output.elements {
             draw_element(&element, &fonts);
         }
@@ -85,6 +99,7 @@ fn draw_element(element: &Element, fonts: &FontSystem) {
         let text_params = TextParams {
             font_size: element.text_style.font_size as u16,
             font: Some(&fonts.font),
+            color: color(&element.color),
             ..Default::default()
         };
         draw_text_ex(

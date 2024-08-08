@@ -1,9 +1,3 @@
-use std::collections::HashMap;
-use std::hash::{DefaultHasher, Hash, Hasher};
-use std::mem;
-use std::mem::take;
-use std::process::id;
-
 use crate::css::{match_style, Str};
 use crate::html::Html;
 use crate::input::FakeFonts;
@@ -13,6 +7,12 @@ use crate::styles::{create_element, default_layout_style, inherit, Cascade};
 use crate::{Call, Component, ComponentError, Element, Fonts, Input, ValueExtensions};
 use log::error;
 use serde_json::{Map, Value};
+use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::mem;
+use std::mem::take;
+use std::process::id;
+use std::time::Instant;
 use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
 use taffy::{

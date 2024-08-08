@@ -16,10 +16,12 @@ The development of this library possible thanks to work of Rust enthusiasts:
 
 # TODO:
 
+- check performance, use VTune (need < 1ms 100 elements)
+    - use arena instead TaffyTree context ?
+    - dont use recursion
+    - share tree between calls (on static tree will be zero time to update)
 - hierarchy transforms (move location calculation to client side think about tree)
     - rework output tree traverse
-- transitions
-- animation property tracks
 
 ## What it is not
 

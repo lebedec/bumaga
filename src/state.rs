@@ -1,4 +1,5 @@
-use crate::animation::Animator;
+use crate::animation::{Animator, Transition};
+use crate::css::PropertyKey;
 use crate::models::ElementId;
 use crate::styles::Scrolling;
 use crate::Element;
@@ -12,6 +13,7 @@ pub struct State {
     pub pseudo_classes: HashMap<ElementId, HashSet<String>>,
     pub animators: HashMap<ElementId, Animator>,
     pub scrolling: HashMap<ElementId, Scrolling>,
+    pub transitions: HashMap<ElementId, HashMap<PropertyKey, Transition>>,
 }
 
 impl State {
@@ -23,6 +25,7 @@ impl State {
             pseudo_classes: HashMap::new(),
             animators: HashMap::new(),
             scrolling: HashMap::new(),
+            transitions: HashMap::new(),
         }
     }
 
@@ -30,6 +33,8 @@ impl State {
     pub fn prune(&mut self) {
         self.pseudo_classes = HashMap::new();
         self.animators = HashMap::new();
+        self.scrolling = HashMap::new();
+        self.transitions = HashMap::new();
     }
 
     pub fn restore(&mut self, element: &mut Element) {
@@ -41,6 +46,9 @@ impl State {
         }
         if let Some(scrolling) = self.scrolling.remove(&element.id) {
             element.scrolling = Some(scrolling);
+        }
+        if let Some(transitions) = self.transitions.remove(&element.id) {
+            element.transitions = transitions;
         }
     }
 
@@ -54,6 +62,10 @@ impl State {
         }
         if let Some(scrolling) = element.scrolling.clone() {
             self.scrolling.insert(element.id, scrolling);
+        }
+        if !element.transitions.is_empty() {
+            self.transitions
+                .insert(element.id, element.transitions.clone());
         }
     }
 }
