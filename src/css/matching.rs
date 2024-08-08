@@ -1,10 +1,10 @@
-use crate::css::{MyComponent, MyMatcher, MySelector, MyStyle};
+use crate::css::{Complex, Matcher, Simple, Style};
 use crate::Element;
 use log::error;
 use std::collections::{HashMap, HashSet};
 use taffy::{NodeId, TaffyTree, TraversePartialTree};
 
-pub fn match_style(css: &str, style: &MyStyle, node: NodeId, tree: &TaffyTree<Element>) -> bool {
+pub fn match_style(css: &str, style: &Style, node: NodeId, tree: &TaffyTree<Element>) -> bool {
     style
         .selectors
         .iter()
@@ -13,13 +13,13 @@ pub fn match_style(css: &str, style: &MyStyle, node: NodeId, tree: &TaffyTree<El
 
 fn match_complex_selector(
     css: &str,
-    selector: &MySelector,
+    selector: &Complex,
     node: NodeId,
     tree: &TaffyTree<Element>,
 ) -> bool {
     let mut target = node;
     selector
-        .components
+        .selectors
         .iter()
         .rev() // CSS components match order
         .all(|component| match component.as_combinator() {
@@ -58,7 +58,7 @@ fn find_next_target(combinator: char, target: &mut NodeId, tree: &TaffyTree<Elem
 
 fn match_simple_selector(
     css: &str,
-    component: &MyComponent,
+    component: &Simple,
     node: NodeId,
     tree: &TaffyTree<Element>,
 ) -> bool {
@@ -70,35 +70,35 @@ fn match_simple_selector(
         }
     };
     match component {
-        MyComponent::All => true,
-        MyComponent::Type(name) => html.tag.as_str() == name.as_str(css),
-        MyComponent::Id(ident) => html
+        Simple::All => true,
+        Simple::Type(name) => html.tag.as_str() == name.as_str(css),
+        Simple::Id(ident) => html
             .attrs
             .get("id")
             .map(|id| id.as_str() == ident.as_str(css))
             .unwrap_or(false),
-        MyComponent::Class(ident) => html
+        Simple::Class(ident) => html
             .attrs
             .get("class")
             .map(|classes| match_class(classes, ident.as_str(css)))
             .unwrap_or(false),
-        MyComponent::Attribute(name, operator, value) => {
+        Simple::Attribute(name, operator, value) => {
             let value = value.as_str(css);
             html.attrs
                 .get(name.as_str(css))
                 .map(|attr| match operator {
-                    MyMatcher::Exist => true,
-                    MyMatcher::Equal => attr == value,
-                    MyMatcher::Include => attr.split(" ").any(|word| word == value),
-                    MyMatcher::DashMatch => attr == value || attr == &format!("-{value}"),
-                    MyMatcher::Prefix => attr.starts_with(value),
-                    MyMatcher::Substring => attr.contains(value),
-                    MyMatcher::Suffix => attr.ends_with(value),
+                    Matcher::Exist => true,
+                    Matcher::Equal => attr == value,
+                    Matcher::Include => attr.split(" ").any(|word| word == value),
+                    Matcher::DashMatch => attr == value || attr == &format!("-{value}"),
+                    Matcher::Prefix => attr.starts_with(value),
+                    Matcher::Substring => attr.contains(value),
+                    Matcher::Suffix => attr.ends_with(value),
                 })
                 .unwrap_or(false)
         }
-        MyComponent::Root => tree.parent(node).is_none(),
-        MyComponent::PseudoClass(name) => html.pseudo_classes.contains(name.as_str(css)),
+        Simple::Root => tree.parent(node).is_none(),
+        Simple::PseudoClass(name) => html.pseudo_classes.contains(name.as_str(css)),
         _ => {
             error!("selector {component:?} not supported");
             false

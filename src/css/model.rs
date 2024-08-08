@@ -1,14 +1,199 @@
-use log::warn;
-use pest::pratt_parser::Op;
-use pest::Span;
+use log::{error, warn};
+use std::collections::{BTreeMap, HashMap};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CssSpan {
-    start: usize,
-    end: usize,
+#[derive(Debug)]
+pub struct Css {
+    pub source: String,
+    pub styles: Vec<Style>,
+    pub animations: HashMap<String, Animation>,
+    pub values: Vec<Value>,
+    pub arguments: Vec<Value>,
 }
 
-impl CssSpan {
+impl Css {
+    pub fn as_str(&self, span: Str) -> &str {
+        span.as_str(&self.source)
+    }
+
+    #[inline(always)]
+    pub fn as_shorthand(&self, values: &Values) -> &[Value] {
+        match values {
+            Values::One(shorthand) => self.get_shorthand(*shorthand),
+            Values::Multiple(shorthands) => {
+                warn!("takes multiple css values as one");
+                self.get_shorthand(shorthands[0])
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_value(&self, values: &Values) -> &Value {
+        match values {
+            Values::One(shorthand) => &self.values[shorthand.ptr],
+            Values::Multiple(shorthands) => &self.values[shorthands[0].ptr],
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_shorthand(&self, shorthand: Shorthand) -> &[Value] {
+        &self.values[shorthand.ptr..(shorthand.ptr + shorthand.len)]
+    }
+
+    pub fn as_function(&self, function: &Function) -> (&str, &[Value]) {
+        let name = self.as_str(function.name);
+        let start = function.arguments.ptr;
+        let end = start + function.arguments.len;
+        let arguments = &self.arguments[start..end];
+        (name, arguments)
+    }
+}
+
+#[derive(Debug)]
+pub struct Animation {
+    pub keyframes: Vec<Keyframe>,
+}
+
+#[derive(Debug)]
+pub struct Keyframe {
+    pub key: PropertyKey,
+    pub frames: BTreeMap<u32, Values>,
+}
+
+/// A complex selector is a sequence of one or more simple and/or compound selectors that are
+/// separated by combinators, including the white space descendant combinator.
+#[derive(Debug)]
+pub struct Complex {
+    pub selectors: Vec<Simple>,
+}
+
+/// A simple selector with a single component, such as a single type selector,
+/// attribute selector, or pseudo-class, that's not used in combination with or contains any other
+/// selector component.
+#[derive(Debug)]
+pub enum Simple {
+    All,
+    Id(Str),
+    Class(Str),
+    Type(Str),
+    Attribute(Str, Matcher, Str),
+    Root,
+    PseudoClass(Str),
+    PseudoElement(Str),
+    Combinator(char),
+}
+
+/// Attribute selectors allow for more advanced matching
+/// of substrings inside the value of your attribute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Matcher {
+    /// [attr]
+    Exist,
+    /// [attr=value]
+    Equal,
+    /// [attr~=value]
+    Include,
+    /// [attr|=value]
+    DashMatch,
+    /// [attr^=value]
+    Prefix,
+    /// [attr*=value]
+    Substring,
+    /// [attr$=value]
+    Suffix,
+}
+
+impl Simple {
+    pub fn as_combinator(&self) -> Option<char> {
+        match self {
+            Simple::Combinator(combinator) => Some(*combinator),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Style {
+    /// A selector list is a comma-separated list of selectors.
+    pub selectors: Vec<Complex>,
+    pub declaration: Vec<Property>,
+}
+
+/// A CSS property is a characteristic (like color) whose associated value
+/// defines one aspect of how the application should display the element.
+#[derive(Debug, Clone)]
+pub struct Property {
+    pub key: PropertyKey,
+    pub values: Values,
+}
+
+#[derive(Debug, Clone)]
+pub enum Values {
+    One(Shorthand),
+    Multiple(Vec<Shorthand>),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Shorthand {
+    pub(crate) ptr: usize,
+    pub(crate) len: usize,
+}
+
+// Used to optimize frequently used or complex values.
+// At same time provides ease parsing.
+#[derive(Clone, Copy, Debug)]
+pub enum Value {
+    Inherit,
+    Initial,
+    Unset,
+    Keyword(Str),
+    Zero,
+    Percentage(f32),
+    Time(f32),
+    Dimension(Dim),
+    Number(f32),
+    Color([u8; 4]),
+    Var(Var),
+    Function(Function),
+    String(Str),
+    Raw(Str),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Dim {
+    pub value: f32,
+    pub unit: Unit,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Unit([u8; 8]);
+
+impl Unit {
+    pub fn create(mut value: &str) -> Unit {
+        if value.as_bytes().len() > 7 {
+            error!("truncate unit name {value} to 7 symbols");
+            value = &value[..8];
+        }
+        let value = value.as_bytes();
+        let mut data = [0; 8];
+        let len = value.len();
+        data[0] = len as u8;
+        data[1..(1 + len)].copy_from_slice(value);
+        Self(data)
+    }
+
+    #[inline(always)]
+    pub fn as_str(&self) -> &str {
+        unsafe { std::str::from_utf8_unchecked(&self.0[1..(1 + self.0[0]) as usize]) }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Str {
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+}
+
+impl Str {
     #[inline(always)]
     pub fn as_str(self, data: &str) -> &str {
         &data[self.start..self.end]
@@ -25,153 +210,28 @@ impl CssSpan {
     }
 }
 
-impl From<Span<'_>> for CssSpan {
-    fn from(span: Span) -> Self {
-        Self {
-            start: span.start(),
-            end: span.end(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum CssValues {
-    One(CssShorthand),
-    Multiple(Vec<CssShorthand>),
-}
-
-impl CssValues {
-    #[inline(always)]
-    pub fn as_shorthand(&self) -> &CssShorthand {
-        match self {
-            CssValues::One(shorthand) => shorthand,
-            CssValues::Multiple(shorthands) => {
-                warn!("takes multiple css values as one");
-                &shorthands[0]
-            }
-        }
-    }
-
-    #[inline(always)]
-    pub fn as_value(&self) -> &CssValue {
-        self.as_shorthand().as_value()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum CssShorthand {
-    N1(CssValue),
-    N2(CssValue, CssValue),
-    N3(CssValue, CssValue, CssValue),
-    N4(CssValue, CssValue, CssValue, CssValue),
-    N(Vec<CssValue>),
-}
-
-impl CssShorthand {
-    #[inline(always)]
-    pub fn as_value(&self) -> &CssValue {
-        let value = match self {
-            Self::N1(value) => return value,
-            Self::N2(value, _) => value,
-            Self::N3(value, _, _) => value,
-            Self::N4(value, _, _, _) => value,
-            Self::N(values) => &values[0],
-        };
-        warn!("takes css  shorthand as single value");
-        value
-    }
-
-    #[inline]
-    pub fn values(&self) -> Vec<&CssValue> {
-        match self {
-            Self::N1(a) => vec![a],
-            Self::N2(a, b) => vec![a, b],
-            Self::N3(a, b, c) => vec![a, b, c],
-            Self::N4(a, b, c, d) => vec![a, b, c, d],
-            Self::N(values) => values.iter().collect(),
-        }
-    }
-}
-
-// Used to optimize frequently used or complex values.
-// At same time provides ease parsing.
-#[derive(Clone, Copy, Debug)]
-pub enum CssValue {
-    Inherit,
-    Initial,
-    Unset,
-    Keyword(CssSpan),
-    Zero,
-    Percentage(f32),
-    Time(f32),
-    Dim(CssDimension),
-    Number(f32),
-    Color([u8; 4]),
-    Var(CssVariable),
-    Function(CssFunction),
-    String(CssSpan),
-    Raw(CssSpan),
-}
-
-impl CssValue {
-    #[inline(always)]
-    pub fn as_keyword(&self) -> Option<CssSpan> {
-        match self {
-            CssValue::Keyword(span) => Some(*span),
-            _ => None,
-        }
-    }
-
-    #[inline(always)]
-    pub fn as_var(&self) -> Option<CssVariable> {
-        match self {
-            CssValue::Var(variable) => Some(*variable),
-            _ => None,
-        }
-    }
-
-    #[inline(always)]
-    pub fn is_var(&self) -> bool {
-        self.as_var().is_some()
-    }
-
-    #[inline(always)]
-    pub fn as_raw(&self) -> Option<CssSpan> {
-        match self {
-            CssValue::Raw(span) => Some(*span),
-            _ => None,
-        }
-    }
+#[derive(Clone, Debug, Copy)]
+pub struct Function {
+    pub name: Str,
+    pub arguments: Arguments,
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct CssFunction {
-    pub name: CssSpan,
-    pub arguments: ArgumentsRef,
-}
-
-#[derive(Clone, Debug, Copy)]
-pub struct ArgumentsRef {
+pub struct Arguments {
     pub ptr: usize,
     pub len: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct CssDimension {
-    pub value: f32,
-    pub unit: CssSpan,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct CssVariable {
-    pub name: CssSpan,
-    pub fallback: Option<CssSpan>,
+pub struct Var {
+    pub name: Str,
+    pub fallback: Option<Str>,
 }
 
 /// based on https://www.w3.org/Style/CSS/all-properties.en.html
 /// updated 2024-08-04
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CssProperty {
+pub enum PropertyKey {
     AccentColor,
     AlignContent,
     AlignItems,
@@ -763,12 +823,12 @@ pub enum CssProperty {
     WritingMode,
     ZIndex,
     Zoom,
-    Variable(CssSpan),
-    Unknown(CssSpan),
+    Variable(Str),
+    Unknown(Str),
 }
 
-impl CssProperty {
-    pub fn parse(raw: CssSpan, data: &str) -> Self {
+impl PropertyKey {
+    pub fn parse(raw: Str, data: &str) -> Self {
         match raw.as_str(data) {
             "accent-color" => Self::AccentColor,
             "align-content" => Self::AlignContent,
@@ -1364,11 +1424,5 @@ impl CssProperty {
             name if name.starts_with("--") => Self::Variable(raw),
             _ => Self::Unknown(raw),
         }
-    }
-}
-
-impl From<Span<'_>> for CssProperty {
-    fn from(span: Span) -> Self {
-        Self::parse(span.into(), span.get_input())
     }
 }

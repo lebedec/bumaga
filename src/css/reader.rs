@@ -1,13 +1,14 @@
-use crate::css::model::{
-    CssDimension, CssProperty, CssShorthand, CssSpan, CssValue, CssValues, CssVariable,
+use crate::css::model::{PropertyKey, Shorthand, Str, Value, Values, Var};
+use crate::css::{
+    Animation, Arguments, Complex, Css, Dim, Function, Keyframe, Matcher, Property, Simple, Style,
+    Unit,
 };
-use crate::css::{ArgumentsRef, CssFunction};
-use log::error;
+use log::{error, warn};
 use pest::error::Error;
 use pest::iterators::Pair;
-use pest::Parser;
+use pest::{Parser, Span};
 use pest_derive::Parser;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::num::ParseFloatError;
 use std::slice::Iter;
 
@@ -28,108 +29,6 @@ impl From<Error<Rule>> for ReaderError {
     }
 }
 
-#[derive(Debug)]
-pub struct MyStyle {
-    pub selectors: Vec<MySelector>,
-    pub declaration: Vec<MyProperty>,
-}
-
-#[derive(Debug, Clone)]
-pub struct MyProperty {
-    pub name: CssProperty,
-    pub values: CssValues,
-}
-
-impl MyProperty {
-    #[inline(always)]
-    pub fn as_value(&self) -> &CssValue {
-        self.values.as_value()
-    }
-
-    #[inline(always)]
-    pub fn as_shorthand(&self) -> &CssShorthand {
-        self.values.as_shorthand()
-    }
-}
-
-#[derive(Debug)]
-pub struct MyAnimation {
-    pub keyframes: Vec<MyKeyframe>,
-}
-
-#[derive(Debug)]
-pub struct MyKeyframe {
-    pub step: f32,
-    pub declaration: Vec<MyProperty>,
-}
-
-#[derive(Debug)]
-pub struct Css {
-    pub source: String,
-    pub styles: Vec<MyStyle>,
-    pub animations: HashMap<String, MyAnimation>,
-    pub arguments: Vec<CssValue>,
-}
-
-impl Css {
-    pub fn as_str(&self, span: CssSpan) -> &str {
-        span.as_str(&self.source)
-    }
-
-    pub fn as_function(&self, function: &CssFunction) -> (&str, &[CssValue]) {
-        let name = self.as_str(function.name);
-        let start = function.arguments.ptr;
-        let end = start + function.arguments.len;
-        let arguments = &self.arguments[start..end];
-        (name, arguments)
-    }
-}
-
-#[derive(Debug)]
-pub struct MySelector {
-    pub components: Vec<MyComponent>,
-}
-
-#[derive(Debug)]
-pub enum MyComponent {
-    All,
-    Id(CssSpan),
-    Class(CssSpan),
-    Type(CssSpan),
-    Attribute(CssSpan, MyMatcher, CssSpan),
-    Root,
-    PseudoClass(CssSpan),
-    PseudoElement(CssSpan),
-    Combinator(char),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MyMatcher {
-    /// [attr]
-    Exist,
-    /// [attr=value]
-    Equal,
-    /// [attr~=value]
-    Include,
-    /// [attr|=value]
-    DashMatch,
-    /// [attr^=value]
-    Prefix,
-    /// [attr*=value]
-    Substring,
-    /// [attr$=value]
-    Suffix,
-}
-
-impl MyComponent {
-    pub fn as_combinator(&self) -> Option<char> {
-        match self {
-            MyComponent::Combinator(combinator) => Some(*combinator),
-            _ => None,
-        }
-    }
-}
-
 pub fn read_css_unchecked(css: &str) -> Css {
     read_css(css).expect("must be valid css")
 }
@@ -141,45 +40,60 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
     let mut styles = vec![];
     let mut animations = HashMap::new();
     let mut arguments = vec![];
+    // 20 bytes per line, 1 CSS value per line
+    let estimated_values = css.len() / 20;
+    let mut values = Vec::with_capacity(estimated_values);
     for rule in stylesheet.into_inner() {
         match rule.as_rule() {
             Rule::Animation => {
                 let mut iter = rule.into_inner();
                 let name = iter.next().unwrap();
-                let mut keyframes = vec![];
+                let mut keyframes: HashMap<PropertyKey, Keyframe> = HashMap::new();
                 for pair in iter {
                     let mut iter = pair.into_inner();
                     let step = iter.next().unwrap();
                     let step = match step.as_rule() {
-                        Rule::Percentage => read_number(step.into_inner().next().unwrap()) / 100.0,
+                        Rule::Percentage => read_number(step.into_inner().next().unwrap()) as u32,
                         Rule::Keyword => match step.as_str() {
-                            "from" => 0.0,
-                            "to" => 1.0,
+                            "from" => 0,
+                            "to" => 100,
                             keyword => {
                                 error!("incorrect keyframe step {keyword}");
-                                0.0
+                                0
                             }
                         },
                         _ => unreachable!(),
                     };
-                    let declaration = read_declaration(iter.next().unwrap(), &mut arguments);
-                    keyframes.push(MyKeyframe { step, declaration })
+                    let declaration =
+                        read_declaration(iter.next().unwrap(), &mut values, &mut arguments);
+                    for property in declaration {
+                        let keyframe = keyframes.entry(property.key).or_insert_with(|| Keyframe {
+                            key: property.key,
+                            frames: BTreeMap::new(),
+                        });
+                        keyframe.frames.insert(step, property.values);
+                    }
                 }
-                animations.insert(name.as_str().to_string(), MyAnimation { keyframes });
+                animations.insert(
+                    name.as_str().to_string(),
+                    Animation {
+                        keyframes: keyframes.into_values().collect(),
+                    },
+                );
             }
             Rule::Style => {
                 let mut iter = rule.into_inner();
                 let selectors_list = iter.next().unwrap();
                 let mut selectors = vec![];
                 for complex in selectors_list.into_inner() {
-                    let mut components: Vec<MyComponent> = vec![];
+                    let mut components: Vec<Simple> = vec![];
                     for component in complex.into_inner() {
                         match component.as_rule() {
                             Rule::Compound => {
                                 let is_descendant = components.len() > 0
                                     && components[components.len() - 1].as_combinator().is_none();
                                 if is_descendant {
-                                    components.push(MyComponent::Combinator(' '));
+                                    components.push(Simple::Combinator(' '));
                                 }
                                 for simple in component.into_inner() {
                                     let simple_rule = simple.as_rule();
@@ -187,49 +101,52 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                                     let ident = iter
                                         .next()
                                         .map(|pair| pair.as_span().into())
-                                        .unwrap_or(CssSpan::empty());
+                                        .unwrap_or(Str::empty());
                                     let component = match simple_rule {
-                                        Rule::All => MyComponent::All,
-                                        Rule::Id => MyComponent::Id(ident),
-                                        Rule::Class => MyComponent::Class(ident),
-                                        Rule::Type => MyComponent::Type(ident),
+                                        Rule::All => Simple::All,
+                                        Rule::Id => Simple::Id(ident),
+                                        Rule::Class => Simple::Class(ident),
+                                        Rule::Type => Simple::Type(ident),
                                         Rule::Attribute => {
                                             let matcher =
                                                 iter.next().map(|pair| pair.as_str()).unwrap_or("");
                                             let matcher = match matcher {
-                                                "" => MyMatcher::Exist,
-                                                "=" => MyMatcher::Equal,
-                                                "~=" => MyMatcher::Include,
-                                                "|=" => MyMatcher::DashMatch,
-                                                "^=" => MyMatcher::Prefix,
-                                                "$=" => MyMatcher::Suffix,
-                                                "*=" => MyMatcher::Substring,
+                                                "" => Matcher::Exist,
+                                                "=" => Matcher::Equal,
+                                                "~=" => Matcher::Include,
+                                                "|=" => Matcher::DashMatch,
+                                                "^=" => Matcher::Prefix,
+                                                "$=" => Matcher::Suffix,
+                                                "*=" => Matcher::Substring,
                                                 _ => unreachable!(),
                                             };
                                             let search = iter
                                                 .next()
                                                 .map(|pair| pair.as_span().into())
-                                                .unwrap_or(CssSpan::empty());
-                                            MyComponent::Attribute(ident, matcher, search)
+                                                .unwrap_or(Str::empty());
+                                            Simple::Attribute(ident, matcher, search)
                                         }
-                                        Rule::PseudoClass => MyComponent::PseudoClass(ident),
-                                        Rule::Root => MyComponent::Root,
-                                        Rule::PseudoElement => MyComponent::PseudoElement(ident),
+                                        Rule::PseudoClass => Simple::PseudoClass(ident),
+                                        Rule::Root => Simple::Root,
+                                        Rule::PseudoElement => Simple::PseudoElement(ident),
                                         _ => unreachable!(),
                                     };
                                     components.push(component)
                                 }
                             }
-                            Rule::Combinator => components.push(MyComponent::Combinator(
+                            Rule::Combinator => components.push(Simple::Combinator(
                                 component.as_str().chars().next().unwrap(),
                             )),
                             _ => unreachable!(),
                         }
                     }
-                    selectors.push(MySelector { components })
+                    selectors.push(Complex {
+                        selectors: components,
+                    })
                 }
-                let declaration = read_declaration(iter.next().unwrap(), &mut arguments);
-                styles.push(MyStyle {
+                let declaration =
+                    read_declaration(iter.next().unwrap(), &mut values, &mut arguments);
+                styles.push(Style {
                     selectors,
                     declaration,
                 })
@@ -241,63 +158,70 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
         source: css.to_string(),
         styles,
         animations,
+        values,
         arguments,
     })
 }
 
-fn read_declaration(pair: Pair<Rule>, arguments: &mut Vec<CssValue>) -> Vec<MyProperty> {
+fn read_declaration(
+    pair: Pair<Rule>,
+    values: &mut Vec<Value>,
+    arguments: &mut Vec<Value>,
+) -> Vec<Property> {
     let mut declaration = vec![];
     for property in pair.into_inner() {
         let mut iter = property.into_inner();
         let name = iter.next().unwrap();
-        let values = iter.next().unwrap();
+        let shorthands = iter.next().unwrap();
 
         // println!("PROP {} {values:?}", name.as_str());
 
-        let name = CssProperty::from(name.as_span());
-        let mut shorthands: Vec<CssShorthand> = values
+        let name = PropertyKey::from(name.as_span());
+        let mut shorthands: Vec<Shorthand> = shorthands
             .into_inner()
-            .map(|value| read_shorthand(value, arguments))
+            .map(|value| read_shorthand(value, values, arguments))
             .collect();
         let values = if shorthands.len() == 1 {
-            CssValues::One(shorthands.remove(0))
+            Values::One(shorthands.remove(0))
         } else {
-            CssValues::Multiple(shorthands)
+            Values::Multiple(shorthands)
         };
 
-        declaration.push(MyProperty { name, values })
+        declaration.push(Property { key: name, values })
     }
     declaration
 }
 
-fn read_shorthand(pair: Pair<Rule>, arguments: &mut Vec<CssValue>) -> CssShorthand {
-    let values: Vec<CssValue> = pair
-        .into_inner()
-        .map(|value| read_value(value, arguments))
-        .collect();
-    match values.len() {
-        1 => CssShorthand::N1(values[0]),
-        2 => CssShorthand::N2(values[0], values[1]),
-        3 => CssShorthand::N3(values[0], values[1], values[2]),
-        4 => CssShorthand::N4(values[0], values[1], values[2], values[3]),
-        _ => CssShorthand::N(values),
+fn read_shorthand(
+    pair: Pair<Rule>,
+    values: &mut Vec<Value>,
+    arguments: &mut Vec<Value>,
+) -> Shorthand {
+    let ptr = values.len();
+    for value in pair.into_inner() {
+        let value = read_value(value, arguments);
+        values.push(value);
+    }
+    Shorthand {
+        ptr,
+        len: values.len() - ptr,
     }
 }
 
-fn read_value(pair: Pair<Rule>, arguments: &mut Vec<CssValue>) -> CssValue {
+fn read_value(pair: Pair<Rule>, arguments: &mut Vec<Value>) -> Value {
     match pair.as_rule() {
-        Rule::Keyword => CssValue::Keyword(pair.as_span().into()),
-        Rule::Rgba => CssValue::Color(read_color(pair)),
-        Rule::Rgb => CssValue::Color(read_color(pair)),
-        Rule::Color => CssValue::Color(read_color(pair)),
-        Rule::Zero => CssValue::Zero,
-        Rule::Time => CssValue::Time(read_seconds(pair)),
-        Rule::Percentage => CssValue::Percentage(read_number(pair) / 100.0),
-        Rule::Dimension => CssValue::Dim(read_dimension(pair)),
-        Rule::Number => CssValue::Number(read_number(pair)),
-        Rule::Var => CssValue::Var(read_variable(pair)),
-        Rule::Calc => CssValue::Raw(pair.as_span().into()),
-        Rule::String => CssValue::String(pair.into_inner().next().unwrap().as_span().into()),
+        Rule::Keyword => Value::Keyword(pair.as_span().into()),
+        Rule::Rgba => Value::Color(read_color(pair)),
+        Rule::Rgb => Value::Color(read_color(pair)),
+        Rule::Color => Value::Color(read_color(pair)),
+        Rule::Zero => Value::Zero,
+        Rule::Time => Value::Time(read_seconds(pair)),
+        Rule::Percentage => Value::Percentage(read_number(pair) / 100.0),
+        Rule::Dimension => Value::Dimension(read_dimension(pair)),
+        Rule::Number => Value::Number(read_number(pair)),
+        Rule::Var => Value::Var(read_variable(pair)),
+        Rule::Calc => Value::Raw(pair.as_span().into()),
+        Rule::String => Value::String(pair.into_inner().next().unwrap().as_span().into()),
         Rule::Function => {
             let mut iter = pair.into_inner();
             let name = iter.next().unwrap().as_span().into();
@@ -308,34 +232,34 @@ fn read_value(pair: Pair<Rule>, arguments: &mut Vec<CssValue>) -> CssValue {
                 // TODO: nested functions ?
                 arguments.push(read_value(arg, &mut vec![]));
             }
-            CssValue::Function(CssFunction {
+            Value::Function(Function {
                 name,
-                arguments: ArgumentsRef {
+                arguments: Arguments {
                     ptr,
                     len: arguments.len() - ptr,
                 },
             })
         }
         Rule::Raw => match pair.as_str() {
-            "inherit" => CssValue::Inherit,
-            "initial" => CssValue::Initial,
-            "unset" => CssValue::Unset,
+            "inherit" => Value::Inherit,
+            "initial" => Value::Initial,
+            "unset" => Value::Unset,
             _ => {
                 // println!("RAW {}", pair.as_str());
-                CssValue::Raw(pair.as_span().into())
+                Value::Raw(pair.as_span().into())
             }
         },
         _ => unreachable!(),
     }
 }
 
-fn read_dimension(pair: Pair<Rule>) -> CssDimension {
+fn read_dimension(pair: Pair<Rule>) -> Dim {
     let mut iter = pair.into_inner();
     let number = iter.next().unwrap();
-    let unit = iter.next().unwrap();
-    CssDimension {
+    let unit = iter.next().unwrap().as_str();
+    Dim {
         value: read_number(number),
-        unit: unit.as_span().into(),
+        unit: Unit::create(unit),
     }
 }
 
@@ -350,11 +274,11 @@ fn read_seconds(pair: Pair<Rule>) -> f32 {
     }
 }
 
-fn read_variable(pair: Pair<Rule>) -> CssVariable {
+fn read_variable(pair: Pair<Rule>) -> Var {
     let mut iter = pair.into_inner();
     let name = iter.next().unwrap();
     let fallback = iter.next();
-    CssVariable {
+    Var {
         name: name.as_span().into(),
         fallback: fallback.map(|pair| pair.as_span().into()),
     }
@@ -405,9 +329,24 @@ fn read_color(pair: Pair<Rule>) -> [u8; 4] {
     }
 }
 
+impl From<Span<'_>> for PropertyKey {
+    fn from(span: Span) -> Self {
+        Self::parse(span.into(), span.get_input())
+    }
+}
+
+impl From<Span<'_>> for Str {
+    fn from(span: Span) -> Self {
+        Self {
+            start: span.start(),
+            end: span.end(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::css::model::{CssShorthand, CssValue};
+    use crate::css::model::{Shorthand, Value};
     use crate::css::reader::read_css;
     use std::time::Instant;
 
@@ -505,17 +444,10 @@ mod tests {
 
         "#;
 
-        println!("CssShorthand {}", std::mem::size_of::<CssShorthand>());
-        println!("CssValue {}", std::mem::size_of::<CssValue>());
+        println!("CssShorthand {}", std::mem::size_of::<Shorthand>());
+        println!("CssValue {}", std::mem::size_of::<Value>());
 
         let present = read_css(css).expect("must be valid");
-
-        let v = present.styles[0].declaration[0]
-            .values
-            .as_value()
-            .as_keyword()
-            .map(|span| span.as_str(css));
-        println!("BACKGROUND: {:?}", v);
 
         println!("{:?}", present.styles);
         assert_eq!(11, present.styles.len());

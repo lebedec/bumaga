@@ -9,7 +9,7 @@ use taffy::{NodeId, TaffyTree};
 pub use value::ValueExtensions;
 
 use crate::animation::{Animator, Transition};
-use crate::css::{Css, CssProperty};
+use crate::css::{Css, PropertyKey};
 pub use crate::error::ComponentError;
 use crate::html::Html;
 use crate::models::{ElementId, Object};
@@ -102,7 +102,7 @@ pub struct Element {
     pub animator: Animator,
     pub scrolling: Option<Scrolling>,
     pub clip: Option<Layout>,
-    pub transitions: HashMap<CssProperty, Transition>,
+    pub transitions: HashMap<PropertyKey, Transition>,
 }
 
 #[derive(Clone, Copy, Debug)]

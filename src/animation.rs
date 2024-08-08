@@ -1,29 +1,26 @@
-use crate::css::CssShorthand::N1;
-use crate::css::{
-    CssDimension, CssProperty, CssSpan, CssValue, CssValues, MyAnimation, MyProperty,
-};
+use crate::css::{Animation, Property, PropertyKey, Str, Value, Values};
 
 #[derive(Clone)]
 pub struct Transition {
     animator: Animator,
-    current: CssValue,
-    next: CssValue,
-    property: CssProperty,
+    current: Value,
+    next: Value,
+    property: PropertyKey,
 }
 
 impl Transition {
-    pub fn play(&mut self, time: f32) -> MyProperty {
+    pub fn play(&mut self, time: f32) -> Property {
         unimplemented!()
     }
 
-    pub fn set(&mut self, next: &CssValue) {
+    pub fn set(&mut self, next: &Value) {
         self.next = next.clone();
     }
 }
 
 #[derive(Clone)]
 pub struct Animator {
-    pub(crate) name: CssSpan,
+    pub(crate) name: Str,
     ///  Specifies the amount of time in seconds to wait from applying the animation
     /// to an element before beginning to perform the animation
     pub(crate) delay: f32,
@@ -40,7 +37,7 @@ pub struct Animator {
 impl Default for Animator {
     fn default() -> Self {
         Self {
-            name: CssSpan::empty(),
+            name: Str::empty(),
             delay: 0.0,
             direction: AnimationDirection::Normal,
             duration: 0.0,
@@ -74,93 +71,112 @@ impl Animator {
         Some(x)
     }
 
-    pub fn play(&mut self, animation: &MyAnimation, time: f32) -> Vec<MyProperty> {
+    pub fn play(&mut self, animation: &Animation, time: f32) -> Vec<Property> {
         let mut result = vec![];
         if let Some(t) = self.update(time) {
-            let mut a = 0;
-            let mut b = 0;
-            for i in 0..animation.keyframes.len() {
-                let keyframe = &animation.keyframes[i];
-                if keyframe.step <= t {
-                    a = i;
+            let t = (t * 100.0) as u32;
+            for keyframe in &animation.keyframes {
+                let mut a = 0;
+                let mut b = 0;
+                for step in keyframe.frames.keys() {
+                    if t >= *step {
+                        a = *step;
+                    }
+                    if t <= *step {
+                        b = *step;
+                    }
+                }
+                if b > a {
+                    let t = (t - a) as f32 / (b - a) as f32;
+                    let a = &keyframe.frames[&a];
+                    let b = &keyframe.frames[&b];
+                    result.push(Property {
+                        key: keyframe.key,
+                        values: self.interpolate(keyframe.key, a, b, t),
+                    });
                 } else {
-                    b = i;
-                    break;
+                    // last or exact frame (no interpolation)
+                    result.push(Property {
+                        key: keyframe.key,
+                        values: keyframe.frames[&a].clone(),
+                    });
                 }
-            }
-            if a + 1 == b {
-                // between a and b
-                // TODO: property tracks
-                for k in 0..animation.keyframes[a].declaration.len() {
-                    let sa = animation.keyframes[a].step;
-                    let sb = animation.keyframes[b].step;
-
-                    let pa = &animation.keyframes[a].declaration[k];
-                    let pb = &animation.keyframes[b].declaration[k];
-
-                    let p = self.interpolate(pa, pb, (t - sa) / (sb - sa)).unwrap();
-                    result.push(p);
-                    //self.apply_property(&p, layout, element).unwrap();
-                }
-            } else {
-                // return a frame (last)
-                let pa = &animation.keyframes[a].declaration[0];
-                result.push(pa.clone())
-                //self.apply_property(pa, layout, element).unwrap();
             }
         }
         result
     }
 
-    fn interpolate(&self, a: &MyProperty, b: &MyProperty, t: f32) -> Option<MyProperty> {
-        let property = match (a.name, a.as_value(), b.name, b.as_value()) {
-            (CssProperty::Height, CssValue::Dim(a), CssProperty::Height, CssValue::Dim(b)) => {
-                MyProperty {
-                    name: CssProperty::Height,
-                    values: CssValues::One(N1(CssValue::Dim(CssDimension {
-                        value: a.value + (b.value - a.value) * t,
-                        unit: a.unit,
-                    }))),
-                }
-            }
-            (CssProperty::Width, CssValue::Dim(a), CssProperty::Width, CssValue::Dim(b)) => {
-                MyProperty {
-                    name: CssProperty::Width,
-                    values: CssValues::One(N1(CssValue::Dim(CssDimension {
-                        value: a.value + (b.value - a.value) * t,
-                        unit: a.unit,
-                    }))),
-                }
-            }
-            (
-                CssProperty::BackgroundColor,
-                CssValue::Color(x),
-                CssProperty::BackgroundColor,
-                CssValue::Color(y),
-            ) => {
-                let r = (x[0] as f32 + (y[0] as f32 - x[0] as f32) * t).max(0.0) as u8;
-                let g = (x[1] as f32 + (y[1] as f32 - x[1] as f32) * t).max(0.0) as u8;
-                let b = (x[2] as f32 + (y[2] as f32 - x[2] as f32) * t).max(0.0) as u8;
-                let a = (x[3] as f32 + (y[3] as f32 - x[3] as f32) * t).max(0.0) as u8;
-                MyProperty {
-                    name: CssProperty::BackgroundColor,
-                    values: CssValues::One(N1(CssValue::Color([r, g, b, a]))),
-                }
-            }
-            (CssProperty::Color, CssValue::Color(x), CssProperty::Color, CssValue::Color(y)) => {
-                let r = (x[0] as f32 + (y[0] as f32 - x[0] as f32) * t).max(0.0) as u8;
-                let g = (x[1] as f32 + (y[1] as f32 - x[1] as f32) * t).max(0.0) as u8;
-                let b = (x[2] as f32 + (y[2] as f32 - x[2] as f32) * t).max(0.0) as u8;
-                let a = (x[3] as f32 + (y[3] as f32 - x[3] as f32) * t).max(0.0) as u8;
-                MyProperty {
-                    name: CssProperty::Color,
-                    values: CssValues::One(N1(CssValue::Color([r, g, b, a]))),
-                }
-            }
-            _ => return None,
-        };
-        Some(property)
+    fn interpolate(&self, key: PropertyKey, a: &Values, b: &Values, t: f32) -> Values {
+        a.clone()
+        // match key {
+        //     CssProperty::Width => {}
+        //     CssProperty::Height => {}
+        //     CssProperty::Left => {}
+        //     CssProperty::Right => {}
+        //     CssProperty::Color => {}
+        //     CssProperty::BackgroundColor => {}
+        //     CssProperty::Transform => {}
+        //     // Discrete
+        //     // The values are not additive, and interpolation swaps from the start value to the end.
+        //     _ => {
+        //         if t < 0.5 {
+        //             a
+        //         } else {
+        //             b
+        //         }
+        //     }
+        // }
     }
+
+    // fn interpolate2(&self, a: &MyProperty, b: &MyProperty, t: f32) -> Option<MyProperty> {
+    //     let property = match (a.key, a.as_value(), b.key, b.as_value()) {
+    //         (CssProperty::Height, CssValue::Dim(a), CssProperty::Height, CssValue::Dim(b)) => {
+    //             MyProperty {
+    //                 key: CssProperty::Height,
+    //                 values: CssValues::One(N1(CssValue::Dim(CssDimension {
+    //                     value: a.value + (b.value - a.value) * t,
+    //                     unit: a.unit,
+    //                 }))),
+    //             }
+    //         }
+    //         (CssProperty::Width, CssValue::Dim(a), CssProperty::Width, CssValue::Dim(b)) => {
+    //             MyProperty {
+    //                 key: CssProperty::Width,
+    //                 values: CssValues::One(N1(CssValue::Dim(CssDimension {
+    //                     value: a.value + (b.value - a.value) * t,
+    //                     unit: a.unit,
+    //                 }))),
+    //             }
+    //         }
+    //         (
+    //             CssProperty::BackgroundColor,
+    //             CssValue::Color(x),
+    //             CssProperty::BackgroundColor,
+    //             CssValue::Color(y),
+    //         ) => {
+    //             let r = (x[0] as f32 + (y[0] as f32 - x[0] as f32) * t).max(0.0) as u8;
+    //             let g = (x[1] as f32 + (y[1] as f32 - x[1] as f32) * t).max(0.0) as u8;
+    //             let b = (x[2] as f32 + (y[2] as f32 - x[2] as f32) * t).max(0.0) as u8;
+    //             let a = (x[3] as f32 + (y[3] as f32 - x[3] as f32) * t).max(0.0) as u8;
+    //             MyProperty {
+    //                 key: CssProperty::BackgroundColor,
+    //                 values: CssValues::One(N1(CssValue::Color([r, g, b, a]))),
+    //             }
+    //         }
+    //         (CssProperty::Color, CssValue::Color(x), CssProperty::Color, CssValue::Color(y)) => {
+    //             let r = (x[0] as f32 + (y[0] as f32 - x[0] as f32) * t).max(0.0) as u8;
+    //             let g = (x[1] as f32 + (y[1] as f32 - x[1] as f32) * t).max(0.0) as u8;
+    //             let b = (x[2] as f32 + (y[2] as f32 - x[2] as f32) * t).max(0.0) as u8;
+    //             let a = (x[3] as f32 + (y[3] as f32 - x[3] as f32) * t).max(0.0) as u8;
+    //             MyProperty {
+    //                 key: CssProperty::Color,
+    //                 values: CssValues::One(N1(CssValue::Color([r, g, b, a]))),
+    //             }
+    //         }
+    //         _ => return None,
+    //     };
+    //     Some(property)
+    // }
 }
 
 #[derive(Clone, Copy, Debug)]

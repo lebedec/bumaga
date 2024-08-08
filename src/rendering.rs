@@ -4,7 +4,7 @@ use std::mem;
 use std::mem::take;
 use std::process::id;
 
-use crate::css::{match_style, CssSpan, CssValue};
+use crate::css::{match_style, Str};
 use crate::html::Html;
 use crate::input::FakeFonts;
 use crate::models::{ElementId, Object, Sizes};
@@ -264,38 +264,6 @@ impl Component {
     }
 }
 
-struct ObjectContext<'a> {
-    css: &'a str,
-    sizes: Sizes,
-    variables: HashMap<CssSpan, CssValue>,
-}
-
-impl<'a> ObjectContext<'a> {
-    pub fn new(css: &'a str, sizes: Sizes) -> Self {
-        Self {
-            css,
-            sizes,
-            variables: HashMap::new(),
-        }
-    }
-
-    pub fn create(&self) -> Self {
-        Self {
-            css: self.css,
-            sizes: self.sizes,
-            variables: HashMap::new(),
-        }
-    }
-
-    pub fn push_variable(&mut self, name: CssSpan, variable: CssValue) {
-        self.variables.insert(name, variable);
-    }
-
-    pub fn get_variable(&self, name: CssSpan) -> Option<&CssValue> {
-        self.variables.get(&name)
-    }
-}
-
 trait TaffyTreeExtensions {
     fn new_child_of(&mut self, parent_id: NodeId, style: Style, element: Element)
         -> Option<NodeId>;
@@ -323,16 +291,16 @@ impl TaffyTreeExtensions for TaffyTree<Element> {
     }
 }
 
-pub fn is_something(value: Option<&Value>) -> bool {
+pub fn is_something(value: Option<&serde_json::Value>) -> bool {
     match value {
         None => false,
         Some(value) => match value {
             Value::Null => false,
-            Value::Bool(value) => *value,
-            Value::Number(number) => number.as_f64() != Some(0.0),
-            Value::String(value) => !value.is_empty(),
-            Value::Array(value) => !value.is_empty(),
-            Value::Object(_) => true,
+            serde_json::Value::Bool(value) => *value,
+            serde_json::Value::Number(number) => number.as_f64() != Some(0.0),
+            serde_json::Value::String(value) => !value.is_empty(),
+            serde_json::Value::Array(value) => !value.is_empty(),
+            serde_json::Value::Object(_) => true,
         },
     }
 }
@@ -371,8 +339,8 @@ fn integer_decode(val: f64) -> (u64, i16, i8) {
     (mantissa, exponent, sign)
 }
 
-pub fn get_object_value(pipe: &str, input: &Input) -> Value {
-    let mut value = Value::Null;
+pub fn get_object_value(pipe: &str, input: &Input) -> serde_json::Value {
+    let mut value = serde_json::Value::Null;
     let segments: Vec<&str> = pipe.split("|").map(&str::trim).collect();
     let getters = match segments.get(0) {
         None => {
