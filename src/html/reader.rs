@@ -90,6 +90,13 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Html {
                 children: vec![],
             }
         }
+        Rule::Script => Html {
+            index: *index,
+            tag: "script".to_string(),
+            attrs: Default::default(),
+            text: None,
+            children: vec![],
+        },
         _ => unreachable!(),
     }
 }

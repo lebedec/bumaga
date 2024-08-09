@@ -8,7 +8,9 @@ Document = _{ SOI ~ Content+ ~ EOI }
 // TODO element array
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
-Content = _{ Void | Text | Element  }
+Content = _{ Script | Void | Text | Element  }
+
+Script = { "<script>" ~ (!"<" ~ ANY)* ~ "</script>" }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
 Element = { "<" ~ Tag ~ Attributes ~">" ~ Children ~ "<" ~ "/" ~  Tag ~ ">"}

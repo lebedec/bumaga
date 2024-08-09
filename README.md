@@ -3,12 +3,11 @@
 A Rust-native library for building user interfaces using web development experience.
 You should use it if these features valuable to you:
 
-+ UI declaration and styling language similar to HTML and CSS
-+ Hot reloading of view, prototyping without recompilation Rust app
++ HTML based UI definition and styling
++ CSS animations and transitions
 + Simple view bindings and interoperability based on JSON values
-+ Graphics API agnostic
-+ Windowing API agnostic
-+ CSS animations
++ Graphics and windowing API agnostic
++ Fast prototyping first, hot reloading of view without compilation Rust app
 
 The development of this library possible thanks to work of Rust enthusiasts:
 [pest](https://github.com/pest-parser/pest),
@@ -20,8 +19,23 @@ The development of this library possible thanks to work of Rust enthusiasts:
     - use arena instead TaffyTree context ?
     - dont use recursion
     - share tree between calls (on static tree will be zero time to update)
+    - separate to thread
+    - measure text size skip ?!
+    - use pools ?!
 - hierarchy transforms (move location calculation to client side think about tree)
     - rework output tree traverse
+- revise template language
+    - use this as event in input callbacks
+    - input.value separate state ?
+    - text @= interpolation
+    - component to view
+    - templates ?!
+- translation ?!
+- book with concepts, architecture and tutorial https://github.com/rust-lang/mdBook
+- share
+    - https://arewegameyet.rs/
+    - https://www.reddit.com/r/rust_gamedev/
+    - habr ?
 
 ## What it is not
 
@@ -88,12 +102,11 @@ fn main() {
 
 # Using
 
-Bumaga doesn't implement drawing, doesn't limit your application
-with any details of concrete graphics API.
-But here few examples with popular graphics solutions witch
-should help to understand how it works:
+Bumaga doesn't implement drawing. But here few examples with popular graphics solutions witch
+should help to understand how to implement it:
 
 * WIP: [Skia+Metal+Winit](examples/skia-metal-winit-app)
+* TODO: Windows + DirectX
 * [SDL2](examples/sdl2-app)
 * TODO: Vulkan
 * TODO: bevy

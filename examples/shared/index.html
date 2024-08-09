@@ -1,6 +1,46 @@
 <html>
 <meta http-equiv="content-type" content="text/html; charset=UTF-8">
 <link href="style.css" rel="stylesheet">
+<script>
+
+    function traverse(node, value) {
+        if (node.nodeType !== 1) {
+            node.textContent = node.textContent.replace(/\{(\w+)\}/, (substring, key) => value[key]);
+            return;
+        }
+        if ("*" in node.attributes) {
+            let parent = node.parentNode;
+            let getter = node.attributes["*"].value;
+            node.attributes.removeNamedItem("*");
+            console.log('!!! REPEAT', value, getter, parent, node.attributes);
+            parent.removeChild(node);
+
+
+            let items = value[getter];
+            for (let item of items) {
+                value[getter] = item;
+                let child = node.cloneNode(true);
+                parent.appendChild(child);
+                traverse(child, value);
+            }
+            value[getter] = items;
+            return;
+        }
+
+        for (let child of node.childNodes) {
+            traverse(child, value);
+        }
+    }
+    
+    window.onload = () => {
+        console.log("hello", VALUE);
+        traverse(document.body, VALUE)
+    }
+
+    let VALUE = {
+        todos: ["Todo A", "Todo B", "Todo C"]
+    }
+</script>
 <body>
 <div class="panel">
     <header>
@@ -17,3 +57,5 @@
 </div>
 </body>
 </html>
+
+
