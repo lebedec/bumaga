@@ -28,7 +28,7 @@ The development of this library possible thanks to work of Rust enthusiasts:
     - use this as event in input callbacks
     - input.value separate state ?
     - text @= interpolation
-    - component to view
+    - rename component to view
     - templates ?!
 - translation ?!
 - book with concepts, architecture and tutorial https://github.com/rust-lang/mdBook
@@ -56,7 +56,7 @@ TODO: short description of architecture and real code example
 fn main() {
     let mut engine = MyEngine::startup();
     let mut name = String::from("Alice");
-    let component = Component::compile("component.html", "component.css");
+    let component = Component::compile("partial.html", "component.css");
     loop {
         let value = json!({"name": name});
         let input = Input::from(engine.input)

@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashSet};
 use std::time::{Duration, Instant};
 
-use bumaga::nw::merge_value;
+use bumaga::nw::{Binding, ViewModel};
 use bumaga::{
     Borders, Component, Element, Fonts, Input, Keys, Layout, MyBorder, Rgba, TextStyle,
     TransformFunction, ValueExtensions,
@@ -11,104 +11,111 @@ use bumaga::{
 
 #[macroquad::main("macroquad bumaga example")]
 async fn main() {
-    let mut value = json!({
-        "options": [
-            {"value": 1, "text": "Option 1"},
-            {"value": 2, "text": "Option 2"},
-            {"value": 3, "text": "Option 3"},
-            {"value": 4, "text": "Option 4"},
-            {"value": 5, "text": "Option 5"},
-            {"value": 6, "text": "Option 6"}
-        ],
-        "property": "abc",
-        "nested": {
-            "pBool": true,
-            "pNumber": 10,
-            "pString": "abc",
-            "pNull": null,
-            "pArray": [
-                1, 2, 3, 4, 5, 6, 7, 8, 9
-            ],
-            "pObject": {
-                "super": "Alice",
-                "puper": "Boris",
-            }
-        }
-    });
-
-    let empty = json!({});
-
-    let ligth_diff = json!({
-        "options": [
-            {"value": 1, "text": "Option 1"},
-            {"value": 2, "text": "Option 2"},
-            {"value": 3, "text": "Option 3"},
-            {"value": 4, "text": "Option 4"},
-            {"value": 5, "text": "Option 5"},
-            {"value": 6, "text": "Option 6"}
-        ],
-        "property": "abc", // ERROR
-        "nested": {
-            "pBool": true,
-            "pNumber": 42, // 10 - 42
-            "pString": "qwe", // abc - qwe
-            "pNull": null,
-            "pArray": [
-                1, 2, 30, 4, 5, 6, 7, 8, 9 // 3 - 30
-            ],
-            "pObject": {
-                "super": "Alice",
-                "puper": "Boris",
-            }
-        }
-    });
-
-    let hard_diff = json!({
-        "options": [
-            {"value": 1, "text": "Option 1"},
-            {"value": 8, "text": "Option 8"},
-            {"value": 3, "text": "Option 3"},
-            {"value": 5, "text": "Option 5"},
-            {"value": 6, "text": "Option 6"},
-            {"value": 7, "text": "Option 7"}
-        ],
-        "property": "abc",
-        "nested": {
-            "pBool": 42,
-            "pNumber": "abc",
-            "pString": null,
-            "pNull": true,
-            "pArray": [
-                1, 2, 3, 4, "a", "b", 5, 6, 7,
-            ],
-            "pObject": {
-                "super": "Carold",
-                "puper": null,
-            }
-        }
-    });
-
-    let mut changes = vec![];
-    merge_value(&mut value, &empty, "", &mut changes);
-    println!("EMPTY CHANGES {changes:#?}");
-
-    let mut changes = vec![];
-    merge_value(&mut value, &ligth_diff, "", &mut changes);
-    println!("LIGHT CHANGES {changes:#?}");
-
-    let mut changes = vec![];
-    merge_value(&mut value, &hard_diff, "", &mut changes);
-    println!("HARD CHANGES {changes:#?}");
-
-    let t1 = Instant::now();
-    let mut changes = vec![];
-    for i in 0..100 {
-        merge_value(&mut value, &hard_diff, "", &mut changes);
-        merge_value(&mut value, &ligth_diff, "", &mut changes);
-    }
-    println!("changes: {}, time: {:?}", changes.len(), t1.elapsed());
-
-    return;
+    // let state = json!({
+    //     "options": [
+    //         {"value": 1, "text": "Option 1"},
+    //         {"value": 2, "text": "Option 2"},
+    //         {"value": 3, "text": "Option 3"},
+    //         {"value": 4, "text": "Option 4"},
+    //         {"value": 5, "text": "Option 5"},
+    //         {"value": 6, "text": "Option 6"}
+    //     ],
+    //     "property": "abc",
+    //     "nested": {
+    //         "pBool": true,
+    //         "pNumber": 10,
+    //         "pString": "abc",
+    //         "pNull": null,
+    //         "pArray": [
+    //             1, 2, 3, 4, 5, 6, 7, 8, 9
+    //         ],
+    //         "pObject": {
+    //             "super": "Alice",
+    //             "puper": "Boris",
+    //         }
+    //     }
+    // });
+    // let mut bindings = BTreeMap::new();
+    // bindings.insert(".property".to_string(), vec![Binding::Text(0, 1)]);
+    // bindings.insert(
+    //     ".nested.pString".to_string(),
+    //     vec![Binding::Text(0, 0), Binding::Text(1, 0)],
+    // );
+    // bindings.insert(
+    //     ".options[1].value".to_string(),
+    //     vec![Binding::Attribute(4, "value".to_string())],
+    // );
+    // let mut view_model = ViewModel::create(bindings, state);
+    //
+    // let empty = json!({});
+    //
+    // let ligth_diff = json!({
+    //     "options": [
+    //         {"value": 1, "text": "Option 1"},
+    //         {"value": 2, "text": "Option 2"},
+    //         {"value": 3, "text": "Option 3"},
+    //         {"value": 4, "text": "Option 4"},
+    //         {"value": 5, "text": "Option 5"},
+    //         {"value": 6, "text": "Option 6"}
+    //     ],
+    //     "property": "abc",
+    //     "nested": {
+    //         "pBool": true,
+    //         "pNumber": 42, // 10 - 42
+    //         "pString": "qwe", // abc - qwe
+    //         "pNull": null,
+    //         "pArray": [
+    //             1, 2, 30, 4, 5, 6, 7, 8, 9 // 3 - 30
+    //         ],
+    //         "pObject": {
+    //             "super": "Alice",
+    //             "puper": "Boris",
+    //         }
+    //     }
+    // });
+    //
+    // let hard_diff = json!({
+    //     "options": [
+    //         {"value": 1, "text": "Option 1"},
+    //         {"value": 8, "text": "Option 8"},
+    //         {"value": 3, "text": "Option 3"},
+    //         {"value": 5, "text": "Option 5"},
+    //         {"value": 6, "text": "Option 6"},
+    //         {"value": 7, "text": "Option 7"}
+    //     ],
+    //     "property": "abc",
+    //     "nested": {
+    //         "pBool": 42,
+    //         "pNumber": "abc",
+    //         "pString": null,
+    //         "pNull": true,
+    //         "pArray": [
+    //             1, 2, 3, 4, "a", "b", 5, 6, 7,
+    //         ],
+    //         "pObject": {
+    //             "super": "Carold",
+    //             "puper": null,
+    //         }
+    //     }
+    // });
+    //
+    // let changes = view_model.bind(&empty);
+    // println!("EMPTY CHANGES {changes:#?}");
+    //
+    // let changes = view_model.bind(&ligth_diff);
+    // println!("LIGHT CHANGES {changes:#?}");
+    //
+    // let changes = view_model.bind(&hard_diff);
+    // println!("HARD CHANGES {changes:#?}");
+    //
+    // let t1 = Instant::now();
+    // for i in 0..100 {
+    //     view_model.bind(&ligth_diff);
+    //     view_model.bind(&hard_diff);
+    // }
+    // println!("changes: {}, time: {:?}", changes.len(), t1.elapsed());
+    //
+    // return;
 
     env_logger::init();
     let font = load_ttf_font("../shared/Roboto/Roboto-Regular.ttf")
@@ -142,7 +149,7 @@ async fn main() {
             .pipe("done", move |value| done.contains(&value).into());
         let t1 = Instant::now();
         let output = component.update(input).unwrap();
-        println!("bumaga time: {:?}", t1.elapsed());
+        // println!("bumaga time: {:?}", t1.elapsed());
         // 42ms original !!! in debug
         // 1-3ms anmations
         // 1-3ms save and restore values

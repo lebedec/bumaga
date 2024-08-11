@@ -2,7 +2,6 @@
 <meta http-equiv="content-type" content="text/html; charset=UTF-8">
 <link href="style.css" rel="stylesheet">
 <script>
-
     function traverse(node, value) {
         if (node.nodeType !== 1) {
             node.textContent = node.textContent.replace(/\{(\w+)\}/, (substring, key) => value[key]);
@@ -31,8 +30,19 @@
             traverse(child, value);
         }
     }
-    
+
     window.onload = () => {
+        var iframe = document.createElement('iframe');
+        iframe.src = "partial.html";
+        iframe.style = "display: none;"
+        console.log('pre', iframe.contentWindow);
+        iframe.onload = (e) => {
+            console.log("IFRAME ", e);
+            console.log(iframe.contentWindow.document.body);
+        }
+        document.body.appendChild(iframe);
+
+
         console.log("hello", VALUE);
         traverse(document.body, VALUE)
     }
@@ -49,7 +59,7 @@
     </header>
     <div class="scroll">
         <div *="todos" class="todo" data-done="todos|done" onclick="finish(todos)">
-            <span>{todos}</span>
+            <span>My { todos }</span>
             <div onclick="remove(todos)">×</div>
         </div>
     </div>

@@ -46,30 +46,50 @@ Tag = @{ TChar+ }
 TChar = { ASCII_ALPHA | ASCII_DIGIT }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
-Text = { String }
+Text = { (Binder | String)+  }
 
 String = @{ SChar+ }
 
-SChar = { !("<" | ">") ~ ANY }
+SChar = {
+    !("<" | ">" | "{") ~ ANY
+}
 
 Attributes = { Attribute* }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
-Attribute = { DoubleQuoted | Unquoted | Empty }
+Attribute = _{
+    RepeatBinding
+    | AliasBinding
+    | AttributeBinding
+    | CallbackBinding
+    | VisibilityBinding
+    | DoubleQuoted
+    | Unquoted
+    | Empty
+    }
+
+AliasBinding = { "{" ~ Name ~ "}" ~ "=" ~ Binder }
+
+AttributeBinding = { "[" ~ Name ~ "]" ~ "=" ~ Binder }
+
+CallbackBinding = { "[" ~ Name ~ "]" ~ "~" ~ Key ~ "=" ~ Binder }
+
+VisibilityBinding = { Visible ~ "=" ~ Binder }
+
+Visible = { "?" | "!" }
+
+RepeatBinding = { "{" ~ Name ~ "}" ~ "~" ~ Count ~ "=" ~ Binder }
+
+Count = { ASCII_DIGIT+ }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
-DoubleQuoted = _{ Name ~ "=" ~ "\"" ~ Value ~ "\"" }
+DoubleQuoted = { Name ~ "=" ~ "\"" ~ Value ~ "\"" }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
-// single quoted obsolete and need literal without ' quote char
-// so, we won't support it until someone needs it
-// SingleQuoted = _{ Name ~ "=" ~ "'" ~ Value ~ "'" }
+Unquoted = { Name ~ "=" ~ Value }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
-Unquoted = _{ Name ~ "=" ~ Value }
-
-// https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
-Empty = _{ Name }
+Empty = { Name }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
 Name = @{ NChar+ }
@@ -78,6 +98,14 @@ Name = @{ NChar+ }
 NChar = @{
     !("\"" | "\\" | "'" | ">" | "/" | "=" | "\u{0000}" | WHITESPACE) ~ ANY
 }
+
+Binder = { "{" ~ Getter ~ ("|" ~ Transformer)* ~ "}" }
+
+Getter = { Key ~ ("." ~ Key)* }
+
+Transformer = { Key }
+
+Key = @{ TChar+ }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
 Value = @{ VChar* }

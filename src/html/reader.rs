@@ -1,3 +1,5 @@
+use crate::nw::Reaction::Bind;
+use log::error;
 use pest::error::Error;
 use pest::iterators::Pair;
 use pest::Parser;
@@ -23,13 +25,49 @@ impl From<Error<Rule>> for ReaderError {
 
 /// The Document Object Model (DOM) is an interface that treats an HTML document as a tree structure
 /// wherein each node is an object representing a part of the document.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Html {
     pub index: usize,
     pub tag: String,
     pub attrs: HashMap<String, String>,
+    pub bindings: Vec<ElementBinding>,
     pub text: Option<String>,
+    pub text_new: Option<TextBinding>,
     pub children: Vec<Html>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ElementBinding {
+    None(String, String),
+    Alias(String, Binder),
+    Attribute(String, Binder),
+    Repeat(String, usize, Binder),
+    Callback(String, String, Binder),
+    Visibility(bool, Binder),
+}
+
+#[derive(Debug, Clone)]
+pub struct TextBinding {
+    pub spans: Vec<TextSpan>,
+}
+
+#[derive(Debug, Clone)]
+pub enum TextSpan {
+    String(String),
+    Binder(Binder),
+}
+
+#[derive(Debug, Clone)]
+pub struct Binding {
+    pub target: String,
+    pub path: Vec<String>,
+    pub pipe: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Binder {
+    pub path: Vec<String>,
+    pub pipe: Vec<String>,
 }
 
 pub fn read_html_unchecked(html: &str) -> Html {
@@ -56,12 +94,27 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Html {
             let mut iter = pair.into_inner();
             let tag = iter.next().unwrap().as_str();
             let attrs = iter.next().unwrap();
+
             let children = iter.next().unwrap();
+
+            let bindings = parse_element_bindings(attrs);
+            let mut attrs = HashMap::new();
+            for binding in &bindings {
+                match binding {
+                    ElementBinding::None(key, value) => {
+                        attrs.insert(key.to_string(), value.to_string());
+                    }
+                    _ => {}
+                }
+            }
+
             Html {
                 index: *index,
                 tag: tag.to_string(),
-                attrs: parse_attrs(attrs),
+                attrs,
+                bindings,
                 text: None,
+                text_new: None,
                 children: children
                     .into_inner()
                     .map(|child| parse_content(child, index))
@@ -70,11 +123,25 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Html {
         }
         Rule::Text => {
             let text = pair.as_str().trim().to_string();
+
+            let mut spans = vec![];
+            for span in pair.into_inner() {
+                match span.as_rule() {
+                    Rule::String => spans.push(TextSpan::String(span.as_str().to_string())),
+                    Rule::Binder => spans.push(TextSpan::Binder(parse_binder(span))),
+                    _ => unreachable!(),
+                }
+            }
+            let text_new = TextBinding { spans };
+            println!("TEXT_NEW {text_new:?}");
+
             Html {
                 index: *index,
                 tag: "".to_string(),
                 attrs: Default::default(),
+                bindings: vec![],
                 text: Some(text),
+                text_new: Some(text_new),
                 children: vec![],
             }
         }
@@ -82,11 +149,25 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Html {
             let mut iter = pair.into_inner();
             let tag = iter.next().unwrap().as_str();
             let attrs = iter.next().unwrap();
+
+            let bindings = parse_element_bindings(attrs);
+            let mut attrs = HashMap::new();
+            for binding in &bindings {
+                match binding {
+                    ElementBinding::None(key, value) => {
+                        attrs.insert(key.to_string(), value.to_string());
+                    }
+                    _ => {}
+                }
+            }
+
             Html {
                 index: *index,
                 tag: tag.to_string(),
-                attrs: parse_attrs(attrs),
+                attrs,
+                bindings,
                 text: None,
+                text_new: None,
                 children: vec![],
             }
         }
@@ -94,29 +175,85 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Html {
             index: *index,
             tag: "script".to_string(),
             attrs: Default::default(),
+            bindings: vec![],
             text: None,
+            text_new: None,
             children: vec![],
         },
         _ => unreachable!(),
     }
 }
 
-fn parse_attrs(pair: Pair<Rule>) -> HashMap<String, String> {
-    let mut attrs = HashMap::new();
-    for pair in pair.into_inner() {
-        match pair.as_rule() {
-            Rule::Attribute => {
-                let mut iter = pair.into_inner();
-                let name = iter.next().unwrap().as_str();
-                // empty attribute syntax is exactly equivalent to specifying the empty string
-                // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
-                let value = iter.next().map(|value| value.as_str()).unwrap_or("");
-                attrs.insert(name.to_string(), value.to_string());
+fn parse_binder(pair: Pair<Rule>) -> Binder {
+    let mut path = vec![];
+    let mut pipe = vec![];
+    for next in pair.into_inner() {
+        match next.as_rule() {
+            Rule::Getter => {
+                path = next
+                    .into_inner()
+                    .map(|key| key.as_str().to_string())
+                    .collect();
             }
+            Rule::Transformer => pipe.push(next.as_str().to_string()),
             _ => unreachable!(),
         }
     }
-    attrs
+    Binder { path, pipe }
+}
+
+fn parse_element_bindings(pair: Pair<Rule>) -> Vec<ElementBinding> {
+    let mut bindings = vec![];
+    for pair in pair.into_inner() {
+        let rule = pair.as_rule();
+        let mut iter = pair.into_inner();
+        let name = iter.next().unwrap().as_str().to_string();
+        let binding = match rule {
+            Rule::RepeatBinding => {
+                let count = iter.next().unwrap().as_str();
+                let count = count.parse::<usize>().unwrap_or_else(|error| {
+                    error!("unable to parse repeat count {count}, {error}");
+                    0
+                });
+                let binder = parse_binder(iter.next().unwrap());
+                ElementBinding::Repeat(name, count, binder)
+            }
+            Rule::AliasBinding => {
+                let binder = parse_binder(iter.next().unwrap());
+                ElementBinding::Alias(name, binder)
+            }
+            Rule::AttributeBinding => {
+                let binder = parse_binder(iter.next().unwrap());
+                ElementBinding::Attribute(name, binder)
+            }
+            Rule::CallbackBinding => {
+                let function = iter.next().unwrap().as_str().to_string();
+                let binder = parse_binder(iter.next().unwrap());
+                ElementBinding::Callback(name, function, binder)
+            }
+            Rule::VisibilityBinding => {
+                let visible = name == "?";
+                let binder = parse_binder(iter.next().unwrap());
+                ElementBinding::Visibility(visible, binder)
+            }
+            Rule::DoubleQuoted => {
+                let value = iter.next().unwrap().as_str().to_string();
+                ElementBinding::None(name, value)
+            }
+            Rule::Unquoted => {
+                let value = iter.next().unwrap().as_str().to_string();
+                ElementBinding::None(name, value)
+            }
+            Rule::Empty => {
+                // empty attribute syntax is exactly equivalent to specifying the empty string
+                // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
+                ElementBinding::None(name, "".to_string())
+            }
+            _ => unreachable!(),
+        };
+        bindings.push(binding);
+    }
+    bindings
 }
 
 #[cfg(test)]

@@ -1,159 +1,130 @@
 use log::error;
 use serde::de::Unexpected::Str;
 use serde_json::{Map, Value};
+use std::collections::{BTreeMap, HashMap};
 
-pub fn merge_value(mut dst: &mut Value, src: &Value, path: &str, changes: &mut Vec<String>) {
-    match (&mut dst, src) {
-        (Value::Null, Value::Null) => {}
-        (Value::Bool(dst), Value::Bool(src)) => {
-            if dst != src {
-                changes.push(format!("{path} b {dst} => {src}"));
-                *dst = *src;
-            }
-        }
-        (Value::Number(dst), Value::Number(src)) => {
-            if dst != src {
-                changes.push(format!("{path} n {dst} => {src}"));
-                *dst = src.clone();
-            }
-        }
-        (Value::String(ref mut dst), Value::String(src)) => {
-            if dst != src {
-                changes.push(format!("{path} s {dst} => {src}"));
-                *dst = src.clone();
-            }
-        }
-        (&mut Value::Null, _)
-        | (Value::Number(_), _)
-        | (Value::String(_), _)
-        | (Value::Bool(_), _) => {
-            if src.is_object() || src.is_array() {
-                error!("unable to merge, '{path}' must not be object or array");
-                return;
-            }
-            changes.push(format!("{path} a {dst} => {src}"));
-            *dst = src.clone();
-        }
-        (Value::Array(dst), Value::Array(src)) => {
-            for (index, dst) in dst.iter_mut().enumerate() {
-                let src = src.get(index).unwrap_or(&Value::Null);
-                let path = &format!("{path}[{index}]");
-                merge_value(dst, src, path, changes);
-            }
-        }
-        (Value::Array(_), _) => {
-            error!("unable to merge, '{path}' must be array");
-        }
-        (Value::Object(dst), Value::Object(src)) => {
-            for (key, dst) in dst.iter_mut() {
-                let src = src.get(key).unwrap_or(&Value::Null);
-                let path = &format!("{path}.{key}");
-                merge_value(dst, src, path, changes);
-            }
-        }
-        (Value::Object(dst), Value::Null) => {
-            for (key, dst) in dst.iter_mut() {
-                let path = &format!("{path}.{key}");
-                merge_value(dst, &Value::Null, path, changes);
-            }
-        }
-        (Value::Object(_), _) => {
-            error!("unable to merge, '{path}' must be object")
-        }
-    };
+type Bindings = BTreeMap<String, Vec<Binding>>;
+
+trait Transformer: Fn(Value) -> Value {}
+
+pub struct ViewModel {
+    bindings: Bindings,
+    state: Value,
+    transformers: HashMap<String, Box<dyn Fn(Value) -> Value>>,
 }
 
-pub struct Controller {
-    conditions: Vec<Condition>,
-    spans: Vec<Editor>,
-    repeats: Vec<Repeat>,
-}
+impl ViewModel {
+    pub fn create(bindings: Bindings, state: Value) -> Self {
+        Self {
+            bindings,
+            state,
+            transformers: HashMap::new(),
+        }
+    }
 
-pub struct Repeat {
-    id: usize,
-    getter: String,
-    current: Vec<bool>,
-}
+    pub fn bind(&mut self, value: &Value) -> Vec<String> {
+        let mut reactions = vec![];
+        Self::bind_value(&mut self.state, value, "", &self.bindings, &mut reactions);
+        reactions
+    }
 
-pub struct Condition {
-    id: usize,
-    getter: String,
-    value: bool,
-    test: bool,
-}
+    pub fn bind_value(
+        mut dst: &mut Value,
+        src: &Value,
+        path: &str,
+        bindings: &Bindings,
+        reactions: &mut Vec<String>,
+    ) {
+        match (&mut dst, src) {
+            (Value::Array(current), Value::Array(next)) => {
+                if current.len() != next.len() {
+                    current.resize(next.len(), Value::Null);
+                    Self::react(path, src, bindings, reactions);
+                }
+                for (index, dst) in current.iter_mut().enumerate() {
+                    let src = &next[index];
+                    let path = &format!("{path}[{index}]");
+                    Self::bind_value(dst, src, path, bindings, reactions);
+                }
+            }
+            (Value::Array(_), _) => {
+                error!("unable to bind '{path}', must be array")
+            }
+            (Value::Object(object), Value::Object(src)) => {
+                for (key, dst) in object.iter_mut() {
+                    let src = match src.get(key) {
+                        Some(src) => src,
+                        None => {
+                            error!("unable to bind '{path}', must be specified");
+                            continue;
+                        }
+                    };
+                    let path = &format!("{path}.{key}");
+                    Self::bind_value(dst, src, path, bindings, reactions);
+                }
+            }
+            (Value::Object(_), _) => {
+                error!("unable to bind '{path}', must be object")
+            }
+            (dst, src) => {
+                if *dst != src {
+                    **dst = src.clone();
+                    Self::react(path, src, bindings, reactions);
+                }
+            }
+        }
+    }
 
-pub struct Editor {
-    id: usize,
-    getter: String,
-    text: String,
-}
-
-impl Controller {
-    pub fn new() -> Self {
-        Controller {
-            conditions: vec![],
-            spans: vec![],
-            repeats: vec![],
+    #[inline]
+    fn react(path: &str, value: &Value, bindings: &Bindings, reactions: &mut Vec<String>) {
+        if let Some(bindings) = bindings.get(path) {
+            for binding in bindings {
+                reactions.push(binding.react_value_change(value))
+            }
         }
     }
 }
 
-struct MyInput {}
-
-pub fn get_value<'a>(value: &'a Map<String, Value>, path: &str) -> Option<&'a Value> {
-    unimplemented!()
+pub enum Binding {
+    Text(usize, usize),
+    Visibility(usize, bool),
+    Attribute(usize, String),
+    Repeat(usize, usize, usize),
 }
 
-pub fn as_boolean(value: &Value) -> bool {
-    unimplemented!()
-}
-
-pub fn as_array(value: &Value) -> &Vec<Value> {
-    unimplemented!()
-}
-
-pub fn as_string(value: &Value) -> &str {
-    unimplemented!()
-}
-
-pub fn update(input: MyInput, value: &Map<String, Value>) {
-    let mut controller = Controller::new();
-    let mut reactions = vec![];
-    for repeat in controller.repeats.iter_mut() {
-        let value = match get_value(value, &repeat.getter) {
-            None => continue,
-            Some(value) => value,
-        };
-        let items = as_array(value);
-        for (index, item) in items.iter().enumerate() {}
-    }
-    for condition in controller.conditions.iter_mut() {
-        let value = match get_value(value, &condition.getter) {
-            None => continue,
-            Some(value) => value,
-        };
-        let value = as_boolean(value);
-        if condition.value != value {
-            if value == condition.test {
-                reactions.push(Reaction::Show { id: condition.id })
-            } else {
-                reactions.push(Reaction::Hide { id: condition.id })
+impl Binding {
+    fn react_value_change(&self, value: &Value) -> String {
+        match self {
+            Binding::Visibility(element, is_visible) => {
+                if as_boolean(value) == *is_visible {
+                    format!("show el{element}")
+                } else {
+                    format!("hide el{element}")
+                }
             }
-            condition.value = value;
-        }
-    }
-    for editor in controller.spans.iter_mut() {
-        let value = match get_value(value, &editor.getter) {
-            None => continue,
-            Some(value) => value,
-        };
-        let text = as_string(value);
-        if text != editor.text {
-            editor.text = text.to_string();
-            reactions.push(Reaction::Type {
-                id: editor.id,
-                text: text.to_string(),
-            })
+            Binding::Attribute(element, key) => {
+                format!("set el{element} attribute {key}={value}")
+            }
+            Binding::Text(element, n) => {
+                // TODO: interpolation ?!
+                let value = as_string(value);
+                format!("interpolate el{element} text arg{n}={value}")
+            }
+            Binding::Repeat(parent, start, size) => {
+                if let Some(value) = value.as_array() {
+                    let count = value.len();
+                    let count = if count > *size {
+                        error!("unable to repeat all items of {parent}");
+                        *size
+                    } else {
+                        count
+                    };
+                    format!("repeat p{parent} {start}..{count}..{size}")
+                } else {
+                    error!("unable to repeat, value must be array");
+                    format!("repeat p{parent} {start}..{start}..{size}")
+                }
+            }
         }
     }
 }
@@ -182,21 +153,24 @@ pub enum Reaction {
     },
 }
 
-impl Reaction {
-    pub fn is_style_changes(&self) -> bool {
-        true
+pub fn as_boolean(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(number) => number.as_f64().map(|value| value != 0.0).unwrap_or(false),
+        Value::String(string) => string.len() > 0,
+        Value::Array(array) => array.len() > 0,
+        Value::Object(_) => true,
     }
+}
 
-    pub fn is_render_changes(&self) -> bool {
-        match self {
-            Reaction::Show { .. } => true,
-            Reaction::Hide { .. } => true,
-            Reaction::Repeat { .. } => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_layout_changes(&self) -> bool {
-        true
+pub fn as_string(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Number(number) => number.to_string(),
+        Value::String(string) => string.clone(),
+        Value::Array(_) => "[array]".to_string(),
+        Value::Object(_) => "{object}".to_string(),
     }
 }
