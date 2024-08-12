@@ -1,12 +1,13 @@
 use macroquad::prelude::*;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashSet};
+use std::fs;
 use std::time::{Duration, Instant};
 
 use bumaga::view_model::{Binding, ViewModel};
 use bumaga::{
     Borders, Component, Element, Fonts, Input, Keys, Layout, MyBorder, Rgba, TextStyle,
-    TransformFunction, ValueExtensions,
+    TransformFunction, ValueExtensions, View,
 };
 
 #[macroquad::main("macroquad bumaga example")]
@@ -122,8 +123,12 @@ async fn main() {
         .await
         .unwrap();
     let mut fonts = FontSystem { font };
-    let mut component =
-        Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/");
+    // let mut component =
+    //     Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/");
+
+    let html = fs::read_to_string("../shared/index.html").unwrap();
+    let css = fs::read_to_string("../shared/style.css").unwrap();
+    let mut view = View::compile(&html, &css, "../shared/").unwrap();
 
     let mut todos_done = vec![];
     let mut todos = vec![
@@ -148,8 +153,8 @@ async fn main() {
             .value(value)
             .pipe("done", move |value| done.contains(&value).into());
         let t1 = Instant::now();
-        let output = component.update(input).unwrap();
-        // println!("bumaga time: {:?}", t1.elapsed());
+        let output = view.update(input).unwrap();
+        println!("bumaga time: {:?}", t1.elapsed());
         // 42ms original !!! in debug
         // 1-3ms anmations
         // 1-3ms save and restore values
@@ -180,6 +185,7 @@ fn draw_element(element: &Element, fonts: &FontSystem) {
     let mut y = element.layout.location.y;
     let w = element.layout.size.width;
     let h = element.layout.size.height;
+
     for transform in &element.transforms {
         match transform {
             TransformFunction::Translate { x: tx, y: ty, .. } => {
@@ -202,7 +208,7 @@ fn draw_element(element: &Element, fonts: &FontSystem) {
     draw_rectangle(x, y, w, h, color(&element.background.color));
     draw_borders(&element);
     // draw_line()
-    if let Some(text) = element.html.text.as_ref() {
+    if let Some(text) = element.text.as_ref() {
         let text_params = TextParams {
             font_size: element.text_style.font_size as u16,
             font: Some(&fonts.font),
@@ -210,9 +216,9 @@ fn draw_element(element: &Element, fonts: &FontSystem) {
             ..Default::default()
         };
         draw_text_ex(
-            &text,
+            &text.as_string(),
             element.layout.location.x,
-            element.layout.location.y + fonts.offset_y(&text, &element.text_style),
+            element.layout.location.y + fonts.offset_y(&text.as_string(), &element.text_style),
             text_params,
         );
     }

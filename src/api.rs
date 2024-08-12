@@ -10,9 +10,9 @@ pub use value::ValueExtensions;
 
 use crate::animation::{Animator, Transition};
 use crate::css::{Css, PropertyKey};
-pub use crate::error::ComponentError;
+pub use crate::error::ViewError;
 use crate::html::{Binder, Html};
-use crate::models::{ElementId, Object};
+use crate::models::ElementId;
 use crate::state::State;
 use crate::styles::Scrolling;
 use crate::value;
@@ -94,7 +94,6 @@ pub struct Element {
     /// The final result of a layout algorithm, describes size and position of element.
     pub layout: Layout,
     pub id: ElementId,
-    pub html: Object,
     pub children: Vec<NodeId>,
     //
     pub tag: String,
@@ -122,6 +121,13 @@ pub struct Element {
 #[derive(Clone)]
 pub struct TextContent {
     pub spans: Vec<String>,
+}
+
+impl TextContent {
+    #[inline(always)]
+    pub fn as_string(&self) -> String {
+        self.spans.join(" ")
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -5,7 +5,7 @@ use crate::animation::{
 use crate::css::Value::{Color, Keyword, Number, Time};
 use crate::css::{match_style, Css, Dim, Property, PropertyKey, Str, Style, Value, Values, Var};
 use crate::html::TextBinding;
-use crate::models::{ElementId, Object, Sizes};
+use crate::models::{ElementId, Sizes};
 use crate::{
     Background, Borders, Element, Input, Length, MyBorder, ObjectFit, TextStyle, TransformFunction,
 };
@@ -23,11 +23,10 @@ impl TextStyle {
     // pub const DEFAULT_FONT_STRETCH: FontStretchKeyword = FontStretchKeyword::Normal;
 }
 
-pub fn create_element(id: ElementId, html: Object) -> Element {
+pub fn create_element(id: ElementId) -> Element {
     Element {
         layout: Default::default(),
         id,
-        html,
         children: vec![],
         tag: "".to_string(),
         text: None,

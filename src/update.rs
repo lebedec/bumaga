@@ -15,16 +15,15 @@ use taffy::{
 use crate::css::read_css_unchecked;
 use crate::html::{read_html_unchecked, Html};
 use crate::input::FakeFonts;
-use crate::models::{ElementId, Object, Sizes};
+use crate::models::{ElementId, Sizes};
 use crate::state::State;
 use crate::styles::{create_element, Scrolling};
 use crate::{
-    CallOld, Component, ComponentError, Element, Fonts, Input, Keys, Output, Source,
-    LEFT_MOUSE_BUTTON,
+    CallOld, Component, Element, Fonts, Input, Keys, Output, Source, ViewError, LEFT_MOUSE_BUTTON,
 };
 
 impl Component {
-    pub fn update(&mut self, mut input: Input) -> Result<Output, ComponentError> {
+    pub fn update(&mut self, mut input: Input) -> Result<Output, ViewError> {
         self.watch_source_changes();
         let (root, tree) = self.render_tree(&mut input)?;
         self.tree = tree;
@@ -66,17 +65,13 @@ impl Component {
         }
     }
 
-    fn get_element_mut(&mut self, node: NodeId) -> Result<&mut Element, ComponentError> {
+    fn get_element_mut(&mut self, node: NodeId) -> Result<&mut Element, ViewError> {
         self.tree
             .get_node_context_mut(node)
-            .ok_or(ComponentError::ElementNotFound)
+            .ok_or(ViewError::ElementNotFound)
     }
 
-    fn handle_user_input(
-        &mut self,
-        input: &Input,
-        output: &mut Output,
-    ) -> Result<(), ComponentError> {
+    fn handle_user_input(&mut self, input: &Input, output: &mut Output) -> Result<(), ViewError> {
         // TODO: propagation
 
         if let Some(current) = output.scroll {
@@ -107,7 +102,7 @@ impl Component {
             let element = self.get_element_mut(current)?;
             if input.is_mouse_down() {
                 // Sets focus on the specified element, if it can be focused
-                match element.html.tag.as_str() {
+                match element.tag.as_str() {
                     "input" => {
                         focus = Some(current);
                     }
@@ -138,9 +133,9 @@ impl Component {
 
         if let Some(current) = self.state.focus {
             let element = self.get_element_mut(current)?;
-            match element.html.tag.as_str() {
+            match element.tag.as_str() {
                 "input" => {
-                    let mut value = element.html.attrs.get("value").cloned().unwrap_or_default();
+                    let mut value = element.attrs.get("value").cloned().unwrap_or_default();
                     let mut has_changes = false;
                     if !input.characters.is_empty() {
                         has_changes = true;
@@ -244,7 +239,7 @@ impl Component {
 }
 
 impl Output {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             hover: None,
             scroll: None,
@@ -274,12 +269,12 @@ impl Element {
 
     #[inline(always)]
     fn insert(&mut self, class: &str) {
-        self.html.pseudo_classes.insert(class.to_string());
+        self.pseudo_classes.insert(class.to_string());
     }
 
     #[inline(always)]
     fn remove(&mut self, class: &str) {
-        self.html.pseudo_classes.remove(class);
+        self.pseudo_classes.remove(class);
     }
 }
 
@@ -309,7 +304,7 @@ fn is_element_contains(layout: &Layout, point: [f32; 2]) -> bool {
     x && y
 }
 
-fn measure_text(
+pub fn measure_text(
     input: &mut Input,
     size: Size<Option<f32>>,
     space: Size<AvailableSpace>,
@@ -326,7 +321,7 @@ fn measure_text(
         None => return Size::ZERO,
         Some(element) => element,
     };
-    if let Some(text) = element.html.text.as_ref() {
+    if let Some(text) = element.text.as_ref().map(|text| text.spans.join(" ")) {
         let max_width = size.width.map(Some).unwrap_or_else(|| match space.width {
             AvailableSpace::MinContent => Some(0.0),
             AvailableSpace::MaxContent => None,

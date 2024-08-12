@@ -63,7 +63,7 @@ fn match_simple_selector(
     tree: &TaffyTree<Element>,
 ) -> bool {
     let html = match tree.get_node_context(node) {
-        Some(element) => &element.html,
+        Some(element) => element,
         None => {
             error!("unable to match selector for node {node:?}, html context not found");
             return false;

@@ -38,34 +38,36 @@ impl State {
     }
 
     pub fn restore(&mut self, element: &mut Element) {
-        if let Some(animator) = self.animators.remove(&element.id) {
-            element.animator = animator.clone();
-        }
-        if let Some(classes) = self.pseudo_classes.remove(&element.id) {
-            element.html.pseudo_classes = classes.clone();
-        }
-        if let Some(scrolling) = self.scrolling.remove(&element.id) {
-            element.scrolling = Some(scrolling);
-        }
-        if let Some(transitions) = self.transitions.remove(&element.id) {
-            element.transitions = transitions;
-        }
+        unimplemented!()
+        // if let Some(animator) = self.animators.remove(&element.id) {
+        //     element.animator = animator.clone();
+        // }
+        // if let Some(classes) = self.pseudo_classes.remove(&element.id) {
+        //     element.pseudo_classes = classes.clone();
+        // }
+        // if let Some(scrolling) = self.scrolling.remove(&element.id) {
+        //     element.scrolling = Some(scrolling);
+        // }
+        // if let Some(transitions) = self.transitions.remove(&element.id) {
+        //     element.transitions = transitions;
+        // }
     }
 
     pub fn save(&mut self, element: &Element) {
-        if element.animator.is_declared() {
-            self.animators.insert(element.id, element.animator.clone());
-        }
-        if !element.html.pseudo_classes.is_empty() {
-            self.pseudo_classes
-                .insert(element.id, element.html.pseudo_classes.clone());
-        }
-        if let Some(scrolling) = element.scrolling.clone() {
-            self.scrolling.insert(element.id, scrolling);
-        }
-        if !element.transitions.is_empty() {
-            self.transitions
-                .insert(element.id, element.transitions.clone());
-        }
+        unimplemented!()
+        // if element.animator.is_declared() {
+        //     self.animators.insert(element.id, element.animator.clone());
+        // }
+        // if !element.html.pseudo_classes.is_empty() {
+        //     self.pseudo_classes
+        //         .insert(element.id, element.html.pseudo_classes.clone());
+        // }
+        // if let Some(scrolling) = element.scrolling.clone() {
+        //     self.scrolling.insert(element.id, scrolling);
+        // }
+        // if !element.transitions.is_empty() {
+        //     self.transitions
+        //         .insert(element.id, element.transitions.clone());
+        // }
     }
 }

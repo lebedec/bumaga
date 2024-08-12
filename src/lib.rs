@@ -1,5 +1,7 @@
 pub use api::*;
 
+pub use view::View;
+
 mod animation;
 mod api;
 mod component;

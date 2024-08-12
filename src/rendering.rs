@@ -1,13 +1,12 @@
 use crate::css::{match_style, Str};
 use crate::html::{Binder, ElementBinding, Html, TextBinding, TextSpan};
 use crate::input::FakeFonts;
-use crate::models::{ElementId, Object, Sizes};
+use crate::models::{ElementId, Sizes};
 use crate::state::State;
 use crate::styles::{create_element, default_layout, inherit, Cascade};
 use crate::view_model::{Binding, Bindings, Reaction};
 use crate::{
-    CallOld, Component, ComponentError, Element, Fonts, Handler, Input, TextContent,
-    ValueExtensions,
+    CallOld, Component, Element, Fonts, Handler, Input, TextContent, ValueExtensions, ViewError,
 };
 use log::error;
 use serde_json::{json, Map, Value};
@@ -137,7 +136,7 @@ impl Component {
     pub fn render_tree(
         &mut self,
         input: &mut Input,
-    ) -> Result<(NodeId, TaffyTree<Element>), ComponentError> {
+    ) -> Result<(NodeId, TaffyTree<Element>), ViewError> {
         let mut rendering = TaffyTree::new();
         let [viewport_width, viewport_height] = input.viewport;
         let root_id = ElementId::fake();
@@ -148,7 +147,8 @@ impl Component {
             },
             ..Default::default()
         };
-        let root = create_element(root_id, Object::tag(":root"));
+        let mut root = create_element(root_id);
+        root.tag = ":root".to_string();
         let context = Sizes {
             root_font_size: root.text_style.font_size,
             parent_font_size: root.text_style.font_size,
@@ -179,63 +179,6 @@ impl Component {
         }
     }
 
-    pub fn update_tree(&mut self, reactions: Vec<Reaction>) -> Result<(), ComponentError> {
-        for reaction in reactions {
-            match reaction {
-                Reaction::Type { node, span, text } => {
-                    let element_text = self
-                        .tree
-                        .get_node_context_mut(node)
-                        .and_then(|element| element.text.as_mut())
-                        .ok_or(ComponentError::ElementTextContentNotFound)?;
-                    element_text.spans[span] = text;
-                    self.tree.mark_dirty(node)?;
-                }
-                Reaction::Reattach { node, visible } => {
-                    let parent = self
-                        .tree
-                        .parent(node)
-                        .ok_or(ComponentError::ParentNotFound)?;
-                    if visible {
-                        self.tree.add_child(parent, node)?;
-                    } else {
-                        self.tree.remove_child(parent, node)?;
-                    }
-                }
-                Reaction::Repeat {
-                    parent,
-                    start,
-                    cursor,
-                    end,
-                } => {
-                    let children = self
-                        .tree
-                        .get_node_context(parent)
-                        .map(|element| element.children.clone())
-                        .ok_or(ComponentError::ElementNotFound)?;
-                    let shown = &children[start..cursor];
-                    let hidden = &children[cursor..end];
-                    for node in shown {
-                        // The child is not removed from the tree entirely,
-                        // it is simply no longer attached to its previous parent.
-                        self.tree.remove_child(parent, *node)?;
-                    }
-                    for node in hidden {
-                        self.tree.add_child(parent, *node)?;
-                    }
-                }
-                Reaction::Bind { node, key, value } => {
-                    let element = self
-                        .tree
-                        .get_node_context_mut(node)
-                        .ok_or(ComponentError::ElementNotFound)?;
-                    element.attrs.insert(key, value);
-                }
-            }
-        }
-        Ok(())
-    }
-
     fn render_text_ol(
         &mut self,
         parent_id: NodeId,
@@ -247,8 +190,8 @@ impl Component {
         let text = current.text.unwrap_or_default();
         let text = interpolate_string(&text, input);
         let style = default_layout();
-        let object = Object::text(text);
-        let mut element = create_element(element_id, object);
+        let mut element = create_element(element_id);
+        element.text = Some(TextContent { spans: vec![text] });
         let parent = layout.get_node_context(parent_id).expect("context must be");
         inherit(&parent, &mut element);
         layout.new_child_of(parent_id, style, element);
@@ -292,7 +235,7 @@ impl Component {
         bindings: &mut Bindings,
         locals: &mut HashMap<String, String>,
         schema: &mut Schema,
-    ) -> Result<NodeId, ComponentError> {
+    ) -> Result<NodeId, ViewError> {
         if let Some(text) = template.text_new {
             Self::render_text(text, tree, bindings, locals, schema)
         } else {
@@ -306,7 +249,7 @@ impl Component {
         bindings: &mut Bindings,
         locals: &mut HashMap<String, String>,
         schema: &mut Schema,
-    ) -> Result<NodeId, ComponentError> {
+    ) -> Result<NodeId, ViewError> {
         let layout = default_layout();
         let node = tree.new_leaf(layout)?;
         let spans = text
@@ -323,7 +266,7 @@ impl Component {
                 }
             })
             .collect();
-        let mut element = create_element(ElementId::fake(), Object::fake());
+        let mut element = create_element(ElementId::fake());
         element.text = Some(TextContent { spans });
         tree.set_node_context(node, Some(element))?;
         Ok(node)
@@ -335,7 +278,7 @@ impl Component {
         bindings: &mut Bindings,
         locals: &mut HashMap<String, String>,
         schema: &mut Schema,
-    ) -> Result<NodeId, ComponentError> {
+    ) -> Result<NodeId, ViewError> {
         let mut overridden = HashMap::new();
         for binding in &template.bindings {
             if let ElementBinding::Alias(name, binder) = binding {
@@ -360,10 +303,10 @@ impl Component {
         bindings: &mut Bindings,
         locals: &mut HashMap<String, String>,
         schema: &mut Schema,
-    ) -> Result<NodeId, ComponentError> {
+    ) -> Result<NodeId, ViewError> {
         let layout = default_layout();
         let node = tree.new_leaf(layout)?;
-        let mut element = create_element(ElementId::fake(), Object::fake());
+        let mut element = create_element(ElementId::fake());
         element.tag = template.tag.clone();
         for binding in template.bindings {
             match binding {
@@ -439,8 +382,9 @@ impl Component {
             }
         }
 
-        let object = Object::element(&current);
-        let mut element = create_element(element_id, object);
+        let mut element = create_element(element_id);
+        element.tag = template.tag.clone();
+        element.attrs = current.attrs.clone();
         self.state.restore(&mut element);
 
         // APPLY STYLES
@@ -450,7 +394,7 @@ impl Component {
             .expect("context must be set");
         let parent = tree.get_node_context(parent_id).expect("context must be");
         // default html styles
-        match element.html.tag.as_str() {
+        match element.tag.as_str() {
             "input" => {
                 layout.display = Display::Flex;
                 layout.align_items = Some(AlignItems::Center);
@@ -469,12 +413,12 @@ impl Component {
         tree.set_node_context(current_id, Some(element.clone()))
             .expect("context must be set");
 
-        match element.html.tag.as_str() {
+        match element.tag.as_str() {
             "img" => {
                 self.render_img(current_id, &element, tree);
             }
             "input" => {
-                let text = element.html.attrs.get("value").cloned().unwrap_or_default();
+                let text = element.attrs.get("value").cloned().unwrap_or_default();
                 self.render_input(text, current_id, &element, tree);
             }
             "area" => {}
@@ -504,10 +448,9 @@ impl Component {
     fn render_img(&mut self, parent_id: NodeId, parent: &Element, layout: &mut TaffyTree<Element>) {
         let element_id = ElementId::fake();
         let empty = "undefined.png".to_string();
-        let src = parent.html.attrs.get("src").unwrap_or(&empty);
+        let src = parent.attrs.get("src").unwrap_or(&empty);
         let src = format!("{}{}", self.resources, src);
-        let object = Object::fake();
-        let mut element = create_element(element_id, object);
+        let mut element = create_element(element_id);
         element.background.image = Some(src);
         let style = Style {
             size: Size {
@@ -528,15 +471,14 @@ impl Component {
     ) {
         let element_id = ElementId::child(parent.id, 1);
         let style = default_layout();
-        let object = Object::text(text);
-        let mut element = create_element(element_id, object);
+        let mut element = create_element(element_id);
+        element.text = Some(TextContent { spans: vec![text] });
         inherit(&parent, &mut element);
         layout.new_child_of(parent_id, style, element);
 
         let element_id = ElementId::child(parent.id, 2);
-        if parent.html.pseudo_classes.contains("focus") {
-            let object = Object::fake();
-            let mut element = create_element(element_id, object);
+        if parent.pseudo_classes.contains("focus") {
+            let mut element = create_element(element_id);
             let mut style = default_layout();
             style.size.width = Dimension::Length(1.0);
             style.size.height = Dimension::Length(element.text_style.font_size);
@@ -551,12 +493,12 @@ impl Component {
     ///
     /// see details: https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes
     fn render_output_bindings(&self, element: &mut Element, input: &Input) {
-        let events: &[&str] = match element.html.tag.as_ref() {
+        let events: &[&str] = match element.tag.as_ref() {
             "input" => &["oninput", "onchange"],
             _ => &["onclick"],
         };
         for event in events {
-            if let Some(expr) = element.html.attrs.get(*event) {
+            if let Some(expr) = element.attrs.get(*event) {
                 let output = eval_call(expr, input);
                 element.listeners_old.insert(event.to_string(), output);
             }
