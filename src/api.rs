@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -11,7 +11,7 @@ pub use value::ValueExtensions;
 use crate::animation::{Animator, Transition};
 use crate::css::{Css, PropertyKey};
 pub use crate::error::ComponentError;
-use crate::html::Html;
+use crate::html::{Binder, Html};
 use crate::models::{ElementId, Object};
 use crate::state::State;
 use crate::styles::Scrolling;
@@ -54,21 +54,27 @@ pub struct Input<'f> {
 pub struct Output {
     pub hover: Option<NodeId>,
     pub scroll: Option<NodeId>,
-    pub calls: Vec<Call>,
+    pub calls: Vec<CallOld>,
     pub elements: Vec<Element>,
 }
 
 /// It is a mechanism that allows a Bumaga component to request
 /// interaction event handling in application.
 #[derive(Debug, Clone)]
-pub struct Call {
+pub struct CallOld {
     /// The identifier of event handler (function name probably).
     pub function: String,
     /// The JSON-like arguments.
     pub arguments: Vec<Value>,
 }
 
-impl Call {
+#[derive(Debug, Clone)]
+pub struct Handler {
+    pub function: String,
+    pub argument: Binder,
+}
+
+impl CallOld {
     pub fn signature(&self) -> (&str, &[Value]) {
         let name = self.function.as_str();
         let args = self.arguments.as_slice();
@@ -89,6 +95,13 @@ pub struct Element {
     pub layout: Layout,
     pub id: ElementId,
     pub html: Object,
+    pub children: Vec<NodeId>,
+    //
+    pub tag: String,
+    pub text: Option<TextContent>,
+    pub attrs: HashMap<String, String>,
+    pub pseudo_classes: HashSet<String>,
+    //
     pub object_fit: ObjectFit,
     pub background: Background,
     pub borders: Borders,
@@ -96,13 +109,19 @@ pub struct Element {
     pub color: Rgba,
     /// The different properties of an element's text font.
     pub text_style: TextStyle,
-    pub listeners: HashMap<String, Call>,
+    pub listeners_old: HashMap<String, CallOld>,
+    pub listeners: HashMap<String, Handler>,
     pub opacity: f32,
     pub transforms: Vec<TransformFunction>,
     pub animator: Animator,
     pub scrolling: Option<Scrolling>,
     pub clip: Option<Layout>,
     pub transitions: HashMap<PropertyKey, Transition>,
+}
+
+#[derive(Clone)]
+pub struct TextContent {
+    pub spans: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug)]

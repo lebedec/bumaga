@@ -19,7 +19,8 @@ use crate::models::{ElementId, Object, Sizes};
 use crate::state::State;
 use crate::styles::{create_element, Scrolling};
 use crate::{
-    Call, Component, ComponentError, Element, Fonts, Input, Keys, Output, Source, LEFT_MOUSE_BUTTON,
+    CallOld, Component, ComponentError, Element, Fonts, Input, Keys, Output, Source,
+    LEFT_MOUSE_BUTTON,
 };
 
 impl Component {
@@ -68,7 +69,7 @@ impl Component {
     fn get_element_mut(&mut self, node: NodeId) -> Result<&mut Element, ComponentError> {
         self.tree
             .get_node_context_mut(node)
-            .ok_or(ComponentError::ElementNotFoundInTree)
+            .ok_or(ComponentError::ElementNotFound)
     }
 
     fn handle_user_input(
@@ -256,14 +257,14 @@ impl Output {
 impl Element {
     #[inline(always)]
     fn fire(&self, event: &str, output: &mut Output) {
-        if let Some(call) = self.listeners.get(event).cloned() {
+        if let Some(call) = self.listeners_old.get(event).cloned() {
             output.calls.push(call);
         }
     }
 
     #[inline(always)]
     fn fire_opt(&self, event: &str, arguments: Vec<Value>, output: &mut Output) {
-        if let Some(mut call) = self.listeners.get(event).cloned() {
+        if let Some(mut call) = self.listeners_old.get(event).cloned() {
             if call.arguments.len() == 0 {
                 call.arguments = arguments;
             }

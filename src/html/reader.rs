@@ -1,7 +1,8 @@
-use crate::nw::Reaction::Bind;
+use crate::view_model::Reaction::Bind;
 use log::error;
 use pest::error::Error;
 use pest::iterators::Pair;
+use pest::pratt_parser::Op;
 use pest::Parser;
 use pest_derive::Parser;
 use std::collections::HashMap;
@@ -25,7 +26,7 @@ impl From<Error<Rule>> for ReaderError {
 
 /// The Document Object Model (DOM) is an interface that treats an HTML document as a tree structure
 /// wherein each node is an object representing a part of the document.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Html {
     pub index: usize,
     pub tag: String,
@@ -36,7 +37,27 @@ pub struct Html {
     pub children: Vec<Html>,
 }
 
-#[derive(Debug, Clone)]
+impl Html {
+    pub fn as_visibility(&self) -> Option<(bool, &Binder)> {
+        for binding in &self.bindings {
+            if let ElementBinding::Visibility(visible, binder) = binding {
+                return Some((*visible, binder));
+            }
+        }
+        None
+    }
+
+    pub fn as_repeat(&self) -> Option<(&str, usize, &Binder)> {
+        for binding in &self.bindings {
+            if let ElementBinding::Repeat(name, count, binder) = binding {
+                return Some((name, *count, binder));
+            }
+        }
+        None
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ElementBinding {
     None(String, String),
     Alias(String, Binder),
@@ -46,12 +67,12 @@ pub enum ElementBinding {
     Visibility(bool, Binder),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextBinding {
     pub spans: Vec<TextSpan>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TextSpan {
     String(String),
     Binder(Binder),
@@ -64,10 +85,22 @@ pub struct Binding {
     pub pipe: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Binder {
     pub path: Vec<String>,
     pub pipe: Vec<String>,
+}
+
+impl Binder {
+    pub fn to_string(&self) -> String {
+        let path = self.path.join(".");
+        if self.pipe.len() > 0 {
+            let pipe = self.pipe.join(" | ");
+            format!("{{ {path} | {pipe} }}")
+        } else {
+            format!("{{ {path} }}")
+        }
+    }
 }
 
 pub fn read_html_unchecked(html: &str) -> Html {
@@ -284,7 +317,9 @@ mod tests {
             index: index(),
             tag: tag.to_string(),
             attrs: Default::default(),
+            bindings: vec![],
             text: None,
+            text_new: None,
             children: vec![],
         }
     }
@@ -294,7 +329,9 @@ mod tests {
             index: index(),
             tag: tag.to_string(),
             attrs: Default::default(),
+            bindings: vec![],
             text: None,
+            text_new: None,
             children,
         }
     }
@@ -304,7 +341,9 @@ mod tests {
             index: index(),
             tag: "".to_string(),
             attrs: Default::default(),
+            bindings: vec![],
             text: Some(text.to_string()),
+            text_new: None,
             children: vec![],
         }
     }
@@ -314,7 +353,9 @@ mod tests {
             index: index(),
             tag: tag.to_string(),
             attrs: Default::default(),
+            bindings: vec![],
             text: None,
+            text_new: None,
             children: vec![txt(text)],
         }
     }

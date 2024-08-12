@@ -1,13 +1,18 @@
 use crate::css::{match_style, Str};
-use crate::html::Html;
+use crate::html::{Binder, ElementBinding, Html, TextBinding, TextSpan};
 use crate::input::FakeFonts;
 use crate::models::{ElementId, Object, Sizes};
 use crate::state::State;
-use crate::styles::{create_element, default_layout_style, inherit, Cascade};
-use crate::{Call, Component, ComponentError, Element, Fonts, Input, ValueExtensions};
+use crate::styles::{create_element, default_layout, inherit, Cascade};
+use crate::view_model::{Binding, Bindings, Reaction};
+use crate::{
+    CallOld, Component, ComponentError, Element, Fonts, Handler, Input, TextContent,
+    ValueExtensions,
+};
 use log::error;
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use std::collections::HashMap;
+use std::fmt::format;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem;
 use std::mem::take;
@@ -17,8 +22,116 @@ use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
 use taffy::{
     AlignItems, AvailableSpace, Dimension, Display, JustifyContent, NodeId, Size, Style,
-    TaffyError, TaffyTree,
+    TaffyError, TaffyTree, TraversePartialTree,
 };
+
+pub struct Schema {
+    pub value: Value,
+}
+
+pub enum Token {
+    None,
+    Field(String),
+    Array(String, usize),
+}
+
+impl Schema {
+    pub fn new() -> Self {
+        Self { value: json!({}) }
+    }
+
+    pub fn index(&mut self, binder: &Binder, i: usize, locals: &HashMap<String, String>) -> String {
+        let path = self.get_value_path(&binder.path, locals);
+        let path = format!("{path}[{i}]");
+        Self::define_value(&mut self.value, &mut format!("{path}."));
+        path
+    }
+
+    pub fn field(&mut self, binder: &Binder, locals: &HashMap<String, String>) -> String {
+        println!("FIELD {}", binder.to_string());
+        let path = self.get_value_path(&binder.path, locals);
+        Self::define_value(&mut self.value, &mut format!("{path}."));
+        path
+    }
+
+    fn get_value_path(&mut self, path: &Vec<String>, locals: &HashMap<String, String>) -> String {
+        let head = &path[0];
+        let head = locals.get(head).unwrap_or(head);
+        let tail = &path[1..];
+        if tail.len() > 0 {
+            format!("{head}.{}", tail.join("."))
+        } else {
+            format!("{head}")
+        }
+    }
+
+    fn parse(input: &mut String) -> Token {
+        let mut field = String::new();
+        let mut index = String::new();
+        while input.len() > 0 {
+            let mut ch = input.remove(0);
+            if ch == '.' {
+                let field = take(&mut field);
+                let index = take(&mut index);
+                return if index.is_empty() {
+                    Token::Field(field)
+                } else {
+                    Token::Array(field, index.parse().unwrap_or(0))
+                };
+            } else if ch == '[' {
+                while input.len() > 0 {
+                    let ch = input.remove(0);
+                    if ch == ']' {
+                        break;
+                    } else {
+                        index.push(ch);
+                    }
+                }
+            } else {
+                field.push(ch);
+            }
+        }
+        Token::None
+    }
+
+    fn define_value(target: &mut Value, path: &mut String) {
+        let token = Self::parse(path);
+        match token {
+            Token::None => {}
+            Token::Field(field) => {
+                if !target.is_object() {
+                    *target = json!({});
+                }
+                let object = target.as_object_mut().unwrap();
+                if !object.contains_key(&field) {
+                    object.insert(field.clone(), Value::Null);
+                }
+                Self::define_value(object.get_mut(&field).unwrap(), path)
+            }
+            Token::Array(field, n) => {
+                if !target.is_object() {
+                    *target = json!({});
+                }
+                let object = target.as_object_mut().unwrap();
+                if !object
+                    .get(&field)
+                    .map(|field| field.is_array())
+                    .unwrap_or(false)
+                {
+                    object.insert(field.clone(), json!([]));
+                }
+                let array = object
+                    .get_mut(&field)
+                    .and_then(|field| field.as_array_mut())
+                    .unwrap();
+                if array.len() <= n {
+                    array.resize(n + 1, Value::Null);
+                }
+                Self::define_value(&mut array[n], path)
+            }
+        }
+    }
+}
 
 impl Component {
     pub fn render_tree(
@@ -47,11 +160,11 @@ impl Component {
         // TODO: determine body element
         let body = html.children.last().cloned().expect("body must be found");
         // self.state.active_animators = take(&mut self.state.animators);
-        self.render_tree_node(root, body, input, context, &mut rendering);
+        self.render_tree_node_old(root, body, input, context, &mut rendering);
         return Ok((root, rendering));
     }
 
-    fn render_tree_node(
+    fn render_tree_node_old(
         &mut self,
         parent_id: NodeId,
         current: Html,
@@ -60,13 +173,70 @@ impl Component {
         layout: &mut TaffyTree<Element>,
     ) {
         if current.text.is_some() {
-            self.render_text(parent_id, current, input, layout);
+            self.render_text_ol(parent_id, current, input, layout);
         } else {
             self.render_template(parent_id, current, input, context, layout)
         }
     }
 
-    fn render_text(
+    pub fn update_tree(&mut self, reactions: Vec<Reaction>) -> Result<(), ComponentError> {
+        for reaction in reactions {
+            match reaction {
+                Reaction::Type { node, span, text } => {
+                    let element_text = self
+                        .tree
+                        .get_node_context_mut(node)
+                        .and_then(|element| element.text.as_mut())
+                        .ok_or(ComponentError::ElementTextContentNotFound)?;
+                    element_text.spans[span] = text;
+                    self.tree.mark_dirty(node)?;
+                }
+                Reaction::Reattach { node, visible } => {
+                    let parent = self
+                        .tree
+                        .parent(node)
+                        .ok_or(ComponentError::ParentNotFound)?;
+                    if visible {
+                        self.tree.add_child(parent, node)?;
+                    } else {
+                        self.tree.remove_child(parent, node)?;
+                    }
+                }
+                Reaction::Repeat {
+                    parent,
+                    start,
+                    cursor,
+                    end,
+                } => {
+                    let children = self
+                        .tree
+                        .get_node_context(parent)
+                        .map(|element| element.children.clone())
+                        .ok_or(ComponentError::ElementNotFound)?;
+                    let shown = &children[start..cursor];
+                    let hidden = &children[cursor..end];
+                    for node in shown {
+                        // The child is not removed from the tree entirely,
+                        // it is simply no longer attached to its previous parent.
+                        self.tree.remove_child(parent, *node)?;
+                    }
+                    for node in hidden {
+                        self.tree.add_child(parent, *node)?;
+                    }
+                }
+                Reaction::Bind { node, key, value } => {
+                    let element = self
+                        .tree
+                        .get_node_context_mut(node)
+                        .ok_or(ComponentError::ElementNotFound)?;
+                    element.attrs.insert(key, value);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn render_text_ol(
         &mut self,
         parent_id: NodeId,
         current: Html,
@@ -76,7 +246,7 @@ impl Component {
         let element_id = ElementId::from(&current);
         let text = current.text.unwrap_or_default();
         let text = interpolate_string(&text, input);
-        let style = default_layout_style();
+        let style = default_layout();
         let object = Object::text(text);
         let mut element = create_element(element_id, object);
         let parent = layout.get_node_context(parent_id).expect("context must be");
@@ -110,13 +280,145 @@ impl Component {
                 .insert(repetition.key.to_string(), repeat_value.clone());
             // RENDER
             let element_id = ElementId::hash(&current, &repeat_value);
-            self.render_element(element_id, parent_id, &current, input, context, layout);
+            self.render_element_old(element_id, parent_id, &current, input, context, layout);
             // POP STATE
             input.value.remove(&repetition.key);
         }
     }
 
-    fn render_element(
+    pub fn render_node(
+        template: Html,
+        tree: &mut TaffyTree<Element>,
+        bindings: &mut Bindings,
+        locals: &mut HashMap<String, String>,
+        schema: &mut Schema,
+    ) -> Result<NodeId, ComponentError> {
+        if let Some(text) = template.text_new {
+            Self::render_text(text, tree, bindings, locals, schema)
+        } else {
+            Self::render_template2(template, tree, bindings, locals, schema)
+        }
+    }
+
+    pub fn render_text(
+        text: TextBinding,
+        tree: &mut TaffyTree<Element>,
+        bindings: &mut Bindings,
+        locals: &mut HashMap<String, String>,
+        schema: &mut Schema,
+    ) -> Result<NodeId, ComponentError> {
+        let layout = default_layout();
+        let node = tree.new_leaf(layout)?;
+        let spans = text
+            .spans
+            .into_iter()
+            .enumerate()
+            .map(|(index, span)| match span {
+                TextSpan::String(span) => span,
+                TextSpan::Binder(binder) => {
+                    let path = schema.field(&binder, locals);
+                    let binding = Binding::Text(node, index);
+                    bindings.entry(path).or_default().push(binding);
+                    binder.to_string()
+                }
+            })
+            .collect();
+        let mut element = create_element(ElementId::fake(), Object::fake());
+        element.text = Some(TextContent { spans });
+        tree.set_node_context(node, Some(element))?;
+        Ok(node)
+    }
+
+    pub fn render_template2(
+        template: Html,
+        tree: &mut TaffyTree<Element>,
+        bindings: &mut Bindings,
+        locals: &mut HashMap<String, String>,
+        schema: &mut Schema,
+    ) -> Result<NodeId, ComponentError> {
+        let mut overridden = HashMap::new();
+        for binding in &template.bindings {
+            if let ElementBinding::Alias(name, binder) = binding {
+                let path = schema.field(binder, locals);
+                overridden.insert(name.to_string(), locals.insert(name.to_string(), path));
+            }
+        }
+        let node = Self::render_element(template, tree, bindings, locals, schema)?;
+        for (key, value) in overridden {
+            if let Some(value) = value {
+                locals.insert(key, value);
+            } else {
+                locals.remove(&key);
+            }
+        }
+        Ok(node)
+    }
+
+    pub fn render_element(
+        template: Html,
+        tree: &mut TaffyTree<Element>,
+        bindings: &mut Bindings,
+        locals: &mut HashMap<String, String>,
+        schema: &mut Schema,
+    ) -> Result<NodeId, ComponentError> {
+        let layout = default_layout();
+        let node = tree.new_leaf(layout)?;
+        let mut element = create_element(ElementId::fake(), Object::fake());
+        element.tag = template.tag.clone();
+        for binding in template.bindings {
+            match binding {
+                ElementBinding::None(key, value) => {
+                    element.attrs.insert(key, value);
+                }
+                ElementBinding::Attribute(key, binder) => {
+                    let path = schema.field(&binder, locals);
+                    let binding = Binding::Attribute(node, key.clone());
+                    bindings.entry(path).or_default().push(binding);
+                    element.attrs.insert(key, binder.to_string());
+                }
+                ElementBinding::Callback(event, function, argument) => {
+                    let handler = Handler { function, argument };
+                    element.listeners.insert(event.clone(), handler);
+                }
+                ElementBinding::Visibility(visible, binder) => {
+                    let path = schema.field(&binder, locals);
+                    let binding = Binding::Visibility(node, visible);
+                    bindings.entry(path).or_default().push(binding);
+                }
+                _ => {}
+            }
+        }
+        let mut children = vec![];
+        for child in template.children {
+            if let Some((name, count, binder)) = child.as_repeat() {
+                let array = schema.field(binder, locals);
+                let start = children.len();
+                let binding = Binding::Repeat(node, start, count);
+                bindings.entry(array.clone()).or_default().push(binding);
+                let overridden = locals.remove(name);
+                for n in 0..count {
+                    let path = schema.index(binder, n, locals);
+                    locals.insert(name.to_string(), path);
+                    let child = child.clone();
+                    let child = Self::render_node(child, tree, bindings, locals, schema)?;
+                    children.push(child);
+                }
+                if let Some(overridden) = overridden {
+                    locals.insert(name.to_string(), overridden);
+                } else {
+                    locals.remove(name);
+                }
+            } else {
+                let child = Self::render_node(child, tree, bindings, locals, schema)?;
+                children.push(child);
+            }
+        }
+        tree.set_node_context(node, Some(element))?;
+        tree.set_children(node, &children)?;
+        Ok(node)
+    }
+
+    fn render_element_old(
         &mut self,
         element_id: ElementId,
         parent_id: NodeId,
@@ -125,9 +427,7 @@ impl Component {
         sizes: Sizes,
         tree: &mut TaffyTree<Element>,
     ) {
-        let current_id = tree
-            .new_leaf(default_layout_style())
-            .expect("id must be created");
+        let current_id = tree.new_leaf(default_layout()).expect("id must be created");
         tree.add_child(parent_id, current_id)
             .expect("child must be added");
 
@@ -144,7 +444,7 @@ impl Component {
         self.state.restore(&mut element);
 
         // APPLY STYLES
-        let mut layout = default_layout_style();
+        let mut layout = default_layout();
         // preset element context for CSS matching process
         tree.set_node_context(current_id, Some(element.clone()))
             .expect("context must be set");
@@ -195,7 +495,7 @@ impl Component {
                 for child in template.children.clone() {
                     let mut context = sizes;
                     context.parent_font_size = element.text_style.font_size;
-                    self.render_tree_node(current_id, child, input, context, tree);
+                    self.render_tree_node_old(current_id, child, input, context, tree);
                 }
             }
         }
@@ -214,7 +514,7 @@ impl Component {
                 width: Dimension::Percent(1.0),
                 height: Dimension::Percent(1.0),
             },
-            ..default_layout_style()
+            ..default_layout()
         };
         layout.new_child_of(parent_id, style, element);
     }
@@ -227,7 +527,7 @@ impl Component {
         layout: &mut TaffyTree<Element>,
     ) {
         let element_id = ElementId::child(parent.id, 1);
-        let style = default_layout_style();
+        let style = default_layout();
         let object = Object::text(text);
         let mut element = create_element(element_id, object);
         inherit(&parent, &mut element);
@@ -237,7 +537,7 @@ impl Component {
         if parent.html.pseudo_classes.contains("focus") {
             let object = Object::fake();
             let mut element = create_element(element_id, object);
-            let mut style = default_layout_style();
+            let mut style = default_layout();
             style.size.width = Dimension::Length(1.0);
             style.size.height = Dimension::Length(element.text_style.font_size);
             element.background.color = element.color;
@@ -258,7 +558,7 @@ impl Component {
         for event in events {
             if let Some(expr) = element.html.attrs.get(*event) {
                 let output = eval_call(expr, input);
-                element.listeners.insert(event.to_string(), output);
+                element.listeners_old.insert(event.to_string(), output);
             }
         }
     }
@@ -412,7 +712,7 @@ pub fn interpolate_string(string: &str, input: &Input) -> String {
     result
 }
 
-fn eval_call(expression: &str, input: &Input) -> Call {
+fn eval_call(expression: &str, input: &Input) -> CallOld {
     let mut function = String::new();
     let mut arguments = vec![];
     let mut is_function = true;
@@ -438,7 +738,7 @@ fn eval_call(expression: &str, input: &Input) -> Call {
             }
         }
     }
-    Call {
+    CallOld {
         function,
         arguments,
     }

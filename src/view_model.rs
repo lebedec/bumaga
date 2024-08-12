@@ -1,30 +1,32 @@
+use crate::Element;
 use log::error;
 use serde::de::Unexpected::Str;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashMap};
+use taffy::{NodeId, TaffyTree};
 
-type Bindings = BTreeMap<String, Vec<Binding>>;
+pub type Bindings = BTreeMap<String, Vec<Binding>>;
 
-trait Transformer: Fn(Value) -> Value {}
+pub trait Transformer: Fn(Value) -> Value {}
 
 pub struct ViewModel {
     bindings: Bindings,
-    state: Value,
+    model: Value,
     transformers: HashMap<String, Box<dyn Fn(Value) -> Value>>,
 }
 
 impl ViewModel {
-    pub fn create(bindings: Bindings, state: Value) -> Self {
+    pub fn create(bindings: Bindings, model: Value) -> Self {
         Self {
             bindings,
-            state,
+            model,
             transformers: HashMap::new(),
         }
     }
 
-    pub fn bind(&mut self, value: &Value) -> Vec<String> {
+    pub fn bind(&mut self, value: &Value) -> Vec<Reaction> {
         let mut reactions = vec![];
-        Self::bind_value(&mut self.state, value, "", &self.bindings, &mut reactions);
+        Self::bind_value(&mut self.model, value, "", &self.bindings, &mut reactions);
         reactions
     }
 
@@ -33,7 +35,7 @@ impl ViewModel {
         src: &Value,
         path: &str,
         bindings: &Bindings,
-        reactions: &mut Vec<String>,
+        reactions: &mut Vec<Reaction>,
     ) {
         match (&mut dst, src) {
             (Value::Array(current), Value::Array(next)) => {
@@ -59,8 +61,12 @@ impl ViewModel {
                             continue;
                         }
                     };
-                    let path = &format!("{path}.{key}");
-                    Self::bind_value(dst, src, path, bindings, reactions);
+                    let path = if !path.is_empty() {
+                        format!("{path}.{key}")
+                    } else {
+                        key.clone()
+                    };
+                    Self::bind_value(dst, src, &path, bindings, reactions);
                 }
             }
             (Value::Object(_), _) => {
@@ -76,7 +82,8 @@ impl ViewModel {
     }
 
     #[inline]
-    fn react(path: &str, value: &Value, bindings: &Bindings, reactions: &mut Vec<String>) {
+    fn react(path: &str, value: &Value, bindings: &Bindings, reactions: &mut Vec<Reaction>) {
+        println!("react {path}");
         if let Some(bindings) = bindings.get(path) {
             for binding in bindings {
                 reactions.push(binding.react_value_change(value))
@@ -85,71 +92,80 @@ impl ViewModel {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum Binding {
-    Text(usize, usize),
-    Visibility(usize, bool),
-    Attribute(usize, String),
-    Repeat(usize, usize, usize),
+    Text(NodeId, usize),
+    Visibility(NodeId, bool),
+    Attribute(NodeId, String),
+    Repeat(NodeId, usize, usize),
 }
 
 impl Binding {
-    fn react_value_change(&self, value: &Value) -> String {
-        match self {
-            Binding::Visibility(element, is_visible) => {
-                if as_boolean(value) == *is_visible {
-                    format!("show el{element}")
-                } else {
-                    format!("hide el{element}")
-                }
+    fn react_value_change(&self, value: &Value) -> Reaction {
+        match self.clone() {
+            Binding::Visibility(node, visible) => {
+                let visible = as_boolean(value) == visible;
+                Reaction::Reattach { node, visible }
             }
-            Binding::Attribute(element, key) => {
-                format!("set el{element} attribute {key}={value}")
-            }
-            Binding::Text(element, n) => {
-                // TODO: interpolation ?!
+            Binding::Attribute(node, key) => {
                 let value = as_string(value);
-                format!("interpolate el{element} text arg{n}={value}")
+                Reaction::Bind { node, key, value }
+            }
+            Binding::Text(node, span) => {
+                // TODO: interpolation ?!
+                let text = as_string(value);
+                Reaction::Type { node, span, text }
             }
             Binding::Repeat(parent, start, size) => {
                 if let Some(value) = value.as_array() {
                     let count = value.len();
-                    let count = if count > *size {
-                        error!("unable to repeat all items of {parent}");
-                        *size
+                    let count = if count > size {
+                        error!("unable to repeat all items of {parent:?}");
+                        size
                     } else {
                         count
                     };
-                    format!("repeat p{parent} {start}..{count}..{size}")
+                    Reaction::Repeat {
+                        parent,
+                        start,
+                        cursor: start + count,
+                        end: start + size,
+                    }
                 } else {
                     error!("unable to repeat, value must be array");
-                    format!("repeat p{parent} {start}..{start}..{size}")
+                    Reaction::Repeat {
+                        parent,
+                        start,
+                        cursor: start,
+                        end: start + size,
+                    }
                 }
             }
         }
     }
 }
 
+#[derive(Debug)]
 pub enum Reaction {
     Type {
-        id: usize,
+        node: NodeId,
+        span: usize,
         text: String,
     },
-    Show {
-        id: usize,
-    },
-    Hide {
-        id: usize,
+    Reattach {
+        node: NodeId,
+        visible: bool,
     },
     Repeat {
-        id: usize,
+        parent: NodeId,
+        start: usize,
+        cursor: usize,
+        end: usize,
     },
     Bind {
-        id: usize,
+        node: NodeId,
         key: String,
         value: String,
-    },
-    Style {
-        id: usize,
     },
 }
 
@@ -172,5 +188,41 @@ pub fn as_string(value: &Value) -> String {
         Value::String(string) => string.clone(),
         Value::Array(_) => "[array]".to_string(),
         Value::Object(_) => "{object}".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::html::read_html;
+    use crate::rendering::Schema;
+    use crate::view_model::ViewModel;
+    use crate::Component;
+    use serde_json::json;
+    use std::collections::{BTreeMap, HashMap};
+    use std::fs;
+    use taffy::TaffyTree;
+
+    #[test]
+    pub fn test_something_vm() {
+        let html = fs::read_to_string("./examples/shared/view.html").expect("html file exist");
+        let html = read_html(&html).expect("html file valid");
+        let mut tree = TaffyTree::new();
+        let mut bindings = BTreeMap::new();
+        let mut locals = HashMap::new();
+        let mut schema = Schema::new();
+        Component::render_node(html, &mut tree, &mut bindings, &mut locals, &mut schema)
+            .expect("valid");
+        println!("schema {:?}", schema.value);
+        println!("bindings {:?}", bindings);
+
+        let mut view_model = ViewModel::create(bindings, schema.value);
+        let reactions = view_model.bind(&json!({
+            "todo": "Hello world!",
+            "todos": [
+                "Todo A",
+                "Todo B",
+            ]
+        }));
+        println!("reactions: {reactions:?}");
     }
 }

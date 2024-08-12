@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashSet};
 use std::time::{Duration, Instant};
 
-use bumaga::nw::{Binding, ViewModel};
+use bumaga::view_model::{Binding, ViewModel};
 use bumaga::{
     Borders, Component, Element, Fonts, Input, Keys, Layout, MyBorder, Rgba, TextStyle,
     TransformFunction, ValueExtensions,

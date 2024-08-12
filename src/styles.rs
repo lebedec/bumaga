@@ -4,6 +4,7 @@ use crate::animation::{
 };
 use crate::css::Value::{Color, Keyword, Number, Time};
 use crate::css::{match_style, Css, Dim, Property, PropertyKey, Str, Style, Value, Values, Var};
+use crate::html::TextBinding;
 use crate::models::{ElementId, Object, Sizes};
 use crate::{
     Background, Borders, Element, Input, Length, MyBorder, ObjectFit, TextStyle, TransformFunction,
@@ -27,6 +28,11 @@ pub fn create_element(id: ElementId, html: Object) -> Element {
         layout: Default::default(),
         id,
         html,
+        children: vec![],
+        tag: "".to_string(),
+        text: None,
+        attrs: Default::default(),
+        pseudo_classes: Default::default(),
         object_fit: ObjectFit::Fill,
         background: Background {
             image: None,
@@ -54,7 +60,8 @@ pub fn create_element(id: ElementId, html: Object) -> Element {
             line_height: 16.0,
             // wrap: OverflowWrap::Normal,
         },
-        listeners: HashMap::new(),
+        listeners_old: HashMap::new(),
+        listeners: Default::default(),
         opacity: 1.0,
         transforms: vec![],
         animator: Animator::default(),
@@ -107,7 +114,7 @@ impl Scrolling {
     }
 }
 
-pub fn default_layout_style() -> LayoutStyle {
+pub fn default_layout() -> LayoutStyle {
     LayoutStyle {
         display: taffy::Display::Block,
         overflow: Point {

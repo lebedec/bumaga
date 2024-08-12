@@ -1,20 +1,19 @@
+<html>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<link href="style.css" rel="stylesheet">
 <body>
-<!-- path: -->
-<div {todo}~100={todos|filter}> <!-- repeat -->
-    <!-- path: .todos[N] -->
-    <div class="todo" [data-done]={todo.done}>
-        {todo.text|format}
-        <div {summary}={todo.long.path.summary}> <!-- nested -->
-            <!-- path: .todos[N].long.path.summary.title -->
-            <h1>{summary.title}</h1>
-            <h1>{todo.long.path.summary}</h1>
+<div class="panel">
+    <header>
+        Bumaga Todo
+        <span>Streamline Your Day, the Bumaga Way!</span>
+    </header>
+    <div class="scroll">
+        <div {todo}*3={todos} [data-done]={todo|done} [onclick]~finish={todos}>
+            <span>My {todo}</span>
+            <div>×</div>
         </div>
-        <div ?={todo.done} [onclick]~remove={todo}>remove</div>
-        <div !={todo.done} [onclick]~finish={todo}>finish</div>
     </div>
+    <input [value]={todo} [oninput]~update={this} [onchange]~append={this}/>
 </div>
-<input [value]={todo} [oninput]={ar1} [onchange]={todo}/>
-<input [value]={todo} [oninput]={ar1} [onchange]={todo}/>
-<input value="initial"/>
-<img alt="0" src="./sourcecode.png"/>
 </body>
+</html>

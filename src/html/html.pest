@@ -43,7 +43,7 @@ VoidTag = {
 Tag = @{ TChar+ }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
-TChar = { ASCII_ALPHA | ASCII_DIGIT }
+TChar = { ASCII_ALPHA | ASCII_DIGIT | "-" }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
 Text = { (Binder | String)+  }
@@ -70,15 +70,15 @@ Attribute = _{
 
 AliasBinding = { "{" ~ Name ~ "}" ~ "=" ~ Binder }
 
-AttributeBinding = { "[" ~ Name ~ "]" ~ "=" ~ Binder }
+AttributeBinding = { "[" ~ Key ~ "]" ~ "=" ~ Binder }
 
-CallbackBinding = { "[" ~ Name ~ "]" ~ "~" ~ Key ~ "=" ~ Binder }
+CallbackBinding = { "[" ~ Key ~ "]" ~ "~" ~ Key ~ "=" ~ Binder }
 
 VisibilityBinding = { Visible ~ "=" ~ Binder }
 
 Visible = { "?" | "!" }
 
-RepeatBinding = { "{" ~ Name ~ "}" ~ "~" ~ Count ~ "=" ~ Binder }
+RepeatBinding = { "{" ~ Key ~ "}" ~ "*" ~ Count ~ "=" ~ Binder }
 
 Count = { ASCII_DIGIT+ }
 

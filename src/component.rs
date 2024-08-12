@@ -13,7 +13,7 @@ use taffy::{
     TaffyTree, TraversePartialTree,
 };
 
-use crate::api::{Call, Component, Input, Output};
+use crate::api::{CallOld, Component, Input, Output};
 use crate::css::{read_css, read_css_unchecked, Css};
 use crate::html::{read_html, read_html_unchecked, Html};
 use crate::input::FakeFonts;
