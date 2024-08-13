@@ -3,14 +3,18 @@ use crate::animation::{
     TimingFunction, Transition,
 };
 use crate::css::Value::{Color, Keyword, Number, Time};
-use crate::css::{match_style, Css, Dim, Property, PropertyKey, Str, Style, Value, Values, Var};
+use crate::css::{
+    match_style, Css, Dim, Property, PropertyKey, PseudoClassMatcher, Str, Style, Value, Values,
+    Var,
+};
 use crate::html::TextBinding;
-use crate::models::{ElementId, Sizes};
+use crate::models::Sizes;
 use crate::{
     Background, Borders, Element, Input, Length, MyBorder, ObjectFit, TextStyle, TransformFunction,
 };
 use log::error;
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 use taffy::style_helpers::TaffyZero;
 use taffy::{
     Dimension, Layout, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect,
@@ -23,15 +27,15 @@ impl TextStyle {
     // pub const DEFAULT_FONT_STRETCH: FontStretchKeyword = FontStretchKeyword::Normal;
 }
 
-pub fn create_element(id: ElementId) -> Element {
+pub fn create_element(node: NodeId) -> Element {
     Element {
-        layout: Default::default(),
-        id,
+        node,
         children: vec![],
         tag: "".to_string(),
         text: None,
         attrs: Default::default(),
-        pseudo_classes: Default::default(),
+        position: [0.0; 2],
+        size: [0.0; 2],
         object_fit: ObjectFit::Fill,
         background: Background {
             image: None,
@@ -67,6 +71,7 @@ pub fn create_element(id: ElementId) -> Element {
         scrolling: None,
         clip: None,
         transitions: HashMap::default(),
+        state: Default::default(),
     }
 }
 
@@ -113,8 +118,8 @@ impl Scrolling {
     }
 }
 
-pub fn default_layout() -> LayoutStyle {
-    LayoutStyle {
+pub fn default_layout() -> taffy::Style {
+    taffy::Style {
         display: taffy::Display::Block,
         overflow: Point {
             x: Overflow::Visible,
@@ -247,13 +252,14 @@ impl<'c> Cascade<'c> {
         node: NodeId,
         tree: &TaffyTree<Element>,
         parent: &Element,
-        layout: &mut LayoutStyle,
+        layout: &mut taffy::Style,
         element: &mut Element,
+        matcher: &impl PseudoClassMatcher,
     ) {
         let css = &self.css.source;
         let time = input.time.as_secs_f32();
         for style in &self.css.styles {
-            if match_style(css, &style, node, tree) {
+            if match_style(css, &style, node, tree, matcher) {
                 self.apply_style(style, parent, layout, element);
             }
         }
@@ -291,7 +297,7 @@ impl<'c> Cascade<'c> {
         &mut self,
         style: &'c Style,
         parent: &Element,
-        layout: &mut LayoutStyle,
+        layout: &mut taffy::Style,
         element: &mut Element,
     ) {
         inherit(parent, element);
@@ -363,7 +369,7 @@ impl<'c> Cascade<'c> {
         &mut self,
         key: PropertyKey,
         shorthand: &[Value],
-        layout: &mut LayoutStyle,
+        mut layout: &mut taffy::Style,
         element: &mut Element,
     ) -> Result<(), CascadeError> {
         let css = &self.css.source;

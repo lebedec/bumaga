@@ -1,4 +1,4 @@
-use crate::Element;
+use crate::{Element, Input, Output, ViewError};
 use log::error;
 use serde::de::Unexpected::Str;
 use serde_json::{Map, Value};
@@ -83,7 +83,6 @@ impl ViewModel {
 
     #[inline]
     fn react(path: &str, value: &Value, bindings: &Bindings, reactions: &mut Vec<Reaction>) {
-        println!("react {path}");
         if let Some(bindings) = bindings.get(path) {
             for binding in bindings {
                 reactions.push(binding.react_value_change(value))

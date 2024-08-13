@@ -28,12 +28,9 @@ impl From<Error<Rule>> for ReaderError {
 /// wherein each node is an object representing a part of the document.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Html {
-    pub index: usize,
     pub tag: String,
-    pub attrs: HashMap<String, String>,
     pub bindings: Vec<ElementBinding>,
-    pub text: Option<String>,
-    pub text_new: Option<TextBinding>,
+    pub text: Option<TextBinding>,
     pub children: Vec<Html>,
 }
 
@@ -111,8 +108,7 @@ pub fn read_html(html: &str) -> Result<Html, ReaderError> {
     let document = HtmlParser::parse(Rule::Document, html)?
         .next()
         .ok_or(ReaderError::EmptyDocument)?;
-    let mut counter = 0;
-    let content = parse_content(document, &mut counter);
+    let content = parse_content(document);
     Ok(content)
 }
 
@@ -120,16 +116,13 @@ pub fn read_html(html: &str) -> Result<Html, ReaderError> {
 /// Pest parser guarantees that pairs will contain only rules defined in grammar.
 /// So, knowing the exact order of rules and it parameters we can unwrap iterators
 /// without error handling. Macro unreachable! can be used for the same reason.
-fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Html {
-    *index += 1;
+fn parse_content(pair: Pair<Rule>) -> Html {
     match pair.as_rule() {
         Rule::Element => {
             let mut iter = pair.into_inner();
             let tag = iter.next().unwrap().as_str();
             let attrs = iter.next().unwrap();
-
             let children = iter.next().unwrap();
-
             let bindings = parse_element_bindings(attrs);
             let mut attrs = HashMap::new();
             for binding in &bindings {
@@ -140,23 +133,17 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Html {
                     _ => {}
                 }
             }
-
             Html {
-                index: *index,
                 tag: tag.to_string(),
-                attrs,
                 bindings,
                 text: None,
-                text_new: None,
                 children: children
                     .into_inner()
-                    .map(|child| parse_content(child, index))
+                    .map(|child| parse_content(child))
                     .collect(),
             }
         }
         Rule::Text => {
-            let text = pair.as_str().trim().to_string();
-
             let mut spans = vec![];
             for span in pair.into_inner() {
                 match span.as_rule() {
@@ -165,16 +152,11 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Html {
                     _ => unreachable!(),
                 }
             }
-            let text_new = TextBinding { spans };
-            println!("TEXT_NEW {text_new:?}");
-
+            let text = TextBinding { spans };
             Html {
-                index: *index,
                 tag: "".to_string(),
-                attrs: Default::default(),
                 bindings: vec![],
                 text: Some(text),
-                text_new: Some(text_new),
                 children: vec![],
             }
         }
@@ -195,22 +177,16 @@ fn parse_content(pair: Pair<Rule>, index: &mut usize) -> Html {
             }
 
             Html {
-                index: *index,
                 tag: tag.to_string(),
-                attrs,
                 bindings,
                 text: None,
-                text_new: None,
                 children: vec![],
             }
         }
         Rule::Script => Html {
-            index: *index,
             tag: "script".to_string(),
-            attrs: Default::default(),
             bindings: vec![],
             text: None,
-            text_new: None,
             children: vec![],
         },
         _ => unreachable!(),
@@ -319,7 +295,7 @@ mod tests {
             attrs: Default::default(),
             bindings: vec![],
             text: None,
-            text_new: None,
+            text: None,
             children: vec![],
         }
     }
@@ -331,7 +307,7 @@ mod tests {
             attrs: Default::default(),
             bindings: vec![],
             text: None,
-            text_new: None,
+            text: None,
             children,
         }
     }
@@ -343,7 +319,7 @@ mod tests {
             attrs: Default::default(),
             bindings: vec![],
             text: Some(text.to_string()),
-            text_new: None,
+            text: None,
             children: vec![],
         }
     }
@@ -355,7 +331,7 @@ mod tests {
             attrs: Default::default(),
             bindings: vec![],
             text: None,
-            text_new: None,
+            text: None,
             children: vec![txt(text)],
         }
     }

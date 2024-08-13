@@ -16,20 +16,16 @@ The development of this library possible thanks to work of Rust enthusiasts:
 # TODO:
 
 - check performance, use VTune (need < 1ms 100 elements)
-    - use arena instead TaffyTree context ?
-    - dont use recursion
-    - share tree between calls (on static tree will be zero time to update)
     - separate to thread
     - measure text size skip ?!
-    - use pools ?!
-- hierarchy transforms (move location calculation to client side think about tree)
-    - rework output tree traverse
-- revise template language
-    - use this as event in input callbacks
-    - input.value separate state ?
-    - text @= interpolation
-    - rename component to view
-    - templates ?!
+    - cache for css style apply
+        - element tag is static
+        - static attributes ?
+        - class dynamic
+- implement new callbacks
+- fix defect of borders
+- windows + directx example ?
+- input.value separate state ?
 - translation ?!
 - book with concepts, architecture and tutorial https://github.com/rust-lang/mdBook
 - share

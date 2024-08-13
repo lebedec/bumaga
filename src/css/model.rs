@@ -61,7 +61,7 @@ pub struct Keyframe {
 
 /// A complex selector is a sequence of one or more simple and/or compound selectors that are
 /// separated by combinators, including the white space descendant combinator.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Complex {
     pub selectors: Vec<Simple>,
 }
@@ -69,7 +69,7 @@ pub struct Complex {
 /// A simple selector with a single component, such as a single type selector,
 /// attribute selector, or pseudo-class, that's not used in combination with or contains any other
 /// selector component.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Simple {
     All,
     Id(Str),
@@ -111,7 +111,7 @@ impl Simple {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Style {
     /// A selector list is a comma-separated list of selectors.
     pub selectors: Vec<Complex>,

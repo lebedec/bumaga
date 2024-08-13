@@ -4,22 +4,23 @@ use taffy::{NodeId, TaffyTree, TraversePartialTree};
 
 impl Component {
     pub fn query(&self, selector: &str) -> Option<&Element> {
-        let selector = read_css(selector).expect("must be valid css");
-        fn search(tree: &TaffyTree<Element>, node: NodeId, selector: &Css) -> Option<NodeId> {
-            let css = &selector.source;
-            for style in &selector.styles {
-                if match_style(css, &style, node, tree) {
-                    return Some(node);
-                }
-            }
-            for child in tree.child_ids(node) {
-                if let Some(node) = search(tree, child, selector) {
-                    return Some(node);
-                }
-            }
-            None
-        }
-        search(&self.tree, self.root, &selector).and_then(|id| self.tree.get_node_context(id))
+        unimplemented!()
+        // let selector = read_css(selector).expect("must be valid css");
+        // fn search(tree: &TaffyTree<Element>, node: NodeId, selector: &Css) -> Option<NodeId> {
+        //     let css = &selector.source;
+        //     for style in &selector.styles {
+        //         if match_style(css, &style, node, tree) {
+        //             return Some(node);
+        //         }
+        //     }
+        //     for child in tree.child_ids(node) {
+        //         if let Some(node) = search(tree, child, selector) {
+        //             return Some(node);
+        //         }
+        //     }
+        //     None
+        // }
+        // search(&self.tree, self.root, &selector).and_then(|id| self.tree.get_node_context(id))
     }
 }
 

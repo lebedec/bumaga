@@ -3,8 +3,15 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::api::{Fonts, Input};
-use crate::{Keys, MouseButton, TextStyle};
+use crate::TextStyle;
+
+pub struct Input<'f> {
+    pub(crate) fonts: Option<&'f mut dyn Fonts>,
+    pub(crate) value: Map<String, Value>,
+    pub(crate) time: Duration,
+    pub(crate) viewport: [f32; 2],
+    pub(crate) events: Vec<InputEvent>,
+}
 
 impl<'f> Input<'f> {
     pub fn new() -> Input<'f> {
@@ -12,24 +19,9 @@ impl<'f> Input<'f> {
             fonts: None,
             value: Map::new(),
             time: Duration::from_micros(0),
-            keys: vec![],
             viewport: [800.0, 600.0],
-            mouse_position: [0.0, 0.0],
-            mouse_buttons_down: vec![],
-            mouse_buttons_up: vec![],
-            mouse_wheel: [0.0, 0.0],
-            keys_down: vec![],
-            keys_up: vec![],
-            keys_pressed: vec![],
-            characters: vec![],
-            transformers: HashMap::new(),
+            events: vec![],
         }
-    }
-
-    pub fn pipe(mut self, name: &str, transformer: impl Fn(Value) -> Value + 'static) -> Self {
-        self.transformers
-            .insert(name.to_string(), Box::new(transformer));
-        self
     }
 
     pub fn fonts(mut self, fonts: &'f mut dyn Fonts) -> Self {
@@ -58,50 +50,73 @@ impl<'f> Input<'f> {
         self
     }
 
-    pub fn mouse_buttons_down(mut self, mouse_buttons_down: Vec<MouseButton>) -> Self {
-        self.mouse_buttons_down = mouse_buttons_down;
+    pub fn events(mut self, events: Vec<InputEvent>) -> Self {
+        self.events = events;
         self
     }
 
-    pub fn mouse_buttons_up(mut self, mouse_buttons_up: Vec<MouseButton>) -> Self {
-        self.mouse_buttons_up = mouse_buttons_up;
-        self
-    }
-
-    pub fn mouse_position(mut self, mouse_position: [f32; 2]) -> Self {
-        self.mouse_position = mouse_position;
-        self
-    }
-
-    pub fn mouse_wheel(mut self, mouse_wheel: [f32; 2]) -> Self {
-        self.mouse_wheel = mouse_wheel;
-        self
-    }
-
-    pub fn keys_down(mut self, keys_down: Vec<Keys>) -> Self {
-        self.keys_down = keys_down;
-        self
-    }
-
-    pub fn keys_up(mut self, keys_up: Vec<Keys>) -> Self {
-        self.keys_up = keys_up;
-        self
-    }
-
-    pub fn keys_pressed(mut self, keys_pressed: Vec<Keys>) -> Self {
-        self.keys_pressed = keys_pressed;
-        self
-    }
-
-    pub fn characters(mut self, characters: Vec<char>) -> Self {
-        self.characters = characters;
+    pub fn event(mut self, event: InputEvent) -> Self {
+        self.events.push(event);
         self
     }
 }
 
-pub(crate) struct FakeFonts;
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum InputEvent {
+    MouseMove([f32; 2]),
+    MouseButtonDown(MouseButtons),
+    MouseButtonUp(MouseButtons),
+    KeyDown(Keys),
+    KeyUp(Keys),
+    Char(char),
+}
 
-impl Fonts for FakeFonts {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MouseButtons {
+    Left,
+    Right,
+}
+
+/// It's hard to full match scancode or keycode from different platforms or windowing frameworks.
+/// Bumaga encodes only most usable "control" keys which are responsible for application logic or text editing.
+/// Any other "printable" keys must be passed as unicode characters in context of the current keyboard layout.
+///
+/// see for details: https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Keys {
+    Unknown,
+    // UI keys
+    Escape,
+    // Editing keys
+    Backspace,
+    Delete,
+    Insert,
+    // Whitespace keys
+    Enter,
+    Tab,
+    // Navigation keys
+    ArrowUp,
+    ArrowDown,
+    ArrowLeft,
+    ArrowRight,
+    End,
+    Home,
+    PageDown,
+    PageUp,
+    // Modifier keys
+    Alt,
+    CapsLock,
+    Ctrl,
+    Shift,
+}
+
+pub trait Fonts {
+    fn measure(&mut self, text: &str, style: &TextStyle, max_width: Option<f32>) -> [f32; 2];
+}
+
+pub(crate) struct DummyFonts;
+
+impl Fonts for DummyFonts {
     fn measure(&mut self, text: &str, style: &TextStyle, max_width: Option<f32>) -> [f32; 2] {
         // NOTE: incorrect implementation, approximately calculates the text size
         // you should provide your own Fonts implementation

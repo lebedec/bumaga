@@ -1,11 +1,14 @@
 pub use api::*;
 
-pub use view::View;
+pub use element::*;
+pub use input::*;
+pub use view::*;
 
 mod animation;
 mod api;
 mod component;
 mod css;
+mod element;
 mod error;
 mod html;
 mod input;

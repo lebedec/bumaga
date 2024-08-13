@@ -4,11 +4,17 @@ use log::error;
 use std::collections::{HashMap, HashSet};
 use taffy::{NodeId, TaffyTree, TraversePartialTree};
 
-pub fn match_style(css: &str, style: &Style, node: NodeId, tree: &TaffyTree<Element>) -> bool {
+pub fn match_style(
+    css: &str,
+    style: &Style,
+    node: NodeId,
+    tree: &TaffyTree<Element>,
+    matcher: &impl PseudoClassMatcher,
+) -> bool {
     style
         .selectors
         .iter()
-        .any(|selector| match_complex_selector(css, selector, node, tree))
+        .any(|selector| match_complex_selector(css, selector, node, tree, matcher))
 }
 
 fn match_complex_selector(
@@ -16,16 +22,27 @@ fn match_complex_selector(
     selector: &Complex,
     node: NodeId,
     tree: &TaffyTree<Element>,
+    matcher: &impl PseudoClassMatcher,
 ) -> bool {
     let mut target = node;
-    selector
-        .selectors
-        .iter()
-        .rev() // CSS components match order
-        .all(|component| match component.as_combinator() {
-            None => match_simple_selector(css, component, target, tree),
-            Some(combinator) => find_next_target(combinator, &mut target, tree),
-        })
+    let mut element = tree.get_node_context(target).unwrap();
+    for component in selector.selectors.iter().rev() {
+        match component.as_combinator() {
+            None => {
+                if !match_simple_selector(css, component, element, matcher) {
+                    return false;
+                }
+            }
+            Some(combinator) => {
+                if !find_next_target(combinator, &mut target, tree) {
+                    return false;
+                } else {
+                    element = tree.get_node_context(target).unwrap();
+                }
+            }
+        }
+    }
+    true
 }
 
 fn find_next_target(combinator: char, target: &mut NodeId, tree: &TaffyTree<Element>) -> bool {
@@ -59,32 +76,26 @@ fn find_next_target(combinator: char, target: &mut NodeId, tree: &TaffyTree<Elem
 fn match_simple_selector(
     css: &str,
     component: &Simple,
-    node: NodeId,
-    tree: &TaffyTree<Element>,
+    element: &Element,
+    matcher: &impl PseudoClassMatcher,
 ) -> bool {
-    let html = match tree.get_node_context(node) {
-        Some(element) => element,
-        None => {
-            error!("unable to match selector for node {node:?}, html context not found");
-            return false;
-        }
-    };
     match component {
         Simple::All => true,
-        Simple::Type(name) => html.tag.as_str() == name.as_str(css),
-        Simple::Id(ident) => html
+        Simple::Type(name) => element.tag.as_str() == name.as_str(css),
+        Simple::Id(ident) => element
             .attrs
             .get("id")
             .map(|id| id.as_str() == ident.as_str(css))
             .unwrap_or(false),
-        Simple::Class(ident) => html
+        Simple::Class(ident) => element
             .attrs
             .get("class")
             .map(|classes| match_class(classes, ident.as_str(css)))
             .unwrap_or(false),
         Simple::Attribute(name, operator, value) => {
             let value = value.as_str(css);
-            html.attrs
+            element
+                .attrs
                 .get(name.as_str(css))
                 .map(|attr| match operator {
                     Matcher::Exist => true,
@@ -97,8 +108,8 @@ fn match_simple_selector(
                 })
                 .unwrap_or(false)
         }
-        Simple::Root => tree.parent(node).is_none(),
-        Simple::PseudoClass(name) => html.pseudo_classes.contains(name.as_str(css)),
+        Simple::Root => element.tag == ":root",
+        Simple::PseudoClass(name) => matcher.has_pseudo_class(element, name.as_str(css)),
         _ => {
             error!("selector {component:?} not supported");
             false
@@ -109,4 +120,8 @@ fn match_simple_selector(
 #[inline(always)]
 fn match_class(classes: &str, ident: &str) -> bool {
     classes.split(" ").any(|class| class == ident)
+}
+
+pub trait PseudoClassMatcher {
+    fn has_pseudo_class(&self, element: &Element, class: &str) -> bool;
 }

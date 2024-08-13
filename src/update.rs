@@ -14,36 +14,35 @@ use taffy::{
 
 use crate::css::read_css_unchecked;
 use crate::html::{read_html_unchecked, Html};
-use crate::input::FakeFonts;
-use crate::models::{ElementId, Sizes};
+use crate::input::DummyFonts;
+use crate::models::Sizes;
 use crate::state::State;
 use crate::styles::{create_element, Scrolling};
-use crate::{
-    CallOld, Component, Element, Fonts, Input, Keys, Output, Source, ViewError, LEFT_MOUSE_BUTTON,
-};
+use crate::{CallOld, Component, Element, Fonts, Input, Keys, Output, Source, ViewError};
 
 impl Component {
     pub fn update(&mut self, mut input: Input) -> Result<Output, ViewError> {
-        self.watch_source_changes();
-        let (root, tree) = self.render_tree(&mut input)?;
-        self.tree = tree;
-        self.root = root;
-        self.tree.compute_layout_with_measure(
-            self.root,
-            Size::MAX_CONTENT,
-            |size, space, _, view, _| measure_text(&mut input, size, space, view),
-        )?;
-        self.state.prune();
-        let mut output = Output::new();
-        self.process_final_layout(self.root, &input, &mut output, Point::ZERO, None);
-        self.handle_user_input(&input, &mut output)?;
-        // TODO: rework output traverse, gathering and element save
-        self.gather(self.root, &mut output);
-        for element in output.elements.iter() {
-            // println!("ele {:?}", element.html.pseudo_classes);
-            self.state.save(element);
-        }
-        Ok(output)
+        unimplemented!()
+        // self.watch_source_changes();
+        // let (root, tree) = self.render_tree(&mut input)?;
+        // self.tree = tree;
+        // self.root = root;
+        // self.tree.compute_layout_with_measure(
+        //     self.root,
+        //     Size::MAX_CONTENT,
+        //     |size, space, _, view, _| measure_text(&mut input, size, space, view),
+        // )?;
+        // self.state.prune();
+        // let mut output = Output::new();
+        // self.process_final_layout(self.root, &input, &mut output, Point::ZERO, None);
+        // self.handle_user_input(&input, &mut output)?;
+        // // TODO: rework output traverse, gathering and element save
+        // self.gather(self.root, &mut output);
+        // for element in output.elements.iter() {
+        //     // println!("ele {:?}", element.html.pseudo_classes);
+        //     self.state.save(element);
+        // }
+        // Ok(output)
     }
 
     fn watch_source_changes(&mut self) {
@@ -73,115 +72,116 @@ impl Component {
 
     fn handle_user_input(&mut self, input: &Input, output: &mut Output) -> Result<(), ViewError> {
         // TODO: propagation
-
-        if let Some(current) = output.scroll {
-            let element = self.get_element_mut(current)?;
-            if let Some(scrolling) = element.scrolling.as_mut() {
-                scrolling.offset(input.mouse_wheel[0], input.mouse_wheel[1]);
-            }
-        }
-
-        // Reset focus
-        let mut focus = None;
-
-        if let Some(current) = output.hover {
-            if let Some(previous) = self.state.hover {
-                if previous != current {
-                    self.state.hover = None;
-                    let element = self.get_element_mut(previous)?;
-                    element.fire("onmouseleave", output);
-                    element.remove("hover");
-                }
-            }
-            if self.state.hover != Some(current) {
-                self.state.hover = Some(current);
-                let element = self.get_element_mut(current)?;
-                element.fire("onmouseenter", output);
-                element.insert("hover");
-            }
-            let element = self.get_element_mut(current)?;
-            if input.is_mouse_down() {
-                // Sets focus on the specified element, if it can be focused
-                match element.tag.as_str() {
-                    "input" => {
-                        focus = Some(current);
-                    }
-                    _ => {}
-                }
-                element.fire("onclick", output);
-            }
-        }
-
-        if let Some(previous) = self.state.focus {
-            let element = self.get_element_mut(previous)?;
-            let click_out_of_element = input.is_mouse_down()
-                && !is_element_contains(&element.layout, input.mouse_position);
-            if focus.is_some() && focus != Some(previous) || click_out_of_element {
-                element.fire("onblur", output);
-                element.remove("focus");
-                self.state.focus = None;
-            }
-        }
-        if let Some(current) = focus {
-            if Some(current) != self.state.focus {
-                let element = self.get_element_mut(current)?;
-                element.fire("onfocus", output);
-                element.insert("focus");
-                self.state.focus = Some(current);
-            }
-        }
-
-        if let Some(current) = self.state.focus {
-            let element = self.get_element_mut(current)?;
-            match element.tag.as_str() {
-                "input" => {
-                    let mut value = element.attrs.get("value").cloned().unwrap_or_default();
-                    let mut has_changes = false;
-                    if !input.characters.is_empty() {
-                        has_changes = true;
-                        for char in &input.characters {
-                            if char != &'\r' {
-                                value.push(*char);
-                            }
-                        }
-                    }
-                    if input.is_key_pressed(Keys::Backspace) && value.len() > 0 {
-                        has_changes = true;
-                        value.pop();
-                    }
-                    if input.is_key_pressed(Keys::Enter) {
-                        element.fire_opt("onchange", vec![Value::String(value.clone())], output);
-                    }
-                    if has_changes {
-                        element.fire_opt("oninput", vec![Value::String(value.clone())], output);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        Ok(())
+        unimplemented!()
+        // if let Some(current) = output.scroll {
+        //     let element = self.get_element_mut(current)?;
+        //     if let Some(scrolling) = element.scrolling.as_mut() {
+        //         scrolling.offset(input.mouse_wheel[0], input.mouse_wheel[1]);
+        //     }
+        // }
+        //
+        // // Reset focus
+        // let mut focus = None;
+        //
+        // if let Some(current) = output.hover {
+        //     if let Some(previous) = self.state.hover {
+        //         if previous != current {
+        //             self.state.hover = None;
+        //             let element = self.get_element_mut(previous)?;
+        //             element.fire("onmouseleave", output);
+        //             element.remove("hover");
+        //         }
+        //     }
+        //     if self.state.hover != Some(current) {
+        //         self.state.hover = Some(current);
+        //         let element = self.get_element_mut(current)?;
+        //         element.fire("onmouseenter", output);
+        //         element.insert("hover");
+        //     }
+        //     let element = self.get_element_mut(current)?;
+        //     if input.is_mouse_down() {
+        //         // Sets focus on the specified element, if it can be focused
+        //         match element.tag.as_str() {
+        //             "input" => {
+        //                 focus = Some(current);
+        //             }
+        //             _ => {}
+        //         }
+        //         element.fire("onclick", output);
+        //     }
+        // }
+        //
+        // if let Some(previous) = self.state.focus {
+        //     let element = self.get_element_mut(previous)?;
+        //     let click_out_of_element = input.is_mouse_down()
+        //         && !is_element_contains(&element.layout, input.mouse_position);
+        //     if focus.is_some() && focus != Some(previous) || click_out_of_element {
+        //         element.fire("onblur", output);
+        //         element.remove("focus");
+        //         self.state.focus = None;
+        //     }
+        // }
+        // if let Some(current) = focus {
+        //     if Some(current) != self.state.focus {
+        //         let element = self.get_element_mut(current)?;
+        //         element.fire("onfocus", output);
+        //         element.insert("focus");
+        //         self.state.focus = Some(current);
+        //     }
+        // }
+        //
+        // if let Some(current) = self.state.focus {
+        //     let element = self.get_element_mut(current)?;
+        //     match element.tag.as_str() {
+        //         "input" => {
+        //             let mut value = element.attrs.get("value").cloned().unwrap_or_default();
+        //             let mut has_changes = false;
+        //             if !input.characters.is_empty() {
+        //                 has_changes = true;
+        //                 for char in &input.characters {
+        //                     if char != &'\r' {
+        //                         value.push(*char);
+        //                     }
+        //                 }
+        //             }
+        //             if input.is_key_pressed(Keys::Backspace) && value.len() > 0 {
+        //                 has_changes = true;
+        //                 value.pop();
+        //             }
+        //             if input.is_key_pressed(Keys::Enter) {
+        //                 element.fire_opt("onchange", vec![Value::String(value.clone())], output);
+        //             }
+        //             if has_changes {
+        //                 element.fire_opt("oninput", vec![Value::String(value.clone())], output);
+        //             }
+        //         }
+        //         _ => {}
+        //     }
+        // }
+        //
+        // Ok(())
     }
 
     fn gather(&mut self, node: NodeId, output: &mut Output) {
-        let element = match self.tree.get_node_context_mut(node) {
-            None => {
-                error!("unable to traverse node {node:?} has no context");
-                return;
-            }
-            Some(element) => element,
-        };
-        output.elements.push(element.clone());
-        match self.tree.children(node) {
-            Ok(children) => {
-                for child in children {
-                    self.gather(child, output);
-                }
-            }
-            Err(error) => {
-                error!("unable to traverse node {node:?}, {error:?}")
-            }
-        }
+        unimplemented!()
+        // let element = match self.tree.get_node_context_mut(node) {
+        //     None => {
+        //         error!("unable to traverse node {node:?} has no context");
+        //         return;
+        //     }
+        //     Some(element) => element,
+        // };
+        // output.elements.push(element.clone());
+        // match self.tree.children(node) {
+        //     Ok(children) => {
+        //         for child in children {
+        //             self.gather(child, output);
+        //         }
+        //     }
+        //     Err(error) => {
+        //         error!("unable to traverse node {node:?}, {error:?}")
+        //     }
+        // }
     }
 
     fn process_final_layout(
@@ -192,49 +192,50 @@ impl Component {
         location: Point<f32>,
         mut clip: Option<Layout>,
     ) {
-        let mut layout = *self.tree.get_final_layout(node);
-        let style = match self.tree.style(node) {
-            Ok(style) => style,
-            Err(error) => {
-                error!("unable to traverse node {node:?}, {error:?}");
-                return;
-            }
-        };
-        if style.position == Position::Relative {
-            layout.location = layout.location.add(location)
-        }
-        let element = match self.tree.get_node_context_mut(node) {
-            None => {
-                error!("unable to traverse node {node:?} has no context");
-                return;
-            }
-            Some(element) => element,
-        };
-        element.scrolling = Scrolling::ensure(&layout, &element.scrolling);
-        element.layout = layout;
-        element.clip = clip;
-        if is_element_contains(&element.layout, input.mouse_position) {
-            output.hover = Some(node);
-            if element.scrolling.is_some() {
-                output.scroll = Some(node);
-            }
-        }
-        let mut location = element.layout.location;
-        if let Some(scrolling) = element.scrolling.as_ref() {
-            clip = Some(element.layout.clone());
-            location.x -= scrolling.x;
-            location.y -= scrolling.y;
-        }
-        match self.tree.children(node) {
-            Ok(children) => {
-                for child in children {
-                    self.process_final_layout(child, input, output, location, clip);
-                }
-            }
-            Err(error) => {
-                error!("unable to traverse node {node:?}, {error:?}")
-            }
-        }
+        unimplemented!()
+        // let mut layout = *self.tree.get_final_layout(node);
+        // let style = match self.tree.style(node) {
+        //     Ok(style) => style,
+        //     Err(error) => {
+        //         error!("unable to traverse node {node:?}, {error:?}");
+        //         return;
+        //     }
+        // };
+        // if style.position == Position::Relative {
+        //     layout.location = layout.location.add(location)
+        // }
+        // let element = match self.tree.get_node_context_mut(node) {
+        //     None => {
+        //         error!("unable to traverse node {node:?} has no context");
+        //         return;
+        //     }
+        //     Some(element) => element,
+        // };
+        // element.scrolling = Scrolling::ensure(&layout, &element.scrolling);
+        // element.layout = layout;
+        // element.clip = clip;
+        // if is_element_contains(&element.layout, input.mouse_position) {
+        //     output.hover = Some(node);
+        //     if element.scrolling.is_some() {
+        //         output.scroll = Some(node);
+        //     }
+        // }
+        // let mut location = element.layout.location;
+        // if let Some(scrolling) = element.scrolling.as_ref() {
+        //     clip = Some(element.layout.clone());
+        //     location.x -= scrolling.x;
+        //     location.y -= scrolling.y;
+        // }
+        // match self.tree.children(node) {
+        //     Ok(children) => {
+        //         for child in children {
+        //             self.process_final_layout(child, input, output, location, clip);
+        //         }
+        //     }
+        //     Err(error) => {
+        //         error!("unable to traverse node {node:?}, {error:?}")
+        //     }
+        // }
     }
 }
 
@@ -266,72 +267,30 @@ impl Element {
             output.calls.push(call);
         }
     }
-
-    #[inline(always)]
-    fn insert(&mut self, class: &str) {
-        self.pseudo_classes.insert(class.to_string());
-    }
-
-    #[inline(always)]
-    fn remove(&mut self, class: &str) {
-        self.pseudo_classes.remove(class);
-    }
 }
 
-impl<'f> Input<'f> {
-    fn is_mouse_down(&self) -> bool {
-        self.mouse_buttons_down.contains(&LEFT_MOUSE_BUTTON)
-    }
-
-    fn is_key_down(&self, key: Keys) -> bool {
-        self.keys_down
-            .iter()
-            .position(|key_down| key_down == &key)
-            .is_some()
-    }
-
-    fn is_key_pressed(&self, key: Keys) -> bool {
-        self.keys_pressed
-            .iter()
-            .position(|key_down| key_down == &key)
-            .is_some()
-    }
-}
+// impl<'f> Input<'f> {
+//     fn is_mouse_down(&self) -> bool {
+//         self.mouse_buttons_down.contains(&LEFT_MOUSE_BUTTON)
+//     }
+//
+//     fn is_key_down(&self, key: Keys) -> bool {
+//         self.keys_down
+//             .iter()
+//             .position(|key_down| key_down == &key)
+//             .is_some()
+//     }
+//
+//     fn is_key_pressed(&self, key: Keys) -> bool {
+//         self.keys_pressed
+//             .iter()
+//             .position(|key_down| key_down == &key)
+//             .is_some()
+//     }
+// }
 
 fn is_element_contains(layout: &Layout, point: [f32; 2]) -> bool {
     let x = point[0] >= layout.location.x && point[0] <= layout.location.x + layout.size.width;
     let y = point[1] >= layout.location.y && point[1] <= layout.location.y + layout.size.height;
     x && y
-}
-
-pub fn measure_text(
-    input: &mut Input,
-    size: Size<Option<f32>>,
-    space: Size<AvailableSpace>,
-    element: Option<&mut Element>,
-) -> Size<f32> {
-    if let Size {
-        width: Some(width),
-        height: Some(height),
-    } = size
-    {
-        return Size { width, height };
-    }
-    let element = match element {
-        None => return Size::ZERO,
-        Some(element) => element,
-    };
-    if let Some(text) = element.text.as_ref().map(|text| text.spans.join(" ")) {
-        let max_width = size.width.map(Some).unwrap_or_else(|| match space.width {
-            AvailableSpace::MinContent => Some(0.0),
-            AvailableSpace::MaxContent => None,
-            AvailableSpace::Definite(width) => Some(width),
-        });
-        let [width, height] = match input.fonts.as_mut() {
-            None => FakeFonts.measure(&text, &element.text_style, max_width),
-            Some(fonts) => fonts.measure(&text, &element.text_style, max_width),
-        };
-        return Size { width, height };
-    }
-    Size::ZERO
 }

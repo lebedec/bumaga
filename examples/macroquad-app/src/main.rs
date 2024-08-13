@@ -1,124 +1,20 @@
+use bumaga::view_model::{Binding, ViewModel};
+use bumaga::{
+    Borders, Component, Element, Fonts, Fragment, Input, InputEvent, Keys, Layout, MouseButtons,
+    MyBorder, Rgba, TextStyle, TransformFunction, ValueExtensions, View,
+};
+use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
+use macroquad::miniquad::EventHandler;
 use macroquad::prelude::*;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::time::{Duration, Instant};
 
-use bumaga::view_model::{Binding, ViewModel};
-use bumaga::{
-    Borders, Component, Element, Fonts, Input, Keys, Layout, MyBorder, Rgba, TextStyle,
-    TransformFunction, ValueExtensions, View,
-};
-
 #[macroquad::main("macroquad bumaga example")]
 async fn main() {
-    // let state = json!({
-    //     "options": [
-    //         {"value": 1, "text": "Option 1"},
-    //         {"value": 2, "text": "Option 2"},
-    //         {"value": 3, "text": "Option 3"},
-    //         {"value": 4, "text": "Option 4"},
-    //         {"value": 5, "text": "Option 5"},
-    //         {"value": 6, "text": "Option 6"}
-    //     ],
-    //     "property": "abc",
-    //     "nested": {
-    //         "pBool": true,
-    //         "pNumber": 10,
-    //         "pString": "abc",
-    //         "pNull": null,
-    //         "pArray": [
-    //             1, 2, 3, 4, 5, 6, 7, 8, 9
-    //         ],
-    //         "pObject": {
-    //             "super": "Alice",
-    //             "puper": "Boris",
-    //         }
-    //     }
-    // });
-    // let mut bindings = BTreeMap::new();
-    // bindings.insert(".property".to_string(), vec![Binding::Text(0, 1)]);
-    // bindings.insert(
-    //     ".nested.pString".to_string(),
-    //     vec![Binding::Text(0, 0), Binding::Text(1, 0)],
-    // );
-    // bindings.insert(
-    //     ".options[1].value".to_string(),
-    //     vec![Binding::Attribute(4, "value".to_string())],
-    // );
-    // let mut view_model = ViewModel::create(bindings, state);
-    //
-    // let empty = json!({});
-    //
-    // let ligth_diff = json!({
-    //     "options": [
-    //         {"value": 1, "text": "Option 1"},
-    //         {"value": 2, "text": "Option 2"},
-    //         {"value": 3, "text": "Option 3"},
-    //         {"value": 4, "text": "Option 4"},
-    //         {"value": 5, "text": "Option 5"},
-    //         {"value": 6, "text": "Option 6"}
-    //     ],
-    //     "property": "abc",
-    //     "nested": {
-    //         "pBool": true,
-    //         "pNumber": 42, // 10 - 42
-    //         "pString": "qwe", // abc - qwe
-    //         "pNull": null,
-    //         "pArray": [
-    //             1, 2, 30, 4, 5, 6, 7, 8, 9 // 3 - 30
-    //         ],
-    //         "pObject": {
-    //             "super": "Alice",
-    //             "puper": "Boris",
-    //         }
-    //     }
-    // });
-    //
-    // let hard_diff = json!({
-    //     "options": [
-    //         {"value": 1, "text": "Option 1"},
-    //         {"value": 8, "text": "Option 8"},
-    //         {"value": 3, "text": "Option 3"},
-    //         {"value": 5, "text": "Option 5"},
-    //         {"value": 6, "text": "Option 6"},
-    //         {"value": 7, "text": "Option 7"}
-    //     ],
-    //     "property": "abc",
-    //     "nested": {
-    //         "pBool": 42,
-    //         "pNumber": "abc",
-    //         "pString": null,
-    //         "pNull": true,
-    //         "pArray": [
-    //             1, 2, 3, 4, "a", "b", 5, 6, 7,
-    //         ],
-    //         "pObject": {
-    //             "super": "Carold",
-    //             "puper": null,
-    //         }
-    //     }
-    // });
-    //
-    // let changes = view_model.bind(&empty);
-    // println!("EMPTY CHANGES {changes:#?}");
-    //
-    // let changes = view_model.bind(&ligth_diff);
-    // println!("LIGHT CHANGES {changes:#?}");
-    //
-    // let changes = view_model.bind(&hard_diff);
-    // println!("HARD CHANGES {changes:#?}");
-    //
-    // let t1 = Instant::now();
-    // for i in 0..100 {
-    //     view_model.bind(&ligth_diff);
-    //     view_model.bind(&hard_diff);
-    // }
-    // println!("changes: {}, time: {:?}", changes.len(), t1.elapsed());
-    //
-    // return;
-
     env_logger::init();
+    let subscriber = register_input_subscriber();
     let font = load_ttf_font("../shared/Roboto/Roboto-Regular.ttf")
         .await
         .unwrap();
@@ -126,7 +22,7 @@ async fn main() {
     // let mut component =
     //     Component::compile_files("../shared/index.html", "../shared/style.css", "../shared/");
 
-    let html = fs::read_to_string("../shared/index.html").unwrap();
+    let html = fs::read_to_string("../shared/view.html").unwrap();
     let css = fs::read_to_string("../shared/style.css").unwrap();
     let mut view = View::compile(&html, &css, "../shared/").unwrap();
 
@@ -134,7 +30,7 @@ async fn main() {
     let mut todos = vec![
         "learn bumaga documentation".to_string(),
         "create UI using HTML".to_string(),
-        "implement engine".to_string(),
+        //"implement engine".to_string(),
     ];
     for i in 0..100 {
         todos.push(format!("Todo N{i}"));
@@ -147,25 +43,19 @@ async fn main() {
 
         let value = json!({"todos": todos, "todo": todo});
         let done = todos_done.clone();
-        let input = user_input()
+        let input = user_input(subscriber)
             .fonts(&mut fonts)
             .time(Duration::from_millis(16))
-            .value(value)
-            .pipe("done", move |value| done.contains(&value).into());
+            .value(value);
+        // .pipe("done", move |value| done.contains(&value).into());
         let t1 = Instant::now();
         let output = view.update(input).unwrap();
         println!("bumaga time: {:?}", t1.elapsed());
-        // 42ms original !!! in debug
-        // 1-3ms anmations
-        // 1-3ms save and restore values
-        //
-        // [RELEASE] 6ms original
-        // 2.7 - 5.2 just render tree
-        // 3.5ms (-1.5ms) taffy layout
+        // 34ms initial
+        // 20ms without text measure
 
-        for element in output.elements {
-            draw_element(&element, &fonts);
-        }
+        draw_element(view.body(), &fonts, 0.0, 0.0);
+
         for call in output.calls {
             match call.signature() {
                 ("update", [value]) => todo = value.as_string(),
@@ -180,23 +70,29 @@ async fn main() {
     }
 }
 
-fn draw_element(element: &Element, fonts: &FontSystem) {
+fn draw_element(element: Fragment, fonts: &FontSystem, px: f32, py: f32) {
     let mut x = element.layout.location.x;
     let mut y = element.layout.location.y;
     let w = element.layout.size.width;
     let h = element.layout.size.height;
 
-    for transform in &element.transforms {
+    let [mut x, mut y] = element.element.position;
+    let [w, h] = element.element.size;
+
+    // x += px;
+    // y += py;
+
+    for transform in &element.element.transforms {
         match transform {
             TransformFunction::Translate { x: tx, y: ty, .. } => {
-                let tx = tx.resolve(element.layout.size.width);
-                let ty = ty.resolve(element.layout.size.height);
+                let tx = tx.resolve(w);
+                let ty = ty.resolve(h);
                 x += tx;
                 y += ty;
             }
         }
     }
-    if let Some(clip) = element.clip {
+    if let Some(clip) = element.element.clip {
         let cx = clip.location.x;
         let cy = clip.location.y;
         let cw = clip.size.width;
@@ -205,32 +101,40 @@ fn draw_element(element: &Element, fonts: &FontSystem) {
             return;
         }
     }
-    draw_rectangle(x, y, w, h, color(&element.background.color));
-    draw_borders(&element);
+    draw_rectangle(x, y, w, h, color(&element.element.background.color));
+    draw_borders(&element, x, y);
     // draw_line()
-    if let Some(text) = element.text.as_ref() {
+    if let Some(text) = element.element.text.as_ref() {
         let text_params = TextParams {
-            font_size: element.text_style.font_size as u16,
+            font_size: element.element.text_style.font_size as u16,
             font: Some(&fonts.font),
-            color: color(&element.color),
+            color: color(&element.element.color),
             ..Default::default()
         };
+
         draw_text_ex(
             &text.as_string(),
-            element.layout.location.x,
-            element.layout.location.y + fonts.offset_y(&text.as_string(), &element.text_style),
+            x,
+            y + fonts.offset_y(&text.as_string(), &element.element.text_style),
             text_params,
         );
     }
+
+    for fragment in element.children() {
+        draw_element(fragment, fonts, x, y);
+    }
 }
 
-fn draw_borders(element: &Element) {
-    let borders = &element.borders;
+fn draw_borders(element: &Fragment, x: f32, y: f32) {
+    let borders = &element.element.borders;
     let layout = &element.layout;
-    let x = layout.location.x;
-    let y = layout.location.y;
+    let x = layout.location.x + x;
+    let y = layout.location.y + y;
     let w = layout.size.width;
     let h = layout.size.height;
+    let [x, y] = element.element.position;
+    let [w, h] = element.element.size;
+
     if let Some(border) = borders.top() {
         draw_line(x, y, x + w, y, border.width, color(&border.color))
     }
@@ -269,45 +173,43 @@ impl Fonts for FontSystem {
     }
 }
 
-pub fn user_input<'f>() -> Input<'f> {
-    let viewport = [screen_width(), screen_height()];
-    let mut characters = vec![];
-    while let Some(character) = get_char_pressed() {
-        if character == ' ' || !character.is_whitespace() && character != '\u{7f}' {
-            characters.push(character);
-        }
-    }
-    let keys_down = get_keys_down().into_iter().map(map_keycode).collect();
-    let keys_up = get_keys_released().into_iter().map(map_keycode).collect();
-    let keys_pressed = get_keys_pressed().into_iter().map(map_keycode).collect();
-    let mouse_position = mouse_position().into();
-    let wheel = mouse_wheel();
+pub struct InputAdapter {
+    events: Vec<InputEvent>,
+}
 
-    let mut buttons_down = vec![];
-    let mut buttons_up = vec![];
-    let buttons = [
-        (MouseButton::Left, 0),
-        (MouseButton::Right, 1),
-        (MouseButton::Middle, 2),
-    ];
-    for (button, code) in buttons {
-        if is_mouse_button_down(button) {
-            buttons_down.push(code);
-        }
-        if is_mouse_button_released(button) {
-            buttons_up.push(code);
-        }
+impl EventHandler for InputAdapter {
+    fn update(&mut self) {}
+
+    fn draw(&mut self) {}
+
+    fn mouse_motion_event(&mut self, x: f32, y: f32) {
+        self.events.push(InputEvent::MouseMove([x, y]))
     }
-    Input::new()
-        .viewport(viewport)
-        .mouse_position(mouse_position)
-        .mouse_buttons_down(buttons_down)
-        .mouse_buttons_up(buttons_up)
-        .mouse_wheel([wheel.0, wheel.1])
-        .characters(characters)
-        .keys_down(keys_down)
-        .keys_up(keys_up)
-        .keys_pressed(keys_pressed)
+
+    fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        let button = match button {
+            MouseButton::Left => MouseButtons::Left,
+            _ => MouseButtons::Right,
+        };
+        self.events.push(InputEvent::MouseMove([x, y]));
+        self.events.push(InputEvent::MouseButtonDown(button))
+    }
+
+    fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        let button = match button {
+            MouseButton::Left => MouseButtons::Left,
+            _ => MouseButtons::Right,
+        };
+        self.events.push(InputEvent::MouseMove([x, y]));
+        self.events.push(InputEvent::MouseButtonUp(button))
+    }
+}
+
+pub fn user_input<'f>(subscriber: usize) -> Input<'f> {
+    let viewport = [screen_width(), screen_height()];
+    let mut adapter = InputAdapter { events: vec![] };
+    repeat_all_miniquad_input(&mut adapter, subscriber);
+    Input::new().viewport(viewport).events(adapter.events)
 }
 
 pub fn map_keycode(code: KeyCode) -> Keys {

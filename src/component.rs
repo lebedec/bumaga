@@ -13,15 +13,15 @@ use taffy::{
     TaffyTree, TraversePartialTree,
 };
 
-use crate::api::{CallOld, Component, Input, Output};
+use crate::api::{CallOld, Component, Output};
 use crate::css::{read_css, read_css_unchecked, Css};
 use crate::html::{read_html, read_html_unchecked, Html};
-use crate::input::FakeFonts;
-use crate::models::{ElementId, Sizes};
+use crate::input::DummyFonts;
+use crate::models::Sizes;
 use crate::rendering::as_string;
 use crate::state::State;
 use crate::styles::create_element;
-use crate::{Element, Fonts, Keys, Source, LEFT_MOUSE_BUTTON};
+use crate::{Element, Fonts, Keys, Source};
 
 impl Component {
     pub fn watch_files<P: AsRef<Path>>(html_path: P, css_path: P, resources: P) -> Self {
