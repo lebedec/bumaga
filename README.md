@@ -23,6 +23,7 @@ The development of this library possible thanks to work of Rust enthusiasts:
         - static attributes ?
         - class dynamic
 - implement new callbacks
+    - bind with transformers ?!
 - fix defect of borders
 - windows + directx example ?
 - input.value separate state ?

@@ -5,7 +5,7 @@ use taffy::{Layout, NodeId};
 use crate::animation::{Animator, Transition};
 use crate::css::PropertyKey;
 use crate::styles::Scrolling;
-use crate::{CallOld, Handler};
+use crate::{Call, Handler};
 
 /// The most fundamental object for building a UI, Element contains layout and appearance.
 /// Element maps directly to the native rectangle view equivalent on whatever graphics engine
@@ -24,8 +24,7 @@ pub struct Element {
     /// The foreground color of element (most often text color).
     pub color: Rgba,
     /// The different properties of an element's text font.
-    pub text_style: TextStyle,
-    pub listeners_old: HashMap<String, CallOld>,
+    pub font: ElementFont,
     pub listeners: HashMap<String, Handler>,
     pub opacity: f32,
     pub transforms: Vec<TransformFunction>,
@@ -168,15 +167,15 @@ pub enum ObjectFit {
 }
 
 #[derive(Clone, Debug)]
-pub struct TextStyle {
+pub struct ElementFont {
     /// The font family.
-    pub font_family: String,
+    pub family: String,
     /// The font size.
-    pub font_size: f32,
+    pub size: f32,
     // The font style.
     // pub font_style: FontStyle,
     /// The font weight.
-    pub font_weight: u16,
+    pub weight: u16,
     // The font stretch.
     // pub font_stretch: FontStretchKeyword,
     /// The line height.

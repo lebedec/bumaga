@@ -1,7 +1,6 @@
-use bumaga::view_model::{Binding, ViewModel};
 use bumaga::{
-    Borders, Component, Element, Fonts, Fragment, Input, InputEvent, Keys, Layout, MouseButtons,
-    MyBorder, Rgba, TextStyle, TransformFunction, ValueExtensions, View,
+    Borders, Component, Element, ElementFont, Fonts, Fragment, Input, InputEvent, Keys, Layout,
+    MouseButtons, MyBorder, Rgba, TransformFunction, ValueExtensions, View,
 };
 use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
 use macroquad::miniquad::EventHandler;
@@ -25,7 +24,6 @@ async fn main() {
     let html = fs::read_to_string("../shared/view.html").unwrap();
     let css = fs::read_to_string("../shared/style.css").unwrap();
     let mut view = View::compile(&html, &css, "../shared/").unwrap();
-
     let mut todos_done = vec![];
     let mut todos = vec![
         "learn bumaga documentation".to_string(),
@@ -42,12 +40,15 @@ async fn main() {
         draw_scene();
 
         let value = json!({"todos": todos, "todo": todo});
-        let done = todos_done.clone();
-        let input = user_input(subscriber)
+        let is_done = |value| {
+            println!("IS DONE {todos_done:?} {}", todos_done.contains(&value));
+            todos_done.contains(&value).into()
+        };
+        let mut input = user_input(subscriber)
             .fonts(&mut fonts)
             .time(Duration::from_millis(16))
-            .value(value);
-        // .pipe("done", move |value| done.contains(&value).into());
+            .value(value)
+            .pipe("done", &is_done);
         let t1 = Instant::now();
         let output = view.update(input).unwrap();
         println!("bumaga time: {:?}", t1.elapsed());
@@ -56,14 +57,19 @@ async fn main() {
 
         draw_element(view.body(), &fonts, 0.0, 0.0);
 
-        for call in output.calls {
+        for call in output {
             match call.signature() {
                 ("update", [value]) => todo = value.as_string(),
                 ("append", [value]) => todos.push(value.as_string()),
-                ("finish", [value]) => todos_done.push(value.clone()),
+                ("finish", [value]) => {
+                    todos_done.push(value.clone());
+                    println!("DON: {todos_done:?}");
+                }
                 ("cancel", [value]) => todos_done.retain(|todo| todo != value),
                 ("remove", [value]) => todos.retain(|todo| todo != value),
-                _ => {}
+                (event, arguments) => {
+                    println!("CALL {event} {arguments:?}");
+                }
             };
         }
         next_frame().await
@@ -106,7 +112,7 @@ fn draw_element(element: Fragment, fonts: &FontSystem, px: f32, py: f32) {
     // draw_line()
     if let Some(text) = element.element.text.as_ref() {
         let text_params = TextParams {
-            font_size: element.element.text_style.font_size as u16,
+            font_size: element.element.font.size as u16,
             font: Some(&fonts.font),
             color: color(&element.element.color),
             ..Default::default()
@@ -115,7 +121,7 @@ fn draw_element(element: Fragment, fonts: &FontSystem, px: f32, py: f32) {
         draw_text_ex(
             &text.as_string(),
             x,
-            y + fonts.offset_y(&text.as_string(), &element.element.text_style),
+            y + fonts.offset_y(&text.as_string(), &element.element.font),
             text_params,
         );
     }
@@ -158,17 +164,17 @@ struct FontSystem {
 }
 
 impl FontSystem {
-    pub fn offset_y(&self, text: &str, style: &TextStyle) -> f32 {
-        let size = measure_text(text, Some(&self.font), style.font_size as u16, 1.0);
+    pub fn offset_y(&self, text: &str, style: &ElementFont) -> f32 {
+        let size = measure_text(text, Some(&self.font), style.size as u16, 1.0);
         size.offset_y
     }
 }
 
 impl Fonts for FontSystem {
-    fn measure(&mut self, text: &str, style: &TextStyle, _max_width: Option<f32>) -> [f32; 2] {
+    fn measure(&mut self, text: &str, style: &ElementFont, _max_width: Option<f32>) -> [f32; 2] {
         // NOTE: macroquad does not support width constraint measurement,
         // only single line text will be rendered correctly
-        let size = measure_text(text, Some(&self.font), style.font_size as u16, 1.0);
+        let size = measure_text(text, Some(&self.font), style.size as u16, 1.0);
         [size.width, size.height]
     }
 }

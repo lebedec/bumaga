@@ -13,12 +13,11 @@ use taffy::{
     TaffyTree, TraversePartialTree,
 };
 
-use crate::api::{CallOld, Component, Output};
+use crate::api::Component;
 use crate::css::{read_css, read_css_unchecked, Css};
 use crate::html::{read_html, read_html_unchecked, Html};
 use crate::input::DummyFonts;
 use crate::models::Sizes;
-use crate::rendering::as_string;
 use crate::state::State;
 use crate::styles::create_element;
 use crate::{Element, Fonts, Keys, Source};

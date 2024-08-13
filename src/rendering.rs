@@ -1,28 +1,13 @@
-use crate::css::{match_style, Str};
-use crate::html::{Binder, ElementBinding, Html, TextBinding, TextSpan};
-use crate::input::DummyFonts;
-use crate::models::Sizes;
-use crate::state::State;
-use crate::styles::{create_element, default_layout, inherit, Cascade};
-use crate::view_model::{Binding, Bindings, Reaction};
-use crate::{
-    CallOld, Component, Element, Fonts, Handler, Input, TextContent, ValueExtensions, ViewError,
-};
-use log::error;
-use serde_json::{json, Map, Value};
 use std::collections::HashMap;
-use std::fmt::format;
-use std::hash::{DefaultHasher, Hash, Hasher};
-use std::mem;
-use std::mem::take;
-use std::process::id;
-use std::time::Instant;
-use taffy::prelude::length;
-use taffy::style_helpers::TaffyMaxContent;
-use taffy::{
-    AlignItems, AvailableSpace, Dimension, Display, JustifyContent, NodeId, Size, Style,
-    TaffyError, TaffyTree, TraversePartialTree,
-};
+use std::hash::Hash;
+
+use serde_json::{json, Value};
+use taffy::{NodeId, TaffyTree};
+
+use crate::html::{ElementBinding, Html, TextBinding, TextSpan};
+use crate::styles::{create_element, default_layout};
+use crate::view_model::{Binding, Bindings, Schema};
+use crate::{BindingParams, Call, Component, Element, Handler, Input, TextContent, ViewError};
 
 impl Component {
     pub fn render_node(
@@ -56,7 +41,11 @@ impl Component {
                 TextSpan::String(span) => span,
                 TextSpan::Binder(binder) => {
                     let path = schema.field(&binder, locals);
-                    let binding = Binding::Text(node, index);
+                    let params = BindingParams::Text(node, index);
+                    let binding = Binding {
+                        params,
+                        pipe: binder.pipe.clone(),
+                    };
                     bindings.entry(path).or_default().push(binding);
                     binder.to_string()
                 }
@@ -111,17 +100,26 @@ impl Component {
                 }
                 ElementBinding::Attribute(key, binder) => {
                     let path = schema.field(&binder, locals);
-                    let binding = Binding::Attribute(node, key.clone());
+                    let params = BindingParams::Attribute(node, key.clone());
+                    let binding = Binding {
+                        params,
+                        pipe: binder.pipe.clone(),
+                    };
                     bindings.entry(path).or_default().push(binding);
                     element.attrs.insert(key, binder.to_string());
                 }
                 ElementBinding::Callback(event, function, argument) => {
+                    let argument = schema.field(&argument, locals);
                     let handler = Handler { function, argument };
                     element.listeners.insert(event.clone(), handler);
                 }
                 ElementBinding::Visibility(visible, binder) => {
                     let path = schema.field(&binder, locals);
-                    let binding = Binding::Visibility(node, visible);
+                    let params = BindingParams::Visibility(node, visible);
+                    let binding = Binding {
+                        params,
+                        pipe: binder.pipe.clone(),
+                    };
                     bindings.entry(path).or_default().push(binding);
                 }
                 _ => {}
@@ -132,7 +130,11 @@ impl Component {
             if let Some((name, count, binder)) = child.as_repeat() {
                 let array = schema.field(binder, locals);
                 let start = children.len();
-                let binding = Binding::Repeat(node, start, count);
+                let params = BindingParams::Repeat(node, start, count);
+                let binding = Binding {
+                    params,
+                    pipe: binder.pipe.clone(),
+                };
 
                 bindings.entry(array.clone()).or_default().push(binding);
                 let overridden = locals.remove(name);
@@ -202,39 +204,6 @@ impl Component {
     }
 }
 
-pub fn as_array(value: Option<&Value>) -> Option<&Vec<Value>> {
-    match value {
-        None => None,
-        Some(value) => value.as_array(),
-    }
-}
-
-pub fn as_string(value: Option<&Value>) -> String {
-    match value {
-        None => String::new(),
-        Some(value) => match value {
-            Value::Null => String::new(),
-            Value::Bool(value) => value.to_string(),
-            Value::Number(value) => value.to_string(),
-            Value::String(value) => value.clone(),
-            Value::Array(_) => String::from("[array]"),
-            Value::Object(_) => String::from("[object]"),
-        },
-    }
-}
-
-fn integer_decode(val: f64) -> (u64, i16, i8) {
-    let bits: u64 = unsafe { mem::transmute(val) };
-    let sign: i8 = if bits >> 63 == 0 { 1 } else { -1 };
-    let mut exponent: i16 = ((bits >> 52) & 0x7ff) as i16;
-    let mantissa = if exponent == 0 {
-        (bits & 0xfffffffffffff) << 1
-    } else {
-        (bits & 0xfffffffffffff) | 0x10000000000000
-    };
-    exponent -= 1023 + 52;
-    (mantissa, exponent, sign)
-}
 //
 // pub fn get_object_value(pipe: &str, input: &Input) -> serde_json::Value {
 //     let mut value = serde_json::Value::Null;
@@ -284,7 +253,7 @@ fn integer_decode(val: f64) -> (u64, i16, i8) {
 //     value
 // }
 
-fn eval_call(expression: &str, input: &Input) -> CallOld {
+fn eval_call(expression: &str, input: &Input) -> Call {
     let mut function = String::new();
     let mut arguments = vec![];
     let mut is_function = true;
@@ -310,115 +279,8 @@ fn eval_call(expression: &str, input: &Input) -> CallOld {
             }
         }
     }
-    CallOld {
+    Call {
         function,
         arguments,
-    }
-}
-
-pub struct Schema {
-    pub value: Value,
-}
-
-pub enum Token {
-    None,
-    Field(String),
-    Array(String, usize),
-}
-
-impl Schema {
-    pub fn new() -> Self {
-        Self { value: json!({}) }
-    }
-
-    pub fn index(&mut self, binder: &Binder, i: usize, locals: &HashMap<String, String>) -> String {
-        let path = self.get_value_path(&binder.path, locals);
-        let path = format!("{path}[{i}]");
-        Self::define_value(&mut self.value, &mut format!("{path}."));
-        path
-    }
-
-    pub fn field(&mut self, binder: &Binder, locals: &HashMap<String, String>) -> String {
-        let path = self.get_value_path(&binder.path, locals);
-        Self::define_value(&mut self.value, &mut format!("{path}."));
-        path
-    }
-
-    fn get_value_path(&mut self, path: &Vec<String>, locals: &HashMap<String, String>) -> String {
-        let head = &path[0];
-        let head = locals.get(head).unwrap_or(head);
-        let tail = &path[1..];
-        if tail.len() > 0 {
-            format!("{head}.{}", tail.join("."))
-        } else {
-            format!("{head}")
-        }
-    }
-
-    fn parse(input: &mut String) -> Token {
-        let mut field = String::new();
-        let mut index = String::new();
-        while input.len() > 0 {
-            let mut ch = input.remove(0);
-            if ch == '.' {
-                let field = take(&mut field);
-                let index = take(&mut index);
-                return if index.is_empty() {
-                    Token::Field(field)
-                } else {
-                    Token::Array(field, index.parse().unwrap_or(0))
-                };
-            } else if ch == '[' {
-                while input.len() > 0 {
-                    let ch = input.remove(0);
-                    if ch == ']' {
-                        break;
-                    } else {
-                        index.push(ch);
-                    }
-                }
-            } else {
-                field.push(ch);
-            }
-        }
-        Token::None
-    }
-
-    fn define_value(target: &mut Value, path: &mut String) {
-        let token = Self::parse(path);
-        match token {
-            Token::None => {}
-            Token::Field(field) => {
-                if !target.is_object() {
-                    *target = json!({});
-                }
-                let object = target.as_object_mut().unwrap();
-                if !object.contains_key(&field) {
-                    object.insert(field.clone(), Value::Null);
-                }
-                Self::define_value(object.get_mut(&field).unwrap(), path)
-            }
-            Token::Array(field, n) => {
-                if !target.is_object() {
-                    *target = json!({});
-                }
-                let object = target.as_object_mut().unwrap();
-                if !object
-                    .get(&field)
-                    .map(|field| field.is_array())
-                    .unwrap_or(false)
-                {
-                    object.insert(field.clone(), json!([]));
-                }
-                let array = object
-                    .get_mut(&field)
-                    .and_then(|field| field.as_array_mut())
-                    .unwrap();
-                if array.len() <= n {
-                    array.resize(n + 1, Value::Null);
-                }
-                Self::define_value(&mut array[n], path)
-            }
-        }
     }
 }

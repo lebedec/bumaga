@@ -8,8 +8,8 @@
         <span>Streamline Your Day, the Bumaga Way!</span>
     </header>
     <div class="scroll">
-        <div {todo}*100={todos} class="todo" [data-done]={todo|done} [onclick]~finish={todos}>
-            <span>My {todo}</span>
+        <div {todo}*100={todos} class="todo" [data-done]={todo|done} [onclick]~finish={todo}>
+            <span>My {todo} {todo|done}</span>
             <div>×</div>
         </div>
     </div>

@@ -3,7 +3,7 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::TextStyle;
+use crate::{ElementFont, Transformer};
 
 pub struct Input<'f> {
     pub(crate) fonts: Option<&'f mut dyn Fonts>,
@@ -11,6 +11,7 @@ pub struct Input<'f> {
     pub(crate) time: Duration,
     pub(crate) viewport: [f32; 2],
     pub(crate) events: Vec<InputEvent>,
+    pub(crate) transformers: HashMap<String, &'f dyn Fn(Value) -> Value>,
 }
 
 impl<'f> Input<'f> {
@@ -21,6 +22,7 @@ impl<'f> Input<'f> {
             time: Duration::from_micros(0),
             viewport: [800.0, 600.0],
             events: vec![],
+            transformers: HashMap::new(),
         }
     }
 
@@ -57,6 +59,11 @@ impl<'f> Input<'f> {
 
     pub fn event(mut self, event: InputEvent) -> Self {
         self.events.push(event);
+        self
+    }
+
+    pub fn pipe(mut self, name: &str, transformer: &'f dyn Fn(Value) -> Value) -> Self {
+        self.transformers.insert(name.to_string(), transformer);
         self
     }
 }
@@ -111,24 +118,24 @@ pub enum Keys {
 }
 
 pub trait Fonts {
-    fn measure(&mut self, text: &str, style: &TextStyle, max_width: Option<f32>) -> [f32; 2];
+    fn measure(&mut self, text: &str, style: &ElementFont, max_width: Option<f32>) -> [f32; 2];
 }
 
 pub(crate) struct DummyFonts;
 
 impl Fonts for DummyFonts {
-    fn measure(&mut self, text: &str, style: &TextStyle, max_width: Option<f32>) -> [f32; 2] {
+    fn measure(&mut self, text: &str, style: &ElementFont, max_width: Option<f32>) -> [f32; 2] {
         // NOTE: incorrect implementation, approximately calculates the text size
         // you should provide your own Fonts implementation
-        let width = text.len() as f32 * style.font_size * 0.75;
+        let width = text.len() as f32 * style.size * 0.75;
         match max_width {
-            None => [width, style.font_size],
+            None => [width, style.size],
             Some(max_width) => {
                 if max_width == 0.0 {
                     [0.0, 0.0]
                 } else {
                     let lines = 1.0 + (width / max_width).floor();
-                    [max_width, lines * style.font_size]
+                    [max_width, lines * style.size]
                 }
             }
         }

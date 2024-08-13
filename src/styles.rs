@@ -10,7 +10,8 @@ use crate::css::{
 use crate::html::TextBinding;
 use crate::models::Sizes;
 use crate::{
-    Background, Borders, Element, Input, Length, MyBorder, ObjectFit, TextStyle, TransformFunction,
+    Background, Borders, Element, ElementFont, Input, Length, MyBorder, ObjectFit,
+    TransformFunction,
 };
 use log::error;
 use std::collections::HashMap;
@@ -21,7 +22,7 @@ use taffy::{
     Style as LayoutStyle, TaffyTree,
 };
 
-impl TextStyle {
+impl ElementFont {
     pub const DEFAULT_FONT_FAMILY: &'static str = "system-ui";
     pub const DEFAULT_FONT_WEIGHT: u16 = 400;
     // pub const DEFAULT_FONT_STRETCH: FontStretchKeyword = FontStretchKeyword::Normal;
@@ -54,16 +55,15 @@ pub fn create_element(node: NodeId) -> Element {
             radius: [Length::zero(); 4],
         },
         color: [255, 255, 255, 255],
-        text_style: TextStyle {
-            font_family: TextStyle::DEFAULT_FONT_FAMILY.to_string(),
-            font_size: 16.0,
+        font: ElementFont {
+            family: ElementFont::DEFAULT_FONT_FAMILY.to_string(),
+            size: 16.0,
             // font_style: FontStyle::Normal,
-            font_weight: TextStyle::DEFAULT_FONT_WEIGHT,
+            weight: ElementFont::DEFAULT_FONT_WEIGHT,
             // font_stretch: TextStyle::DEFAULT_FONT_STRETCH,
             line_height: 16.0,
             // wrap: OverflowWrap::Normal,
         },
-        listeners_old: HashMap::new(),
         listeners: Default::default(),
         opacity: 1.0,
         transforms: vec![],
@@ -161,21 +161,21 @@ pub fn inherit(parent: &Element, element: &mut Element) {
     // direction
     // empty-cells
     // font-family
-    element.text_style.font_family = parent.text_style.font_family.clone();
+    element.font.family = parent.font.family.clone();
     // font-size
-    element.text_style.font_size = parent.text_style.font_size;
+    element.font.size = parent.font.size;
     // font-style
     //view.text_style.font_style = parent.text_style.font_style.clone();
     // font-variant
     // font-weight
-    element.text_style.font_weight = parent.text_style.font_weight;
+    element.font.weight = parent.font.weight;
     // font-size-adjust
     // font-stretch
     //view.text_style.font_stretch = parent.text_style.font_stretch.clone();
     // font
     // letter-spacing
     // line-height
-    element.text_style.line_height = parent.text_style.line_height;
+    element.font.line_height = parent.font.line_height;
     // list-style-image
     // list-style-position
     // list-style-type
@@ -386,11 +386,10 @@ impl<'c> Cascade<'c> {
             }
             (PropertyKey::Color, [color]) => element.color = resolve_color(color, self)?,
             (PropertyKey::FontSize, [size]) => {
-                element.text_style.font_size =
-                    resolve_length(size, self, self.sizes.parent_font_size)?;
+                element.font.size = resolve_length(size, self, self.sizes.parent_font_size)?;
             }
             (PropertyKey::FontFamily, [value]) => {
-                element.text_style.font_family = resolve_string(value, self)?;
+                element.font.family = resolve_string(value, self)?;
             }
             (PropertyKey::Border, [width, _style, color]) => {
                 element.borders.top.width = dimension_length(width, self)?;

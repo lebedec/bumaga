@@ -18,10 +18,10 @@ use crate::input::DummyFonts;
 use crate::models::Sizes;
 use crate::state::State;
 use crate::styles::{create_element, Scrolling};
-use crate::{CallOld, Component, Element, Fonts, Input, Keys, Output, Source, ViewError};
+use crate::{Call, Component, Element, Fonts, Input, Keys, Source, ViewError};
 
 impl Component {
-    pub fn update(&mut self, mut input: Input) -> Result<Output, ViewError> {
+    pub fn update(&mut self, mut input: Input) -> Result<(), ViewError> {
         unimplemented!()
         // self.watch_source_changes();
         // let (root, tree) = self.render_tree(&mut input)?;
@@ -70,7 +70,7 @@ impl Component {
             .ok_or(ViewError::ElementNotFound)
     }
 
-    fn handle_user_input(&mut self, input: &Input, output: &mut Output) -> Result<(), ViewError> {
+    fn handle_user_input(&mut self, input: &Input) -> Result<(), ViewError> {
         // TODO: propagation
         unimplemented!()
         // if let Some(current) = output.scroll {
@@ -162,33 +162,10 @@ impl Component {
         // Ok(())
     }
 
-    fn gather(&mut self, node: NodeId, output: &mut Output) {
-        unimplemented!()
-        // let element = match self.tree.get_node_context_mut(node) {
-        //     None => {
-        //         error!("unable to traverse node {node:?} has no context");
-        //         return;
-        //     }
-        //     Some(element) => element,
-        // };
-        // output.elements.push(element.clone());
-        // match self.tree.children(node) {
-        //     Ok(children) => {
-        //         for child in children {
-        //             self.gather(child, output);
-        //         }
-        //     }
-        //     Err(error) => {
-        //         error!("unable to traverse node {node:?}, {error:?}")
-        //     }
-        // }
-    }
-
     fn process_final_layout(
         &mut self,
         node: NodeId,
         input: &Input,
-        output: &mut Output,
         location: Point<f32>,
         mut clip: Option<Layout>,
     ) {
@@ -238,56 +215,6 @@ impl Component {
         // }
     }
 }
-
-impl Output {
-    pub fn new() -> Self {
-        Self {
-            hover: None,
-            scroll: None,
-            calls: vec![],
-            elements: vec![],
-        }
-    }
-}
-
-impl Element {
-    #[inline(always)]
-    fn fire(&self, event: &str, output: &mut Output) {
-        if let Some(call) = self.listeners_old.get(event).cloned() {
-            output.calls.push(call);
-        }
-    }
-
-    #[inline(always)]
-    fn fire_opt(&self, event: &str, arguments: Vec<Value>, output: &mut Output) {
-        if let Some(mut call) = self.listeners_old.get(event).cloned() {
-            if call.arguments.len() == 0 {
-                call.arguments = arguments;
-            }
-            output.calls.push(call);
-        }
-    }
-}
-
-// impl<'f> Input<'f> {
-//     fn is_mouse_down(&self) -> bool {
-//         self.mouse_buttons_down.contains(&LEFT_MOUSE_BUTTON)
-//     }
-//
-//     fn is_key_down(&self, key: Keys) -> bool {
-//         self.keys_down
-//             .iter()
-//             .position(|key_down| key_down == &key)
-//             .is_some()
-//     }
-//
-//     fn is_key_pressed(&self, key: Keys) -> bool {
-//         self.keys_pressed
-//             .iter()
-//             .position(|key_down| key_down == &key)
-//             .is_some()
-//     }
-// }
 
 fn is_element_contains(layout: &Layout, point: [f32; 2]) -> bool {
     let x = point[0] >= layout.location.x && point[0] <= layout.location.x + layout.size.width;

@@ -3,6 +3,7 @@ pub use api::*;
 pub use element::*;
 pub use input::*;
 pub use view::*;
+pub use view_model::*;
 
 mod animation;
 mod api;
@@ -20,4 +21,4 @@ mod styles;
 mod update;
 mod value;
 mod view;
-pub mod view_model;
+mod view_model;

@@ -2,11 +2,10 @@ use crate::css::{read_css, Css, PseudoClassMatcher};
 use crate::html::{read_html, Html};
 use crate::input::DummyFonts;
 use crate::models::Sizes;
-use crate::rendering::Schema;
 use crate::state::State;
 use crate::styles::{create_element, default_layout, inherit, Cascade, Scrolling};
-use crate::view_model::{Reaction, ViewModel};
-use crate::{Component, Element, Fonts, Input, InputEvent, MouseButtons, Output, ViewError};
+use crate::view_model::{Reaction, Schema, ViewModel};
+use crate::{Call, Component, Element, Fonts, Input, InputEvent, MouseButtons, ViewError};
 use log::error;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
@@ -25,7 +24,6 @@ pub struct View {
     body: NodeId,
     css: Css,
     resources: String,
-    state: ViewState,
 }
 
 impl View {
@@ -44,7 +42,6 @@ impl View {
         tree.add_child(root, body)?;
         let model = ViewModel::create(bindings, schema.value);
         let resources = resources.to_string();
-        let state = ViewState::default();
         Ok(Self {
             model,
             tree,
@@ -52,12 +49,13 @@ impl View {
             body,
             css,
             resources,
-            state,
         })
     }
 
-    pub fn update(&mut self, mut input: Input) -> Result<Output, ViewError> {
-        let reactions = self.model.bind(&Value::Object(input.value.clone()));
+    pub fn update(&mut self, mut input: Input) -> Result<Vec<Call>, ViewError> {
+        let reactions = self
+            .model
+            .bind(&Value::Object(input.value.clone()), &input.transformers);
         for reaction in reactions {
             self.update_tree(reaction).unwrap();
         }
@@ -86,9 +84,7 @@ impl View {
             |size, space, _, view, _| measure_text(&mut input, size, space, view),
         )?;
         self.compute_positions_and_clipping(self.body, Point::ZERO);
-        let mut output = Output::new();
-        self.handle_user_input(&input, &mut output)?;
-        Ok(output)
+        self.model.handle_output(&input, self.body, &mut self.tree)
     }
 
     pub fn compute_positions_and_clipping(&mut self, node: NodeId, parent: Point<f32>) {
@@ -228,7 +224,7 @@ impl View {
             _ => {
                 let children = self.tree.children(node)?;
                 for child in children {
-                    sizes.parent_font_size = element.text_style.font_size;
+                    sizes.parent_font_size = element.font.size;
                     self.apply_styles(child, input, sizes)?;
                 }
             }
@@ -245,148 +241,6 @@ impl View {
             layout,
             tree: &self.tree,
         }
-    }
-
-    fn capture_element_events(&mut self, node: NodeId, events: &Vec<InputEvent>) {
-        let element = self.tree.get_node_context_mut(node).unwrap();
-        for event in events {
-            match *event {
-                InputEvent::MouseMove(cursor) => {
-                    let hover = hovers(cursor, element);
-                    if hover {
-                        if !element.state.hover {
-                            // fire enter
-                            println!("enter {}", element.tag);
-                        }
-                        element.state.hover = true;
-                    } else {
-                        if element.state.hover {
-                            // fire leave
-                            println!("leave {}", element.tag);
-                        }
-                        element.state.hover = false;
-                    }
-                }
-                InputEvent::MouseButtonDown(button) => {
-                    if button == MouseButtons::Left && element.state.hover {
-                        element.state.active = true;
-                    }
-                }
-                InputEvent::MouseButtonUp(button) => {
-                    if button == MouseButtons::Left {
-                        element.state.active = false;
-                        if element.state.hover {
-                            // fire click
-                            println!("click {}", element.tag);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        for child in self.tree.children(node).unwrap() {
-            self.capture_element_events(child, events);
-        }
-    }
-
-    fn handle_user_input(&mut self, input: &Input, output: &mut Output) -> Result<(), ViewError> {
-        for event in input.events.iter() {
-            match *event {
-                InputEvent::MouseMove(mouse) => {
-                    self.state.mouse = mouse;
-                }
-                _ => {}
-            }
-        }
-        self.capture_element_events(self.body, &input.events);
-
-        // if let Some(current) = output.scroll {
-        //     let element = self.get_element_mut(current)?;
-        //     if let Some(scrolling) = element.scrolling.as_mut() {
-        //         scrolling.offset(input.mouse_wheel[0], input.mouse_wheel[1]);
-        //     }
-        // }
-
-        // Reset focus
-        // let mut focus = None;
-        //
-        // if let Some(current) = output.hover {
-        //     if let Some(previous) = self.state.hover {
-        //         if previous != current {
-        //             self.state.hover = None;
-        //             let element = self.get_element_mut(previous)?;
-        //             element.fire("onmouseleave", output);
-        //             element.remove("hover");
-        //         }
-        //     }
-        //     if self.state.hover != Some(current) {
-        //         self.state.hover = Some(current);
-        //         let element = self.get_element_mut(current)?;
-        //         element.fire("onmouseenter", output);
-        //         element.insert("hover");
-        //     }
-        //     let element = self.get_element_mut(current)?;
-        //     if input.is_mouse_down() {
-        //         // Sets focus on the specified element, if it can be focused
-        //         match element.tag.as_str() {
-        //             "input" => {
-        //                 focus = Some(current);
-        //             }
-        //             _ => {}
-        //         }
-        //         element.fire("onclick", output);
-        //     }
-        // }
-        //
-        // if let Some(previous) = self.state.focus {
-        //     let element = self.get_element_mut(previous)?;
-        //     let click_out_of_element = input.is_mouse_down()
-        //         && !is_element_contains(&element.layout, input.mouse_position);
-        //     if focus.is_some() && focus != Some(previous) || click_out_of_element {
-        //         element.fire("onblur", output);
-        //         element.remove("focus");
-        //         self.state.focus = None;
-        //     }
-        // }
-        // if let Some(current) = focus {
-        //     if Some(current) != self.state.focus {
-        //         let element = self.get_element_mut(current)?;
-        //         element.fire("onfocus", output);
-        //         element.insert("focus");
-        //         self.state.focus = Some(current);
-        //     }
-        // }
-        //
-        // if let Some(current) = self.state.focus {
-        //     let element = self.get_element_mut(current)?;
-        //     match element.tag.as_str() {
-        //         "input" => {
-        //             let mut value = element.attrs.get("value").cloned().unwrap_or_default();
-        //             let mut has_changes = false;
-        //             if !input.characters.is_empty() {
-        //                 has_changes = true;
-        //                 for char in &input.characters {
-        //                     if char != &'\r' {
-        //                         value.push(*char);
-        //                     }
-        //                 }
-        //             }
-        //             if input.is_key_pressed(Keys::Backspace) && value.len() > 0 {
-        //                 has_changes = true;
-        //                 value.pop();
-        //             }
-        //             if input.is_key_pressed(Keys::Enter) {
-        //                 element.fire_opt("onchange", vec![Value::String(value.clone())], output);
-        //             }
-        //             if has_changes {
-        //                 element.fire_opt("oninput", vec![Value::String(value.clone())], output);
-        //             }
-        //         }
-        //         _ => {}
-        //     }
-        // }
-
-        Ok(())
     }
 }
 
@@ -445,18 +299,12 @@ fn measure_text(
             AvailableSpace::Definite(width) => Some(width),
         });
         let [width, height] = match input.fonts.as_mut() {
-            None => DummyFonts.measure(&text, &element.text_style, max_width),
-            Some(fonts) => fonts.measure(&text, &element.text_style, max_width),
+            None => DummyFonts.measure(&text, &element.font, max_width),
+            Some(fonts) => fonts.measure(&text, &element.font, max_width),
         };
         return Size { width, height };
     }
     Size::ZERO
-}
-
-#[derive(Default)]
-struct ViewState {
-    focus: Option<NodeId>,
-    mouse: [f32; 2],
 }
 
 impl PseudoClassMatcher for View {
@@ -467,7 +315,7 @@ impl PseudoClassMatcher for View {
             /// The :focus CSS pseudo-class represents an element (such as a form input) that
             /// has received focus. It is generally triggered when the user clicks or taps
             /// on an element or selects it with the keyboard's Tab key.
-            "focus" => self.state.focus == Some(element.node),
+            "focus" => self.model.focus == Some(element.node),
             /// The :blank CSS pseudo-class selects empty user input elements (e.g. <input>)
             "blank" => element
                 .state
@@ -481,10 +329,4 @@ impl PseudoClassMatcher for View {
             }
         }
     }
-}
-
-fn hovers(point: [f32; 2], element: &Element) -> bool {
-    let x = point[0] - element.position[0];
-    let y = point[1] - element.position[1];
-    x >= 0.0 && x <= element.size[0] && y >= 0.0 && y <= element.size[1]
 }
