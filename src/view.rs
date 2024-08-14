@@ -1,15 +1,17 @@
 use crate::css::{read_css, Css, PseudoClassMatcher};
 use crate::html::{read_html, Html};
 use crate::input::DummyFonts;
-use crate::models::Sizes;
-use crate::state::State;
-use crate::styles::{create_element, default_layout, inherit, Cascade, Scrolling};
+use crate::rendering::Renderer;
+use crate::styles::{create_element, default_layout, inherit, Cascade, Scrolling, Sizes};
 use crate::view_model::{Reaction, Schema, ViewModel};
-use crate::{Call, Component, Element, Fonts, Input, InputEvent, MouseButtons, ViewError};
+use crate::{Call, Element, Fonts, Input, InputEvent, MouseButtons, Transformer, ViewError};
 use log::error;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
+use std::fs;
 use std::ops::{Add, Deref, DerefMut};
+use std::path::PathBuf;
+use std::time::SystemTime;
 use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
 use taffy::{
@@ -19,27 +21,51 @@ use taffy::{
 
 pub struct View {
     model: ViewModel,
-    tree: TaffyTree<Element>,
+    pub(crate) tree: TaffyTree<Element>,
     root: NodeId,
     body: NodeId,
     css: Css,
+    html_source: Source,
+    css_source: Source,
     resources: String,
 }
 
 impl View {
     pub fn compile(html: &str, css: &str, resources: &str) -> Result<Self, ViewError> {
-        let css = read_css(css)?;
+        let html = Source::memory(html);
+        let css = Source::memory(css);
+        Self::create(html, css, resources)
+    }
+
+    pub fn watch(html: &str, css: &str, resources: &str) -> Result<Self, ViewError> {
+        let html = Source::file(html);
+        let css = Source::file(css);
+        Self::create(html, css, resources)
+    }
+
+    fn create(
+        mut html_source: Source,
+        mut css_source: Source,
+        resources: &str,
+    ) -> Result<Self, ViewError> {
+        let html = html_source.get_content()?;
+        let css = css_source.get_content()?;
         let html = read_html(&html)?;
-        let mut tree = TaffyTree::new();
-        let mut bindings = BTreeMap::new();
-        let mut locals = HashMap::new();
-        let mut schema = Schema::new();
-        let root = tree.new_leaf(default_layout())?;
-        tree.set_node_context(root, Some(create_element(root)))?;
-        let body = html.children.last().cloned().expect("body must be found");
-        let body =
-            Component::render_node(body, &mut tree, &mut bindings, &mut locals, &mut schema)?;
-        tree.add_child(root, body)?;
+        let css = read_css(&css)?;
+        let mut renderer = Renderer::new();
+        // let mut tree = TaffyTree::new();
+        // let mut bindings = BTreeMap::new();
+        // let mut locals = HashMap::new();
+        // let mut schema = Schema::new();
+        // let root = tree.new_leaf(default_layout())?;
+        // tree.set_node_context(root, Some(create_element(root)))?;
+        // let body = html.children.last().cloned().expect("body must be found");
+        // let body = render_node(body, &mut tree, &mut bindings, &mut locals, &mut schema)?;
+        // tree.add_child(root, body)?;
+        let [root, body] = renderer.render(html)?;
+        let bindings = renderer.bindings;
+        let schema = renderer.schema;
+        let tree = renderer.tree;
         let model = ViewModel::create(bindings, schema.value);
         let resources = resources.to_string();
         Ok(Self {
@@ -48,14 +74,38 @@ impl View {
             root,
             body,
             css,
+            html_source,
+            css_source,
             resources,
         })
     }
 
+    pub fn pipe(mut self, name: &str, transformer: Transformer) -> Self {
+        self.model
+            .transformers
+            .insert(name.to_string(), transformer);
+        self
+    }
+
+    fn watch_changes(&mut self) {
+        if self.html_source.detect_changes() || self.css_source.detect_changes() {
+            if let Ok(view) = View::create(
+                self.html_source.clone(),
+                self.css_source.clone(),
+                &self.resources,
+            ) {
+                self.model = view.model;
+                self.tree = view.tree;
+                self.root = view.root;
+                self.body = view.body;
+                self.css = view.css;
+            }
+        }
+    }
+
     pub fn update(&mut self, mut input: Input) -> Result<Vec<Call>, ViewError> {
-        let reactions = self
-            .model
-            .bind(&Value::Object(input.value.clone()), &input.transformers);
+        self.watch_changes();
+        let reactions = self.model.bind(&Value::Object(input.value.clone()));
         for reaction in reactions {
             self.update_tree(reaction).unwrap();
         }
@@ -83,20 +133,37 @@ impl View {
             Size::MAX_CONTENT,
             |size, space, _, view, _| measure_text(&mut input, size, space, view),
         )?;
-        self.compute_positions_and_clipping(self.body, Point::ZERO);
+        // TODO: clipping of viewport
+        self.compute_positions_and_clipping(self.body, Point::ZERO, None)?;
         self.model.handle_output(&input, self.body, &mut self.tree)
     }
 
-    pub fn compute_positions_and_clipping(&mut self, node: NodeId, parent: Point<f32>) {
-        let layout = self.tree.get_final_layout(node);
-        let position = layout.location.add(parent);
-        let size = [layout.size.width, layout.size.height];
-        let element = self.tree.get_node_context_mut(node).unwrap();
-        element.position = [position.x, position.y];
-        element.size = size;
-        for child in self.tree.children(node).unwrap() {
-            self.compute_positions_and_clipping(child, position);
+    pub fn compute_positions_and_clipping(
+        &mut self,
+        node: NodeId,
+        location: Point<f32>,
+        mut clipping: Option<Layout>,
+    ) -> Result<(), ViewError> {
+        let mut layout = self.tree.get_final_layout(node).clone();
+        let style = self.tree.style(node)?;
+        if style.position == Position::Relative {
+            layout.location = layout.location.add(location);
         }
+        let element = self.tree.get_node_context_mut(node).unwrap();
+        element.position = [layout.location.x, layout.location.y];
+        element.size = [layout.size.width, layout.size.height];
+        element.scrolling = Scrolling::ensure(&layout, &element.scrolling);
+        element.clipping = clipping;
+        let mut location = layout.location;
+        if let Some(scrolling) = element.scrolling.as_ref() {
+            clipping = Some(layout.clone());
+            location.x -= scrolling.x;
+            location.y -= scrolling.y;
+        }
+        for child in self.tree.children(node).unwrap() {
+            self.compute_positions_and_clipping(child, location, clipping)?;
+        }
+        Ok(())
     }
 
     pub fn update_tree(&mut self, reaction: Reaction) -> Result<(), ViewError> {
@@ -138,7 +205,9 @@ impl View {
                     }
                 }
                 for node in hidden {
-                    self.tree.remove_child(parent, *node)?;
+                    if visible.contains(node) {
+                        self.tree.remove_child(parent, *node)?;
+                    }
                 }
             }
             Reaction::Bind { node, key, value } => {
@@ -146,7 +215,15 @@ impl View {
                     .tree
                     .get_node_context_mut(node)
                     .ok_or(ViewError::ElementNotFound)?;
-                element.attrs.insert(key, value);
+                element.attrs.insert(key.clone(), value.clone());
+                let node = element.node;
+                match element.tag.as_str() {
+                    "input" => match key.as_str() {
+                        "value" => self.update_input_view(node, value)?,
+                        _ => {}
+                    },
+                    _ => {}
+                }
             }
         }
         Ok(())
@@ -292,7 +369,7 @@ fn measure_text(
         None => return Size::ZERO,
         Some(element) => element,
     };
-    if let Some(text) = element.text.as_ref().map(|text| text.spans.join(" ")) {
+    if let Some(text) = element.text.as_ref().map(|text| text.to_string()) {
         let max_width = size.width.map(Some).unwrap_or_else(|| match space.width {
             AvailableSpace::MinContent => Some(0.0),
             AvailableSpace::MaxContent => None,
@@ -315,7 +392,7 @@ impl PseudoClassMatcher for View {
             /// The :focus CSS pseudo-class represents an element (such as a form input) that
             /// has received focus. It is generally triggered when the user clicks or taps
             /// on an element or selects it with the keyboard's Tab key.
-            "focus" => self.model.focus == Some(element.node),
+            "focus" => element.state.focus,
             /// The :blank CSS pseudo-class selects empty user input elements (e.g. <input>)
             "blank" => element
                 .state
@@ -326,6 +403,57 @@ impl PseudoClassMatcher for View {
             _ => {
                 error!("unable to match unknown pseudo class {class}");
                 false
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+enum Source {
+    Memory(String),
+    File(PathBuf, SystemTime),
+}
+
+impl Source {
+    fn memory(content: &str) -> Self {
+        Self::Memory(content.to_string())
+    }
+
+    fn file(path: &str) -> Self {
+        Self::File(PathBuf::from(path), SystemTime::UNIX_EPOCH)
+    }
+
+    fn get_content(&mut self) -> Result<String, ViewError> {
+        match self {
+            Source::Memory(content) => Ok(content.clone()),
+            Source::File(path, modified) => {
+                *modified = Self::modified(path);
+                fs::read_to_string(path).map_err(ViewError::from)
+            }
+        }
+    }
+
+    fn detect_changes(&mut self) -> bool {
+        match self {
+            Source::Memory(_) => false,
+            Source::File(path, modified) => {
+                let timestamp = Self::modified(&path);
+                if *modified < timestamp {
+                    *modified = timestamp;
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    fn modified(path: &PathBuf) -> SystemTime {
+        match fs::metadata(path).and_then(|meta| meta.modified()) {
+            Ok(modified) => modified,
+            Err(error) => {
+                error!("unable to get {} metadata, {error:?}", path.display());
+                SystemTime::now()
             }
         }
     }

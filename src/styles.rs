@@ -1,3 +1,13 @@
+use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
+
+use log::error;
+use taffy::style_helpers::TaffyZero;
+use taffy::{
+    Dimension, Layout, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect,
+    Style as LayoutStyle, TaffyTree,
+};
+
 use crate::animation::{
     AnimationDirection, AnimationFillMode, AnimationIterations, AnimationResult, Animator,
     TimingFunction, Transition,
@@ -8,18 +18,9 @@ use crate::css::{
     Var,
 };
 use crate::html::TextBinding;
-use crate::models::Sizes;
 use crate::{
     Background, Borders, Element, ElementFont, Input, Length, MyBorder, ObjectFit,
     TransformFunction,
-};
-use log::error;
-use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
-use taffy::style_helpers::TaffyZero;
-use taffy::{
-    Dimension, Layout, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect,
-    Style as LayoutStyle, TaffyTree,
 };
 
 impl ElementFont {
@@ -69,7 +70,7 @@ pub fn create_element(node: NodeId) -> Element {
         transforms: vec![],
         animator: Animator::default(),
         scrolling: None,
-        clip: None,
+        clipping: None,
         transitions: HashMap::default(),
         state: Default::default(),
     }
@@ -106,7 +107,8 @@ impl Scrolling {
         }
     }
 
-    pub fn offset(&mut self, x: f32, y: f32) {
+    pub fn offset(&mut self, wheel: [f32; 2]) {
+        let [x, y] = wheel;
         if x != 0.0 {
             self.x += x.signum() * 50.0;
             self.x = self.x.min(self.scroll_x).max(0.0);
@@ -1099,4 +1101,12 @@ fn map_align_content(keyword: &str) -> Result<Option<taffy::AlignContent>, Casca
         keyword => return CascadeError::invalid_keyword(keyword),
     };
     Ok(Some(align))
+}
+
+#[derive(Clone, Copy)]
+pub struct Sizes {
+    pub root_font_size: f32,
+    pub parent_font_size: f32,
+    pub viewport_width: f32,
+    pub viewport_height: f32,
 }

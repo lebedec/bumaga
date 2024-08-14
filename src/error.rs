@@ -1,6 +1,9 @@
+use std::io;
+
+use taffy::TaffyError;
+
 use crate::css;
 use crate::html;
-use taffy::TaffyError;
 
 #[derive(Debug)]
 pub enum ViewError {
@@ -10,6 +13,8 @@ pub enum ViewError {
     ParentNotFound,
     Html(html::ReaderError),
     Css(css::ReaderError),
+    Io(io::Error),
+    BodyNotFound,
 }
 
 impl From<TaffyError> for ViewError {
@@ -27,5 +32,11 @@ impl From<html::ReaderError> for ViewError {
 impl From<css::ReaderError> for ViewError {
     fn from(error: css::ReaderError) -> Self {
         ViewError::Css(error)
+    }
+}
+
+impl From<io::Error> for ViewError {
+    fn from(error: io::Error) -> Self {
+        ViewError::Io(error)
     }
 }

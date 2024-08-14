@@ -1,5 +1,5 @@
-<html>
-<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<html lang="en">
+<meta charset="UTF-8">
 <link href="style.css" rel="stylesheet">
 <body>
 <div class="panel">
@@ -8,12 +8,12 @@
         <span>Streamline Your Day, the Bumaga Way!</span>
     </header>
     <div class="scroll">
-        <div {todo}*100={todos} class="todo" [data-done]={todo|done} [onclick]~finish={todo}>
-            <span>My {todo} {todo|done}</span>
+        <div {todo}*100={todos} class="todo" [onclick]~remove={todo}>
+            <span>{todo}</span>
             <div>×</div>
         </div>
     </div>
-    <input [value]={todo} [oninput]~update={this} [onchange]~append={this}/>
+    <input value="Todo" [onchange]~append={this}/>
 </div>
 </body>
 </html>

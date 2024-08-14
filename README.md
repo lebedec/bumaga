@@ -17,16 +17,9 @@ The development of this library possible thanks to work of Rust enthusiasts:
 
 - check performance, use VTune (need < 1ms 100 elements)
     - separate to thread
-    - measure text size skip ?!
-    - cache for css style apply
-        - element tag is static
-        - static attributes ?
-        - class dynamic
-- implement new callbacks
-    - bind with transformers ?!
 - fix defect of borders
 - windows + directx example ?
-- input.value separate state ?
+- scrollbars
 - translation ?!
 - book with concepts, architecture and tutorial https://github.com/rust-lang/mdBook
 - share
@@ -36,7 +29,7 @@ The development of this library possible thanks to work of Rust enthusiasts:
 
 ## What it is not
 
-+ Not a HTML/CSS/script engine or full spec implemenation (look [sciter](https://github.com/sciter-sdk/rust-sciter) if
++ Not an HTML/CSS/script engine or full spec implemenation (look [sciter](https://github.com/sciter-sdk/rust-sciter) if
   you need)
 + Not a drawing solution, just abstract drawing instructions in result
 + Not a text rendering engine (actually you should provide one for correct work)

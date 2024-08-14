@@ -1,4 +1,4 @@
-use crate::{Element, Input, InputEvent, MouseButtons, ViewError};
+use crate::{Element, Input, InputEvent, Keys, MouseButtons, ValueExtensions, ViewError};
 use log::error;
 use pest::pratt_parser::Op;
 use serde::de::Unexpected::Str;
@@ -8,15 +8,15 @@ use taffy::{NodeId, TaffyTree};
 
 pub type Bindings = BTreeMap<String, Vec<Binding>>;
 
-pub trait Transformer: Fn(Value) -> Value {}
+pub type Transformer = fn(Value) -> Value;
 
 pub struct ViewModel {
     bindings: Bindings,
     model: Value,
-    transformers: HashMap<String, Box<dyn Fn(Value) -> Value>>,
+    pub(crate) transformers: HashMap<String, Transformer>,
     // state
-    pub(crate) focus: Option<NodeId>,
-    mouse: [f32; 2],
+    // pub(crate) focus: Option<NodeId>,
+    pub(crate) mouse: [f32; 2],
 }
 
 impl ViewModel {
@@ -25,16 +25,11 @@ impl ViewModel {
             bindings,
             model,
             transformers: HashMap::new(),
-            focus: None,
             mouse: [0.0, 0.0],
         }
     }
 
-    pub fn bind(
-        &mut self,
-        value: &Value,
-        transformers: &HashMap<String, &dyn Fn(Value) -> Value>,
-    ) -> Vec<Reaction> {
+    pub fn bind(&mut self, value: &Value) -> Vec<Reaction> {
         let mut reactions = vec![];
         Self::bind_value(
             &mut self.model,
@@ -42,7 +37,7 @@ impl ViewModel {
             "",
             &self.bindings,
             &mut reactions,
-            transformers,
+            &self.transformers,
         );
         reactions
     }
@@ -53,7 +48,7 @@ impl ViewModel {
         path: &str,
         bindings: &Bindings,
         reactions: &mut Vec<Reaction>,
-        transformers: &HashMap<String, &dyn Fn(Value) -> Value>,
+        transformers: &HashMap<String, Transformer>,
     ) {
         match (&mut dst, src) {
             (Value::Array(current), Value::Array(next)) => {
@@ -101,7 +96,7 @@ impl ViewModel {
         value: &Value,
         bindings: &Bindings,
         reactions: &mut Vec<Reaction>,
-        transformers: &HashMap<String, &dyn Fn(Value) -> Value>,
+        transformers: &HashMap<String, Transformer>,
     ) {
         if let Some(bindings) = bindings.get(path) {
             for binding in bindings {
@@ -140,8 +135,32 @@ impl ViewModel {
             }
         }
         let mut output = vec![];
-        self.capture_element_events(body, &input.events, &mut output, tree);
+        let mut focus = None;
+        self.capture_element_events(body, &input.events, &mut output, tree, &mut focus)?;
         Ok(output)
+    }
+
+    fn fire(&self, element: &Element, event: &str, this: Value, output: &mut Vec<Call>) {
+        if let Some(handler) = element.listeners.get(event) {
+            let mut value = if handler.argument == Schema::THIS {
+                this
+            } else {
+                self.model
+                    .pointer(&handler.argument)
+                    .cloned()
+                    .unwrap_or(Value::Null)
+            };
+            for name in &handler.pipe {
+                match self.transformers.get(name) {
+                    Some(transform) => value = transform(value),
+                    None => error!("unable to bind value, transformer {name} not found"),
+                }
+            }
+            output.push(Call {
+                function: handler.function.clone(),
+                arguments: vec![value],
+            })
+        }
     }
 
     fn capture_element_events(
@@ -150,10 +169,53 @@ impl ViewModel {
         events: &Vec<InputEvent>,
         output: &mut Vec<Call>,
         tree: &mut TaffyTree<Element>,
-    ) {
-        let element = tree.get_node_context_mut(node).unwrap();
+        focus: &mut Option<NodeId>,
+    ) -> Result<(), ViewError> {
         for event in events {
+            let element = tree.get_node_context_mut(node).unwrap();
             match *event {
+                InputEvent::Char(char) if element.state.focus => match element.tag.as_str() {
+                    "input" => {
+                        let value = element
+                            .state
+                            .value
+                            .as_mut()
+                            .expect("input element has value");
+                        value.push(char);
+                        let value = value.clone();
+                        self.fire(element, "oninput", value.clone().into(), output);
+                        self.update_input_value(element.node, value.clone(), tree)?;
+                    }
+                    _ => {}
+                },
+                InputEvent::KeyDown(key) => {}
+                InputEvent::KeyUp(key) if element.state.focus => {
+                    if let Some(value) = element.state.value.as_ref() {
+                        if key == Keys::Enter {
+                            self.fire(element, "onchange", value.clone().into(), output);
+                        }
+                        if key == Keys::Backspace {
+                            let value = element
+                                .state
+                                .value
+                                .as_mut()
+                                .expect("input element has value");
+                            if value.pop().is_some() {
+                                let value = value.clone();
+                                self.fire(element, "oninput", value.clone().into(), output);
+                                self.update_input_value(element.node, value.clone(), tree)?;
+                            }
+                        }
+                    }
+                    if key == Keys::Tab {
+                        // next focus
+                    }
+                }
+                InputEvent::MouseWheel(wheel) if element.state.hover => {
+                    if let Some(scrolling) = element.scrolling.as_mut() {
+                        scrolling.offset(wheel);
+                    }
+                }
                 InputEvent::MouseMove(cursor) => {
                     let hover = hovers(cursor, element);
                     if hover {
@@ -174,25 +236,28 @@ impl ViewModel {
                     if button == MouseButtons::Left && element.state.hover {
                         element.state.active = true;
                     }
+                    if element.state.hover {
+                        if !element.state.focus {
+                            // fire focus
+                        }
+                        element.state.focus = true;
+                    } else {
+                        if element.state.focus {
+                            let this = match &element.state.value {
+                                None => Value::Null,
+                                Some(value) => Value::String(value.clone()),
+                            };
+                            self.fire(element, "onblur", this.clone(), output);
+                            self.fire(element, "onchange", this, output);
+                        }
+                        element.state.focus = false;
+                    }
                 }
                 InputEvent::MouseButtonUp(button) => {
                     if button == MouseButtons::Left {
                         element.state.active = false;
                         if element.state.hover {
-                            if let Some(handler) = element.listeners.get("onclick") {
-                                let value = if handler.argument == Schema::THIS {
-                                    json!("<this>")
-                                } else {
-                                    self.model
-                                        .pointer(&handler.argument)
-                                        .cloned()
-                                        .unwrap_or(Value::Null)
-                                };
-                                output.push(Call {
-                                    function: handler.function.clone(),
-                                    arguments: vec![value],
-                                })
-                            }
+                            self.fire(element, "onclick", Value::Null, output);
                         }
                     }
                 }
@@ -200,8 +265,9 @@ impl ViewModel {
             }
         }
         for child in tree.children(node).unwrap() {
-            self.capture_element_events(child, events, output, tree);
+            self.capture_element_events(child, events, output, tree, focus)?;
         }
+        Ok(())
     }
 }
 
@@ -255,15 +321,15 @@ impl Binding {
     fn react_value_change(&self, value: &Value) -> Reaction {
         match self.params.clone() {
             BindingParams::Visibility(node, visible) => {
-                let visible = as_boolean(value) == visible;
+                let visible = value.as_boolean() == visible;
                 Reaction::Reattach { node, visible }
             }
             BindingParams::Attribute(node, key) => {
-                let value = as_string(value);
+                let value = value.as_string();
                 Reaction::Bind { node, key, value }
             }
             BindingParams::Text(node, span) => {
-                let text = as_string(value);
+                let text = value.as_string();
                 Reaction::Type { node, span, text }
             }
             BindingParams::Repeat(parent, start, size) => {
@@ -317,28 +383,6 @@ pub enum Reaction {
         key: String,
         value: String,
     },
-}
-
-pub fn as_boolean(value: &Value) -> bool {
-    match value {
-        Value::Null => false,
-        Value::Bool(value) => *value,
-        Value::Number(number) => number.as_f64().map(|value| value != 0.0).unwrap_or(false),
-        Value::String(string) => string.len() > 0,
-        Value::Array(array) => array.len() > 0,
-        Value::Object(_) => true,
-    }
-}
-
-pub fn as_string(value: &Value) -> String {
-    match value {
-        Value::Null => "null".to_string(),
-        Value::Bool(value) => value.to_string(),
-        Value::Number(number) => number.to_string(),
-        Value::String(string) => string.clone(),
-        Value::Array(_) => "[array]".to_string(),
-        Value::Object(_) => "{object}".to_string(),
-    }
 }
 
 fn hovers(point: [f32; 2], element: &Element) -> bool {
@@ -416,6 +460,7 @@ pub struct Call {
 pub struct Handler {
     pub function: String,
     pub argument: String,
+    pub pipe: Vec<String>,
 }
 
 impl Call {

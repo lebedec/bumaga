@@ -70,6 +70,14 @@ pub struct TextBinding {
     pub spans: Vec<TextSpan>,
 }
 
+impl TextBinding {
+    pub fn string(value: &str) -> Self {
+        Self {
+            spans: vec![TextSpan::String(value.to_string())],
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TextSpan {
     String(String),

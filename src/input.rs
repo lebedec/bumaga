@@ -1,7 +1,8 @@
-use log::error;
-use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::time::Duration;
+
+use log::error;
+use serde_json::{Map, Value};
 
 use crate::{ElementFont, Transformer};
 
@@ -11,7 +12,6 @@ pub struct Input<'f> {
     pub(crate) time: Duration,
     pub(crate) viewport: [f32; 2],
     pub(crate) events: Vec<InputEvent>,
-    pub(crate) transformers: HashMap<String, &'f dyn Fn(Value) -> Value>,
 }
 
 impl<'f> Input<'f> {
@@ -22,7 +22,6 @@ impl<'f> Input<'f> {
             time: Duration::from_micros(0),
             viewport: [800.0, 600.0],
             events: vec![],
-            transformers: HashMap::new(),
         }
     }
 
@@ -61,11 +60,6 @@ impl<'f> Input<'f> {
         self.events.push(event);
         self
     }
-
-    pub fn pipe(mut self, name: &str, transformer: &'f dyn Fn(Value) -> Value) -> Self {
-        self.transformers.insert(name.to_string(), transformer);
-        self
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -73,6 +67,7 @@ pub enum InputEvent {
     MouseMove([f32; 2]),
     MouseButtonDown(MouseButtons),
     MouseButtonUp(MouseButtons),
+    MouseWheel([f32; 2]),
     KeyDown(Keys),
     KeyUp(Keys),
     Char(char),

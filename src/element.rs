@@ -5,7 +5,7 @@ use taffy::{Layout, NodeId};
 use crate::animation::{Animator, Transition};
 use crate::css::PropertyKey;
 use crate::styles::Scrolling;
-use crate::{Call, Handler};
+use crate::Handler;
 
 /// The most fundamental object for building a UI, Element contains layout and appearance.
 /// Element maps directly to the native rectangle view equivalent on whatever graphics engine
@@ -30,7 +30,7 @@ pub struct Element {
     pub transforms: Vec<TransformFunction>,
     pub animator: Animator,
     pub scrolling: Option<Scrolling>,
-    pub clip: Option<Layout>,
+    pub clipping: Option<Layout>,
     pub(crate) transitions: HashMap<PropertyKey, Transition>,
     pub(crate) state: ElementState,
 }
@@ -42,8 +42,8 @@ pub struct TextContent {
 
 impl TextContent {
     #[inline(always)]
-    pub fn as_string(&self) -> String {
-        self.spans.join(" ")
+    pub fn to_string(&self) -> String {
+        self.spans.join(" ").trim().to_string()
     }
 }
 
@@ -188,5 +188,6 @@ pub struct ElementFont {
 pub struct ElementState {
     pub active: bool,
     pub hover: bool,
+    pub focus: bool,
     pub value: Option<String>,
 }

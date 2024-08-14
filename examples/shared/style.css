@@ -43,7 +43,7 @@ header > span {
 
     background-color: #ffffff;
     color: #ffcc00;
-    /*transition: background-color 2s, color 0.5s;*/
+    transition: background-color 2s, color 0.5s;
     padding: 1rem;
     align-items: center;
 }
@@ -69,7 +69,7 @@ header > span {
 input {
     background: #394651;
     height: 3rem;
-    /*animation: 2s linear infinite HeightAnimation;*/
+    animation: 2s linear infinite HeightAnimation;
 }
 
 input:hover {
@@ -85,7 +85,7 @@ input:active {
 
 input:focus {
     border: 2px solid #ffffff;
-    /*animation: 2s linear infinite WidthAnimation;*/
+    animation: 2s linear infinite WidthAnimation;
 }
 
 .scroll {
@@ -94,7 +94,7 @@ input:focus {
     display: flex;
     flex-direction: column;
     gap: 5px;
-    /*overflow: scroll;*/
+    overflow: scroll;
 }
 
 @keyframes HeightAnimation {
@@ -114,15 +114,15 @@ input:focus {
 
 @keyframes WidthAnimation {
     0% {
-        width: 3rem;
+        width: 5rem;
         color: #394651;
     }
     50% {
-        width: 4rem;
+        width: 10rem;
         color: #ff00bf;
     }
     100% {
-        width: 3rem;
+        width: 5rem;
         color: #394651;
     }
 }
