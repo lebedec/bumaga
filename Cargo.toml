@@ -9,7 +9,7 @@ edition = "2021"
 taffy = "0.5.1"
 serde = "1.0"
 serde_json = "1.0.118"
-log = "0.4"
+log = { version = "0.4", features = ["std"] }
 pest = { version = "2" }
 pest_derive = { version = "2" }
 

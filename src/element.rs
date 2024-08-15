@@ -33,6 +33,14 @@ pub struct Element {
     pub clipping: Option<Layout>,
     pub(crate) transitions: HashMap<PropertyKey, Transition>,
     pub(crate) state: ElementState,
+    pub pointer_events: PointerEvents,
+}
+
+impl Element {
+    #[inline(always)]
+    pub fn is_visible_rectangle(&self) -> bool {
+        self.color[3] != 0 && self.background.color[3] != 0
+    }
 }
 
 #[derive(Clone)]
@@ -190,4 +198,11 @@ pub struct ElementState {
     pub hover: bool,
     pub focus: bool,
     pub value: Option<String>,
+}
+
+#[derive(Default, PartialEq)]
+pub enum PointerEvents {
+    #[default]
+    Auto,
+    None,
 }

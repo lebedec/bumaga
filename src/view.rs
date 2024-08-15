@@ -4,7 +4,9 @@ use crate::input::DummyFonts;
 use crate::rendering::Renderer;
 use crate::styles::{create_element, default_layout, inherit, Cascade, Scrolling, Sizes};
 use crate::view_model::{Reaction, Schema, ViewModel};
-use crate::{Call, Element, Fonts, Input, InputEvent, MouseButtons, Transformer, ViewError};
+use crate::{
+    Call, Element, Fonts, Input, InputEvent, MouseButtons, Output, Transformer, ViewError,
+};
 use log::error;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
@@ -15,8 +17,8 @@ use std::time::SystemTime;
 use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
 use taffy::{
-    AlignItems, AvailableSpace, Display, Layout, NodeId, Point, Position, PrintTree, Size, Style,
-    TaffyTree,
+    AlignItems, AvailableSpace, Dimension, Display, Layout, LengthPercentageAuto, NodeId, Point,
+    Position, PrintTree, Rect, Size, Style, TaffyTree,
 };
 
 pub struct View {
@@ -53,15 +55,6 @@ impl View {
         let html = read_html(&html)?;
         let css = read_css(&css)?;
         let mut renderer = Renderer::new();
-        // let mut tree = TaffyTree::new();
-        // let mut bindings = BTreeMap::new();
-        // let mut locals = HashMap::new();
-        // let mut schema = Schema::new();
-        // let root = tree.new_leaf(default_layout())?;
-        // tree.set_node_context(root, Some(create_element(root)))?;
-        // let body = html.children.last().cloned().expect("body must be found");
-        // let body = render_node(body, &mut tree, &mut bindings, &mut locals, &mut schema)?;
-        // tree.add_child(root, body)?;
         let [root, body] = renderer.render(html)?;
         let bindings = renderer.bindings;
         let schema = renderer.schema;
@@ -89,11 +82,12 @@ impl View {
 
     fn watch_changes(&mut self) {
         if self.html_source.detect_changes() || self.css_source.detect_changes() {
-            if let Ok(view) = View::create(
+            if let Ok(mut view) = View::create(
                 self.html_source.clone(),
                 self.css_source.clone(),
                 &self.resources,
             ) {
+                view.model.transformers = self.model.transformers.clone();
                 self.model = view.model;
                 self.tree = view.tree;
                 self.root = view.root;
@@ -103,7 +97,7 @@ impl View {
         }
     }
 
-    pub fn update(&mut self, mut input: Input) -> Result<Vec<Call>, ViewError> {
+    pub fn update(&mut self, mut input: Input) -> Result<Output, ViewError> {
         self.watch_changes();
         let reactions = self.model.bind(&Value::Object(input.value.clone()));
         for reaction in reactions {
@@ -138,7 +132,7 @@ impl View {
         self.model.handle_output(&input, self.body, &mut self.tree)
     }
 
-    pub fn compute_positions_and_clipping(
+    fn compute_positions_and_clipping(
         &mut self,
         node: NodeId,
         location: Point<f32>,
@@ -166,7 +160,7 @@ impl View {
         Ok(())
     }
 
-    pub fn update_tree(&mut self, reaction: Reaction) -> Result<(), ViewError> {
+    fn update_tree(&mut self, reaction: Reaction) -> Result<(), ViewError> {
         match reaction {
             Reaction::Type { node, span, text } => {
                 let element_text = self
@@ -260,6 +254,18 @@ impl View {
 
         match element.tag.as_str() {
             // TODO: move to render ?
+            "body" => {
+                layout.size = Size {
+                    width: Dimension::Length(sizes.viewport_width),
+                    height: Dimension::Length(sizes.viewport_height),
+                };
+                layout.margin = Rect {
+                    left: LengthPercentageAuto::Length(8.0),
+                    right: LengthPercentageAuto::Length(8.0),
+                    top: LengthPercentageAuto::Length(8.0),
+                    bottom: LengthPercentageAuto::Length(8.0),
+                };
+            }
             "input" => {
                 layout.display = Display::Flex;
                 layout.align_items = Some(AlignItems::Center);
@@ -311,11 +317,12 @@ impl View {
     }
 
     pub fn body(&self) -> Fragment {
-        let element = self.tree.get_node_context(self.body).unwrap();
-        let layout = self.tree.get_final_layout(self.body);
+        let element = self
+            .tree
+            .get_node_context(self.body)
+            .expect("body must be configured");
         Fragment {
             element,
-            layout,
             tree: &self.tree,
         }
     }
@@ -324,8 +331,6 @@ impl View {
 #[derive(Clone, Copy)]
 pub struct Fragment<'t> {
     pub element: &'t Element,
-    /// The final result of a layout algorithm, describes size and position of element
-    pub layout: &'t Layout,
     pub tree: &'t TaffyTree<Element>,
 }
 
@@ -335,11 +340,9 @@ impl Fragment<'_> {
             Ok(children) => children
                 .iter()
                 .map(|node| {
-                    let layout = self.tree.get_final_layout(*node);
                     let element = self.tree.get_node_context(*node).unwrap();
                     Fragment {
                         element,
-                        layout,
                         tree: self.tree,
                     }
                 })
@@ -349,6 +352,14 @@ impl Fragment<'_> {
                 vec![]
             }
         }
+    }
+}
+
+impl Deref for Fragment<'_> {
+    type Target = Element;
+
+    fn deref(&self) -> &Self::Target {
+        self.element
     }
 }
 

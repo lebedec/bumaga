@@ -165,7 +165,7 @@ pub struct Shorthand {
 
 // Used to optimize frequently used or complex values.
 // At same time provides ease parsing.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
     Inherit,
     Initial,
@@ -183,7 +183,7 @@ pub enum Value {
     Raw(Str),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Dim {
     pub value: f32,
     pub unit: Unit,
@@ -235,19 +235,19 @@ impl Str {
     }
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub struct Function {
     pub name: Str,
     pub arguments: Arguments,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub struct Arguments {
     pub ptr: usize,
     pub len: usize,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Var {
     pub name: Str,
     pub fallback: Option<Str>,

@@ -64,6 +64,7 @@ impl<'f> Input<'f> {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InputEvent {
+    Unknown,
     MouseMove([f32; 2]),
     MouseButtonDown(MouseButtons),
     MouseButtonUp(MouseButtons),

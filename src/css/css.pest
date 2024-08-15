@@ -88,8 +88,8 @@ Value = _{
     | Percentage
     | Time
     | Dimension
-    | Number
     | Zero
+    | Number
     | String
     | Raw
 }

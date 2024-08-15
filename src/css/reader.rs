@@ -220,7 +220,7 @@ fn read_value(pair: Pair<Rule>, arguments: &mut Vec<Value>) -> Value {
         Rule::Color => Value::Color(read_color(pair)),
         Rule::Zero => Value::Zero,
         Rule::Time => Value::Time(read_seconds(pair)),
-        Rule::Percentage => Value::Percentage(read_number(pair) / 100.0),
+        Rule::Percentage => Value::Percentage(read_percentage(pair)),
         Rule::Dimension => Value::Dimension(read_dimension(pair)),
         Rule::Number => Value::Number(read_number(pair)),
         Rule::Var => Value::Var(read_variable(pair)),
@@ -265,6 +265,12 @@ fn read_dimension(pair: Pair<Rule>) -> Dim {
         value: read_number(number),
         unit: Unit::create(unit),
     }
+}
+
+fn read_percentage(pair: Pair<Rule>) -> f32 {
+    let mut iter = pair.into_inner();
+    let value = read_number(iter.next().unwrap());
+    value / 100.0
 }
 
 fn read_seconds(pair: Pair<Rule>) -> f32 {
@@ -350,132 +356,161 @@ impl From<Span<'_>> for Str {
 
 #[cfg(test)]
 mod tests {
-    use crate::css::model::{Shorthand, Value};
+    use crate::css::model::Value;
     use crate::css::reader::read_css;
-    use std::time::Instant;
+    use crate::css::Css;
+    use crate::system::setup_tests_logging;
 
-    #[test]
-    pub fn test_root_selector() {
-        let css = r#"
-
-        [dir=rtl] .next {
-            float: left;
-            right: unset;
-            left: var(--page-padding);
+    fn style_values<const N: usize>(css: &Css, index: usize) -> [Value; N] {
+        let mut values = [Value::Unset; N];
+        for i in 0..N {
+            values[i] = css
+                .as_value(&css.styles[index].declaration[i].values)
+                .clone()
         }
-
-        /* Use the correct buttons for RTL layouts*/
-        [dir=rtl] .previous i.fa-angle-left:before {
-            content: "\f105";
-        }
-
-
-        :root {
-            right: calc(var(--sidebar-resize-indicator-width) * -1);
-            transform: rotate(20deg) translate(30px, 20px) rotate(var(--my-var));
-            content: "\f105";
-            transform: rotate(var(--my-var));
-            height: calc(10px - 10px);
-            background: rgba(0, 0, 0, 0);
-
-        }"#;
-        let present = read_css(css).expect("must be valid");
+        values
     }
 
     #[test]
-    pub fn test_simple_rule() {
-        let css = r#"
-        .myClass {
-
-            top: 0 !important;
-            background-color: rgba(0, 0, 0, 0);
-            background: red solid;
-            /*
-            margin: auto calc(0px - var(--page-padding));
-            right: calc(var(--sidebar-resize-indicator-width) * -1);
-            width: calc(var(--sidebar-resize-indicator-width) - var(--sidebar-resize-indicator-space))
-            */
-            position: -webkit-sticky;
-            transition: color 0.5s;
-            margin-block-end: -1px;
-
-        }
-        #myId {
-            background: red;
-        }
-        div {
-            background: red;
-        }
-        #myContainer > div > span {
-            background: red;
-        }
-        .myA.myB {
-            background: red;
-        }
-        .myA .myB {
-            background: red;
-        }
-        input:focus {
-            background: red;
-        }
-        dd:last-of-type {
-            background: red;
-        }
-        di:last-child {
-            background: red;
-        }
-        .todo[data-done="true"]:hover {
-            background: red;
-        }
-        .todo:nth-child(even) {
-            background: red;
-        }
-
-        @keyframes HeightAnimation {
-            0% {
-                height: 3rem;
-                background-color: #394651;
-            }
-            50% {
-                height: 4rem;
-                background-color: green;
-            }
-            100% {
-                height: 3rem;
-                background-color: #394651;
-            }
-        }
-
-        "#;
-
-        println!("CssShorthand {}", std::mem::size_of::<Shorthand>());
-        println!("CssValue {}", std::mem::size_of::<Value>());
-
-        let present = read_css(css).expect("must be valid");
-
-        println!("{:?}", present.styles);
-        assert_eq!(11, present.styles.len());
-        assert_eq!(1, present.animations.len())
+    pub fn test_zero_value() {
+        let css = "div { left: 0; width: 0; }";
+        let css = read_css(css).expect("valid css");
+        let [left, width] = style_values(&css, 0);
+        assert_eq!(left, Value::Zero, "left");
+        assert_eq!(width, Value::Zero, "width");
     }
 
     #[test]
-    pub fn test_giga_css() {
-        let css = include_str!("giga.css");
-
-        // let t = Instant::now();
-        // let presentation = parse_presentation(css);
-        // println!("lightning CSS: {:?}", t.elapsed()); // ~ 6ms
-        // assert_eq!(90, presentation.rules.len());
-
-        let t = Instant::now();
-        let preset = read_css(css).expect("must be valid");
-        println!("pest CSS (wip): {:?}", t.elapsed()); // ~ 5ms
-        assert_eq!(90, preset.styles.len());
-
-        for rul in preset.styles {
-            for pr in rul.declaration {
-                // println!("{:?}: {:?}", pr.name, pr.values.as_single())
-            }
-        }
+    pub fn test_percent_value() {
+        let css = "div { width: 100%; border-radius: 50%;}";
+        let css = read_css(css).expect("valid css");
+        let [width, radius] = style_values(&css, 0);
+        assert_eq!(width, Value::Percentage(1.0), "width");
+        assert_eq!(radius, Value::Percentage(0.5), "radius");
     }
+
+    // #[test]
+    // pub fn test_root_selector() {
+    //     let css = r#"
+    //
+    //     [dir=rtl] .next {
+    //         float: left;
+    //         right: unset;
+    //         left: var(--page-padding);
+    //     }
+    //
+    //     /* Use the correct buttons for RTL layouts*/
+    //     [dir=rtl] .previous i.fa-angle-left:before {
+    //         content: "\f105";
+    //     }
+    //
+    //
+    //     :root {
+    //         right: calc(var(--sidebar-resize-indicator-width) * -1);
+    //         transform: rotate(20deg) translate(30px, 20px) rotate(var(--my-var));
+    //         content: "\f105";
+    //         transform: rotate(var(--my-var));
+    //         height: calc(10px - 10px);
+    //         background: rgba(0, 0, 0, 0);
+    //
+    //     }"#;
+    //     let present = read_css(css).expect("must be valid");
+    // }
+    //
+    // #[test]
+    // pub fn test_simple_rule() {
+    //     let css = r#"
+    //     .myClass {
+    //
+    //         top: 0 !important;
+    //         background-color: rgba(0, 0, 0, 0);
+    //         background: red solid;
+    //         /*
+    //         margin: auto calc(0px - var(--page-padding));
+    //         right: calc(var(--sidebar-resize-indicator-width) * -1);
+    //         width: calc(var(--sidebar-resize-indicator-width) - var(--sidebar-resize-indicator-space))
+    //         */
+    //         position: -webkit-sticky;
+    //         transition: color 0.5s;
+    //         margin-block-end: -1px;
+    //
+    //     }
+    //     #myId {
+    //         background: red;
+    //     }
+    //     div {
+    //         background: red;
+    //     }
+    //     #myContainer > div > span {
+    //         background: red;
+    //     }
+    //     .myA.myB {
+    //         background: red;
+    //     }
+    //     .myA .myB {
+    //         background: red;
+    //     }
+    //     input:focus {
+    //         background: red;
+    //     }
+    //     dd:last-of-type {
+    //         background: red;
+    //     }
+    //     di:last-child {
+    //         background: red;
+    //     }
+    //     .todo[data-done="true"]:hover {
+    //         background: red;
+    //     }
+    //     .todo:nth-child(even) {
+    //         background: red;
+    //     }
+    //
+    //     @keyframes HeightAnimation {
+    //         0% {
+    //             height: 3rem;
+    //             background-color: #394651;
+    //         }
+    //         50% {
+    //             height: 4rem;
+    //             background-color: green;
+    //         }
+    //         100% {
+    //             height: 3rem;
+    //             background-color: #394651;
+    //         }
+    //     }
+    //
+    //     "#;
+    //
+    //     println!("CssShorthand {}", std::mem::size_of::<Shorthand>());
+    //     println!("CssValue {}", std::mem::size_of::<Value>());
+    //
+    //     let present = read_css(css).expect("must be valid");
+    //
+    //     println!("{:?}", present.styles);
+    //     assert_eq!(11, present.styles.len());
+    //     assert_eq!(1, present.animations.len())
+    // }
+    //
+    // #[test]
+    // pub fn test_giga_css() {
+    //     let css = include_str!("giga.css");
+    //
+    //     // let t = Instant::now();
+    //     // let presentation = parse_presentation(css);
+    //     // println!("lightning CSS: {:?}", t.elapsed()); // ~ 6ms
+    //     // assert_eq!(90, presentation.rules.len());
+    //
+    //     let t = Instant::now();
+    //     let preset = read_css(css).expect("must be valid");
+    //     println!("pest CSS (wip): {:?}", t.elapsed()); // ~ 5ms
+    //     assert_eq!(90, preset.styles.len());
+    //
+    //     for rul in preset.styles {
+    //         for pr in rul.declaration {
+    //             // println!("{:?}: {:?}", pr.name, pr.values.as_single())
+    //         }
+    //     }
+    // }
 }

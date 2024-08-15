@@ -1,9 +1,12 @@
-use crate::{Element, Input, InputEvent, Keys, MouseButtons, ValueExtensions, ViewError};
+use crate::{
+    Element, Input, InputEvent, Keys, MouseButtons, Output, PointerEvents, ValueExtensions,
+    ViewError,
+};
 use log::error;
 use pest::pratt_parser::Op;
 use serde::de::Unexpected::Str;
 use serde_json::{json, Map, Value};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use taffy::{NodeId, TaffyTree};
 
 pub type Bindings = BTreeMap<String, Vec<Binding>>;
@@ -17,6 +20,7 @@ pub struct ViewModel {
     // state
     // pub(crate) focus: Option<NodeId>,
     pub(crate) mouse: [f32; 2],
+    pub(crate) mouse_hovers: HashSet<NodeId>,
 }
 
 impl ViewModel {
@@ -26,6 +30,7 @@ impl ViewModel {
             model,
             transformers: HashMap::new(),
             mouse: [0.0, 0.0],
+            mouse_hovers: HashSet::new(),
         }
     }
 
@@ -125,7 +130,7 @@ impl ViewModel {
         input: &Input,
         body: NodeId,
         tree: &mut TaffyTree<Element>,
-    ) -> Result<Vec<Call>, ViewError> {
+    ) -> Result<Output, ViewError> {
         for event in input.events.iter() {
             match *event {
                 InputEvent::MouseMove(mouse) => {
@@ -134,13 +139,14 @@ impl ViewModel {
                 _ => {}
             }
         }
-        let mut output = vec![];
-        let mut focus = None;
-        self.capture_element_events(body, &input.events, &mut output, tree, &mut focus)?;
+        let mut output = Output::new();
+        self.capture_element_events(body, &input.events, &mut output, tree)?;
+        output.is_cursor_over_view = !self.mouse_hovers.is_empty();
+
         Ok(output)
     }
 
-    fn fire(&self, element: &Element, event: &str, this: Value, output: &mut Vec<Call>) {
+    fn fire(&self, element: &Element, event: &str, this: Value, output: &mut Output) {
         if let Some(handler) = element.listeners.get(event) {
             let mut value = if handler.argument == Schema::THIS {
                 this
@@ -156,7 +162,7 @@ impl ViewModel {
                     None => error!("unable to bind value, transformer {name} not found"),
                 }
             }
-            output.push(Call {
+            output.calls.push(Call {
                 function: handler.function.clone(),
                 arguments: vec![value],
             })
@@ -167,9 +173,8 @@ impl ViewModel {
         &mut self,
         node: NodeId,
         events: &Vec<InputEvent>,
-        output: &mut Vec<Call>,
+        output: &mut Output,
         tree: &mut TaffyTree<Element>,
-        focus: &mut Option<NodeId>,
     ) -> Result<(), ViewError> {
         for event in events {
             let element = tree.get_node_context_mut(node).unwrap();
@@ -211,61 +216,67 @@ impl ViewModel {
                         // next focus
                     }
                 }
-                InputEvent::MouseWheel(wheel) if element.state.hover => {
-                    if let Some(scrolling) = element.scrolling.as_mut() {
-                        scrolling.offset(wheel);
-                    }
-                }
-                InputEvent::MouseMove(cursor) => {
-                    let hover = hovers(cursor, element);
-                    if hover {
-                        if !element.state.hover {
-                            // fire enter
-                            //println!("enter {}", element.tag);
+                event if element.pointer_events == PointerEvents::Auto => match event {
+                    InputEvent::MouseWheel(wheel) if element.state.hover => {
+                        if let Some(scrolling) = element.scrolling.as_mut() {
+                            scrolling.offset(wheel);
                         }
-                        element.state.hover = true;
-                    } else {
+                    }
+                    InputEvent::MouseMove(cursor) => {
+                        let hover = hovers(cursor, element);
+                        if hover {
+                            if !element.state.hover {
+                                // fire enter
+                                //println!("enter {}", element.tag);
+                            }
+                            // TODO: rework algorithm (user input not only way to change hover)
+                            element.state.hover = true;
+                            self.mouse_hovers.insert(element.node);
+                        } else {
+                            if element.state.hover {
+                                // fire leave
+                                //println!("leave {}", element.tag);
+                            }
+                            element.state.hover = false;
+                            self.mouse_hovers.remove(&element.node);
+                        }
+                    }
+                    InputEvent::MouseButtonDown(button) => {
+                        if button == MouseButtons::Left && element.state.hover {
+                            element.state.active = true;
+                        }
                         if element.state.hover {
-                            // fire leave
-                            //println!("leave {}", element.tag);
-                        }
-                        element.state.hover = false;
-                    }
-                }
-                InputEvent::MouseButtonDown(button) => {
-                    if button == MouseButtons::Left && element.state.hover {
-                        element.state.active = true;
-                    }
-                    if element.state.hover {
-                        if !element.state.focus {
-                            // fire focus
-                        }
-                        element.state.focus = true;
-                    } else {
-                        if element.state.focus {
-                            let this = match &element.state.value {
-                                None => Value::Null,
-                                Some(value) => Value::String(value.clone()),
-                            };
-                            self.fire(element, "onblur", this.clone(), output);
-                            self.fire(element, "onchange", this, output);
-                        }
-                        element.state.focus = false;
-                    }
-                }
-                InputEvent::MouseButtonUp(button) => {
-                    if button == MouseButtons::Left {
-                        element.state.active = false;
-                        if element.state.hover {
-                            self.fire(element, "onclick", Value::Null, output);
+                            if !element.state.focus {
+                                // fire focus
+                            }
+                            element.state.focus = true;
+                        } else {
+                            if element.state.focus {
+                                let this = match &element.state.value {
+                                    None => Value::Null,
+                                    Some(value) => Value::String(value.clone()),
+                                };
+                                self.fire(element, "onblur", this.clone(), output);
+                                self.fire(element, "onchange", this, output);
+                            }
+                            element.state.focus = false;
                         }
                     }
-                }
+                    InputEvent::MouseButtonUp(button) => {
+                        if button == MouseButtons::Left {
+                            element.state.active = false;
+                            if element.state.hover {
+                                self.fire(element, "onclick", Value::Null, output);
+                            }
+                        }
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }
         for child in tree.children(node).unwrap() {
-            self.capture_element_events(child, events, output, tree, focus)?;
+            self.capture_element_events(child, events, output, tree)?;
         }
         Ok(())
     }

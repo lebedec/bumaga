@@ -19,7 +19,7 @@ use crate::css::{
 };
 use crate::html::TextBinding;
 use crate::{
-    Background, Borders, Element, ElementFont, Input, Length, MyBorder, ObjectFit,
+    Background, Borders, Element, ElementFont, Input, Length, MyBorder, ObjectFit, PointerEvents,
     TransformFunction,
 };
 
@@ -73,6 +73,7 @@ pub fn create_element(node: NodeId) -> Element {
         clipping: None,
         transitions: HashMap::default(),
         state: Default::default(),
+        pointer_events: Default::default(),
     }
 }
 
@@ -523,6 +524,13 @@ impl<'c> Cascade<'c> {
             }
             (PropertyKey::BorderBottomLeftRadius, [value]) => {
                 element.borders.radius[3] = length(value, self)?;
+            }
+            (PropertyKey::PointerEvents, [Keyword(keyword)]) => {
+                element.pointer_events = match keyword.as_str(css) {
+                    "auto" => PointerEvents::Auto,
+                    "none" => PointerEvents::None,
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
             }
             //
             // Transform
@@ -1042,6 +1050,7 @@ fn lengthp(value: &Value, cascade: &Cascade) -> Result<LengthPercentage, Cascade
 
 fn lengthp_auto(value: &Value, cascade: &Cascade) -> Result<LengthPercentageAuto, CascadeError> {
     let value = match value {
+        Value::Zero => LengthPercentageAuto::Length(0.0),
         Value::Dimension(dimension) => {
             let length = parse_dimension_length(dimension, cascade)?;
             LengthPercentageAuto::Length(length)
