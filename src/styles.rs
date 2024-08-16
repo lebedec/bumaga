@@ -41,7 +41,7 @@ pub fn create_element(node: NodeId) -> Element {
         object_fit: ObjectFit::Fill,
         background: Background {
             image: None,
-            color: Default::default(),
+            color: [0; 4],
             // position: Default::default(),
             // repeat: Default::default(),
             // size: Default::default(),
@@ -55,7 +55,7 @@ pub fn create_element(node: NodeId) -> Element {
             left: Default::default(),
             radius: [Length::zero(); 4],
         },
-        color: [255, 255, 255, 255],
+        color: [0, 0, 0, 255],
         font: ElementFont {
             family: ElementFont::DEFAULT_FONT_FAMILY.to_string(),
             size: 16.0,

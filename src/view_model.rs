@@ -57,7 +57,7 @@ impl ViewModel {
     ) {
         match (&mut dst, src) {
             (Value::Array(current), Value::Array(next)) => {
-                if current.len() != next.len() {
+                if current != next {
                     current.resize(next.len(), Value::Null);
                     Self::react(path, src, bindings, reactions, transformers);
                 }
