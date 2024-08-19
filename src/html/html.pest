@@ -105,7 +105,9 @@ Getter = { Key ~ ("." ~ Key)* }
 
 Transformer = { Key }
 
-Key = @{ TChar+ }
+Key = @{ KChar+ }
+
+KChar = { ASCII_ALPHA | ASCII_DIGIT | "-" | "_" }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
 Value = @{ VChar* }

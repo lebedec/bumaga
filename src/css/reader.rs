@@ -126,7 +126,16 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                                             };
                                             let search = iter
                                                 .next()
-                                                .map(|pair| pair.as_span().into())
+                                                .map(|pair| match pair.as_rule() {
+                                                    Rule::String => pair
+                                                        .into_inner()
+                                                        .next()
+                                                        .unwrap()
+                                                        .as_span()
+                                                        .into(),
+                                                    Rule::Ident => pair.as_span().into(),
+                                                    _ => unreachable!(),
+                                                })
                                                 .unwrap_or(Str::empty());
                                             Simple::Attribute(ident, matcher, search)
                                         }
@@ -358,35 +367,77 @@ impl From<Span<'_>> for Str {
 mod tests {
     use crate::css::model::Value;
     use crate::css::reader::read_css;
-    use crate::css::Css;
+    use crate::css::{Complex, Css, Matcher, Simple};
     use crate::system::setup_tests_logging;
 
-    fn style_values<const N: usize>(css: &Css, index: usize) -> [Value; N] {
+    fn style_values<const N: usize>(css: &Css) -> [Value; N] {
         let mut values = [Value::Unset; N];
         for i in 0..N {
-            values[i] = css
-                .as_value(&css.styles[index].declaration[i].values)
-                .clone()
+            values[i] = css.as_value(&css.styles[0].declaration[i].values).clone()
         }
         values
+    }
+
+    fn style_selectors(css: &Css) -> Vec<&Simple> {
+        css.styles[0].selectors[0].selectors.iter().collect()
     }
 
     #[test]
     pub fn test_zero_value() {
         let css = "div { left: 0; width: 0; }";
         let css = read_css(css).expect("valid css");
-        let [left, width] = style_values(&css, 0);
+        let [left, width] = style_values(&css);
         assert_eq!(left, Value::Zero, "left");
         assert_eq!(width, Value::Zero, "width");
     }
 
     #[test]
     pub fn test_percent_value() {
-        let css = "div { width: 100%; border-radius: 50%;}";
+        let css = "div { width: 0%; border-radius: 50%;}";
         let css = read_css(css).expect("valid css");
-        let [width, radius] = style_values(&css, 0);
-        assert_eq!(width, Value::Percentage(1.0), "width");
+        let [width, radius] = style_values(&css);
+        assert_eq!(width, Value::Percentage(0.0), "width");
         assert_eq!(radius, Value::Percentage(0.5), "radius");
+    }
+
+    #[test]
+    pub fn test_string_value() {
+        let css = r#"div { content: "abc"; }"#;
+        let css = read_css(css).expect("valid css");
+        let [content] = style_values(&css);
+        if let Value::String(value) = content {
+            assert_eq!(css.as_str(value), "abc", "string literal");
+        } else {
+            assert!(false, "value type")
+        }
+    }
+
+    #[test]
+    pub fn test_string_matcher() {
+        let css = r#"[data-something="abc"] {}"#;
+        let css = read_css(css).expect("valid css");
+        let selectors = style_selectors(&css);
+        if let Simple::Attribute(key, matcher, value) = selectors[0] {
+            assert_eq!(css.as_str(*key), "data-something", "key");
+            assert_eq!(*matcher, Matcher::Equal, "matcher");
+            assert_eq!(css.as_str(*value), "abc", "value");
+        } else {
+            assert!(false, "selector type")
+        }
+    }
+
+    #[test]
+    pub fn test_ident_matcher() {
+        let css = r#"[data-something=abc] {}"#;
+        let css = read_css(css).expect("valid css");
+        let selectors = style_selectors(&css);
+        if let Simple::Attribute(key, matcher, value) = selectors[0] {
+            assert_eq!(css.as_str(*key), "data-something", "key");
+            assert_eq!(*matcher, Matcher::Equal, "matcher");
+            assert_eq!(css.as_str(*value), "abc", "value");
+        } else {
+            assert!(false, "selector type")
+        }
     }
 
     // #[test]

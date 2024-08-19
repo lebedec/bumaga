@@ -69,7 +69,7 @@ pub struct Complex {
 /// A simple selector with a single component, such as a single type selector,
 /// attribute selector, or pseudo-class, that's not used in combination with or contains any other
 /// selector component.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Simple {
     All,
     Id(Str),

@@ -60,7 +60,7 @@ impl Renderer {
             .into_iter()
             .enumerate()
             .map(|(index, span)| match span {
-                TextSpan::String(span) => span,
+                TextSpan::String(span) => span.trim().to_string(),
                 TextSpan::Binder(binder) => {
                     let path = self.schema.field(&binder, &mut self.locals);
                     let params = BindingParams::Text(node, index);

@@ -248,3 +248,37 @@ fn parse_element_bindings(pair: Pair<Rule>) -> Vec<ElementBinding> {
     }
     bindings
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::html::{read_html, ElementBinding};
+    use crate::Binder;
+
+    fn callback(event: &str, handler: &str, path: &str) -> ElementBinding {
+        ElementBinding::Callback(
+            event.to_string(),
+            handler.to_string(),
+            Binder {
+                path: vec![path.to_string()],
+                pipe: vec![],
+            },
+        )
+    }
+
+    #[test]
+    pub fn test_callback() {
+        let html = r#"<input [onchange]~change={this} />"#;
+        let html = read_html(html).expect("valid html");
+        assert_eq!(html.bindings, vec![callback("onchange", "change", "this")])
+    }
+
+    #[test]
+    pub fn test_callback_name_with_underscore() {
+        let html = r#"<input [onchange]~change_something={this} />"#;
+        let html = read_html(html).expect("valid html");
+        assert_eq!(
+            html.bindings,
+            vec![callback("onchange", "change_something", "this")]
+        )
+    }
+}
