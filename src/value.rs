@@ -1,11 +1,33 @@
 use serde_json::Value;
+use std::num::ParseIntError;
 
 pub trait ValueExtensions {
+    fn eval_u64(&self) -> u64;
     fn as_string(&self) -> String;
     fn as_boolean(&self) -> bool;
 }
 
 impl ValueExtensions for Value {
+    fn eval_u64(&self) -> u64 {
+        match self {
+            Value::Null => 0,
+            Value::Bool(value) => {
+                if *value {
+                    1
+                } else {
+                    0
+                }
+            }
+            Value::Number(number) => match number.as_f64() {
+                None => 0,
+                Some(number) => number as u64,
+            },
+            Value::String(string) => string.parse::<u64>().unwrap_or(0),
+            Value::Array(_) => 0,
+            Value::Object(_) => 0,
+        }
+    }
+
     fn as_string(&self) -> String {
         match self {
             Value::Null => "".to_string(),
