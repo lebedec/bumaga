@@ -19,11 +19,11 @@ use crate::css::{
 };
 use crate::html::TextBinding;
 use crate::{
-    Background, Borders, Element, ElementFont, Input, Length, MyBorder, ObjectFit, PointerEvents,
+    Background, Borders, Element, FontFace, Input, Length, MyBorder, ObjectFit, PointerEvents,
     TransformFunction,
 };
 
-impl ElementFont {
+impl FontFace {
     pub const DEFAULT_FONT_FAMILY: &'static str = "system-ui";
     pub const DEFAULT_FONT_WEIGHT: u16 = 400;
     // pub const DEFAULT_FONT_STRETCH: FontStretchKeyword = FontStretchKeyword::Normal;
@@ -56,11 +56,11 @@ pub fn create_element(node: NodeId) -> Element {
             radius: [Length::zero(); 4],
         },
         color: [0, 0, 0, 255],
-        font: ElementFont {
-            family: ElementFont::DEFAULT_FONT_FAMILY.to_string(),
+        font: FontFace {
+            family: FontFace::DEFAULT_FONT_FAMILY.to_string(),
             size: 16.0,
-            // font_style: FontStyle::Normal,
-            weight: ElementFont::DEFAULT_FONT_WEIGHT,
+            style: "normal".to_string(),
+            weight: FontFace::DEFAULT_FONT_WEIGHT,
             // font_stretch: TextStyle::DEFAULT_FONT_STRETCH,
             line_height: 16.0,
             // wrap: OverflowWrap::Normal,
@@ -391,8 +391,19 @@ impl<'c> Cascade<'c> {
             (PropertyKey::FontSize, [size]) => {
                 element.font.size = resolve_length(size, self, self.sizes.parent_font_size)?;
             }
+            (PropertyKey::FontWeight, [value]) => {
+                element.font.weight = resolve_font_weight(value, self)?
+            }
             (PropertyKey::FontFamily, [value]) => {
                 element.font.family = resolve_string(value, self)?;
+            }
+            (PropertyKey::FontStyle, [Keyword(keyword)]) => {
+                element.font.style = match keyword.as_str(css) {
+                    "normal" => "normal".to_string(),
+                    "italic" => "italic".to_string(),
+                    "oblique" => "oblique".to_string(),
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
             }
             (PropertyKey::Border, [width, _style, color]) => {
                 element.borders.top.width = dimension_length(width, self)?;
@@ -836,6 +847,23 @@ impl<'c> Cascade<'c> {
     //         element,
     //     )
     // }
+}
+
+fn resolve_font_weight(value: &Value, cascade: &Cascade) -> Result<u16, CascadeError> {
+    let value = match value {
+        Value::Number(value) if *value >= 1.0 && *value <= 1000.0 => *value as u16,
+        Value::Keyword(keyword) => match keyword.as_str(&cascade.css.source) {
+            "normal" => 400,
+            "bold" => 700,
+            keyword => return Err(CascadeError::InvalidKeyword(keyword.to_string())),
+        },
+        Value::Var(variable) => {
+            let value = cascade.get_variable_value(variable)?;
+            return resolve_font_weight(value, cascade);
+        }
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
 }
 
 fn resolve_color(value: &Value, cascade: &Cascade) -> Result<[u8; 4], CascadeError> {

@@ -4,7 +4,7 @@ use std::time::Duration;
 use log::error;
 use serde_json::{Map, Value};
 
-use crate::{ElementFont, Transformer};
+use crate::{FontFace, Transformer};
 
 pub struct Input<'f> {
     pub(crate) fonts: Option<&'f mut dyn Fonts>,
@@ -114,13 +114,13 @@ pub enum Keys {
 }
 
 pub trait Fonts {
-    fn measure(&mut self, text: &str, style: &ElementFont, max_width: Option<f32>) -> [f32; 2];
+    fn measure(&mut self, text: &str, style: &FontFace, max_width: Option<f32>) -> [f32; 2];
 }
 
 pub(crate) struct DummyFonts;
 
 impl Fonts for DummyFonts {
-    fn measure(&mut self, text: &str, style: &ElementFont, max_width: Option<f32>) -> [f32; 2] {
+    fn measure(&mut self, text: &str, style: &FontFace, max_width: Option<f32>) -> [f32; 2] {
         // NOTE: incorrect implementation, approximately calculates the text size
         // you should provide your own Fonts implementation
         let width = text.len() as f32 * style.size * 0.75;

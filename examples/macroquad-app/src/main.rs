@@ -8,8 +8,8 @@ use macroquad::prelude::*;
 use serde_json::{json, Value};
 
 use bumaga::{
-    Borders, Element, ElementFont, Fonts, Fragment, Input, InputEvent, Keys, MouseButtons,
-    MyBorder, Rgba, TransformFunction, ValueExtensions, View,
+    Borders, Element, FontFace, Fonts, Fragment, Input, InputEvent, Keys, MouseButtons, MyBorder,
+    Rgba, TransformFunction, ValueExtensions, View,
 };
 
 #[macroquad::main("macroquad bumaga example")]
@@ -142,14 +142,14 @@ struct FontSystem {
 }
 
 impl FontSystem {
-    pub fn offset_y(&self, text: &str, style: &ElementFont) -> f32 {
+    pub fn offset_y(&self, text: &str, style: &FontFace) -> f32 {
         let size = measure_text(text, Some(&self.font), style.size as u16, 1.0);
         size.offset_y
     }
 }
 
 impl Fonts for FontSystem {
-    fn measure(&mut self, text: &str, style: &ElementFont, _max_width: Option<f32>) -> [f32; 2] {
+    fn measure(&mut self, text: &str, style: &FontFace, _max_width: Option<f32>) -> [f32; 2] {
         // NOTE: macroquad does not support width constraint measurement,
         // only single line text will be rendered correctly
         let size = measure_text(text, Some(&self.font), style.size as u16, 1.0);

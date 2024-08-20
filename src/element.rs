@@ -24,7 +24,7 @@ pub struct Element {
     /// The foreground color of element (most often text color).
     pub color: Rgba,
     /// The different properties of an element's text font.
-    pub font: ElementFont,
+    pub font: FontFace,
     pub listeners: HashMap<String, Handler>,
     pub opacity: f32,
     pub transforms: Vec<TransformFunction>,
@@ -175,13 +175,13 @@ pub enum ObjectFit {
 }
 
 #[derive(Clone, Debug)]
-pub struct ElementFont {
+pub struct FontFace {
     /// The font family.
     pub family: String,
     /// The font size.
     pub size: f32,
     // The font style.
-    // pub font_style: FontStyle,
+    pub style: String,
     /// The font weight.
     pub weight: u16,
     // The font stretch.
