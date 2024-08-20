@@ -807,7 +807,7 @@ impl<'c> Cascade<'c> {
             }
             (PropertyKey::FlexWrap, [Keyword(keyword)]) => {
                 layout.flex_wrap = match keyword.as_str(css) {
-                    "row" => taffy::FlexWrap::Wrap,
+                    "wrap" => taffy::FlexWrap::Wrap,
                     "nowrap" => taffy::FlexWrap::NoWrap,
                     "wrap-reverse" => taffy::FlexWrap::WrapReverse,
                     keyword => return CascadeError::invalid_keyword(keyword),

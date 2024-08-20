@@ -5,7 +5,8 @@ use crate::rendering::Renderer;
 use crate::styles::{create_element, default_layout, inherit, Cascade, Scrolling, Sizes};
 use crate::view_model::{Reaction, Schema, ViewModel};
 use crate::{
-    Call, Element, Fonts, Input, InputEvent, MouseButtons, Output, Transformer, ViewError,
+    Call, Element, Fonts, Input, InputEvent, MouseButtons, Output, Transformer, ValueExtensions,
+    ViewError,
 };
 use log::error;
 use serde_json::{json, Value};
@@ -82,17 +83,23 @@ impl View {
 
     fn watch_changes(&mut self) {
         if self.html_source.detect_changes() || self.css_source.detect_changes() {
-            if let Ok(mut view) = View::create(
+            let view = View::create(
                 self.html_source.clone(),
                 self.css_source.clone(),
                 &self.resources,
-            ) {
-                view.model.transformers = self.model.transformers.clone();
-                self.model = view.model;
-                self.tree = view.tree;
-                self.root = view.root;
-                self.body = view.body;
-                self.css = view.css;
+            );
+            match view {
+                Ok(mut view) => {
+                    view.model.transformers = self.model.transformers.clone();
+                    self.model = view.model;
+                    self.tree = view.tree;
+                    self.root = view.root;
+                    self.body = view.body;
+                    self.css = view.css;
+                }
+                Err(error) => {
+                    error!("unable to handle view changes, {error:?}")
+                }
             }
         }
     }
@@ -186,10 +193,8 @@ impl View {
                 end,
             } => {
                 let children = self
-                    .tree
-                    .get_node_context(parent)
-                    .map(|element| element.children.clone())
-                    .ok_or(ViewError::ElementNotFound)?;
+                    .get_element_mut(parent)
+                    .map(|parent| parent.children.clone())?;
                 let visible = self.tree.children(parent)?;
                 let shown = &children[start..cursor];
                 let hidden = &children[cursor..end];
@@ -205,15 +210,16 @@ impl View {
                 }
             }
             Reaction::Bind { node, key, value } => {
-                let element = self
-                    .tree
-                    .get_node_context_mut(node)
-                    .ok_or(ViewError::ElementNotFound)?;
-                element.attrs.insert(key.clone(), value.clone());
+                let element = self.get_element_mut(node)?;
+                element.attrs.insert(key.clone(), value.eval_string());
                 let node = element.node;
                 match element.tag.as_str() {
+                    "select" => match key.as_str() {
+                        "value" => self.update_select_view(node, value)?,
+                        _ => {}
+                    },
                     "input" => match key.as_str() {
-                        "value" => self.update_input_view(node, value)?,
+                        "value" => self.update_input_view(node, value.eval_string())?,
                         _ => {}
                     },
                     _ => {}
@@ -240,10 +246,7 @@ impl View {
         };
         let mut layout = self.tree.style(node)?.clone();
         let element = unsafe {
-            let ptr = self
-                .tree
-                .get_node_context_mut(node)
-                .ok_or(ViewError::ElementNotFound)? as *mut Element;
+            let ptr = self.get_element_mut(node)? as *mut Element;
             &mut *ptr
         };
 
@@ -326,6 +329,13 @@ impl View {
             tree: &self.tree,
         }
     }
+
+    #[inline(always)]
+    pub(crate) fn get_element_mut(&mut self, node: NodeId) -> Result<&mut Element, ViewError> {
+        self.tree
+            .get_node_context_mut(node)
+            .ok_or(ViewError::ElementNotFound)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -400,17 +410,15 @@ impl PseudoClassMatcher for View {
         match class {
             "hover" => element.state.hover,
             "active" => element.state.active,
+            /// The :checked CSS pseudo-class represents any radio, checkbox, or option element
+            /// that is checked or toggled to an "on" state.
+            "checked" => element.state.checked,
             /// The :focus CSS pseudo-class represents an element (such as a form input) that
             /// has received focus. It is generally triggered when the user clicks or taps
             /// on an element or selects it with the keyboard's Tab key.
             "focus" => element.state.focus,
-            /// The :blank CSS pseudo-class selects empty user input elements (e.g. <input>)
-            "blank" => element
-                .state
-                .value
-                .as_ref()
-                .map(|value| value.is_empty())
-                .unwrap_or(true),
+            /// The :blank CSS pseudo-class selects empty user input elements.
+            "blank" => false,
             _ => {
                 error!("unable to match unknown pseudo class {class}");
                 false

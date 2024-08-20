@@ -15,6 +15,7 @@ pub enum ViewError {
     Css(css::ReaderError),
     Io(io::Error),
     BodyNotFound,
+    ElementInvalidBehaviour,
 }
 
 impl From<TaffyError> for ViewError {

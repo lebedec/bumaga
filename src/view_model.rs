@@ -146,7 +146,7 @@ impl ViewModel {
         Ok(output)
     }
 
-    fn fire(&self, element: &Element, event: &str, this: Value, output: &mut Output) {
+    pub(crate) fn fire(&self, element: &Element, event: &str, this: Value, output: &mut Output) {
         if let Some(handler) = element.listeners.get(event) {
             let mut value = if handler.argument == Schema::THIS {
                 this
@@ -181,11 +181,7 @@ impl ViewModel {
             match *event {
                 InputEvent::Char(char) if element.state.focus => match element.tag.as_str() {
                     "input" => {
-                        let value = element
-                            .state
-                            .value
-                            .as_mut()
-                            .expect("input element has value");
+                        let value = element.state.as_input()?;
                         value.push(char);
                         let value = value.clone();
                         self.fire(element, "oninput", value.clone().into(), output);
@@ -195,22 +191,23 @@ impl ViewModel {
                 },
                 InputEvent::KeyDown(key) => {}
                 InputEvent::KeyUp(key) if element.state.focus => {
-                    if let Some(value) = element.state.value.as_ref() {
-                        if key == Keys::Enter {
-                            self.fire(element, "onchange", value.clone().into(), output);
-                        }
-                        if key == Keys::Backspace {
-                            let value = element
-                                .state
-                                .value
-                                .as_mut()
-                                .expect("input element has value");
-                            if value.pop().is_some() {
-                                let value = value.clone();
-                                self.fire(element, "oninput", value.clone().into(), output);
-                                self.update_input_value(element.node, value.clone(), tree)?;
+                    match element.tag.as_str() {
+                        "input" => {
+                            if key == Keys::Enter {
+                                let value = element.state.as_input()?;
+                                let value = value.clone().into();
+                                self.fire(element, "onchange", value, output);
+                            }
+                            if key == Keys::Backspace {
+                                let value = element.state.as_input()?;
+                                if value.pop().is_some() {
+                                    let value = value.clone();
+                                    self.fire(element, "oninput", value.clone().into(), output);
+                                    self.update_input_value(element.node, value.clone(), tree)?;
+                                }
                             }
                         }
+                        _ => {}
                     }
                     if key == Keys::Tab {
                         // next focus
@@ -252,9 +249,9 @@ impl ViewModel {
                             element.state.focus = true;
                         } else {
                             if element.state.focus {
-                                let this = match &element.state.value {
-                                    None => Value::Null,
-                                    Some(value) => Value::String(value.clone()),
+                                let this = match &element.state.as_input() {
+                                    _ => Value::Null,
+                                    Ok(value) => Value::String(value.to_string()),
                                 };
                                 self.fire(element, "onblur", this.clone(), output);
                                 self.fire(element, "onchange", this, output);
@@ -267,6 +264,12 @@ impl ViewModel {
                             element.state.active = false;
                             if element.state.hover {
                                 self.fire(element, "onclick", Value::Null, output);
+                                match element.tag.as_str() {
+                                    "option" => {
+                                        self.update_option_value(element.node, tree, output)?
+                                    }
+                                    _ => {}
+                                }
                             }
                         }
                     }
@@ -335,12 +338,13 @@ impl Binding {
                 let visible = value.as_boolean() == visible;
                 Reaction::Reattach { node, visible }
             }
-            BindingParams::Attribute(node, key) => {
-                let value = value.as_string();
-                Reaction::Bind { node, key, value }
-            }
+            BindingParams::Attribute(node, key) => Reaction::Bind {
+                node,
+                key,
+                value: value.clone(),
+            },
             BindingParams::Text(node, span) => {
-                let text = value.as_string();
+                let text = value.eval_string();
                 Reaction::Type { node, span, text }
             }
             BindingParams::Repeat(parent, start, size) => {
@@ -392,7 +396,7 @@ pub enum Reaction {
     Bind {
         node: NodeId,
         key: String,
-        value: String,
+        value: Value,
     },
 }
 

@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use taffy::{Layout, NodeId};
 
 use crate::animation::{Animator, Transition};
 use crate::css::PropertyKey;
 use crate::styles::Scrolling;
-use crate::Handler;
+use crate::{Handler, ViewError};
 
 /// The most fundamental object for building a UI, Element contains layout and appearance.
 /// Element maps directly to the native rectangle view equivalent on whatever graphics engine
@@ -197,7 +197,40 @@ pub struct ElementState {
     pub active: bool,
     pub hover: bool,
     pub focus: bool,
-    pub value: Option<String>,
+    pub checked: bool,
+    pub behaviour: Behaviour,
+}
+
+impl ElementState {
+    pub fn as_input(&mut self) -> Result<&mut String, ViewError> {
+        match &mut self.behaviour {
+            Behaviour::Input(value) => Ok(value),
+            _ => Err(ViewError::ElementInvalidBehaviour),
+        }
+    }
+
+    pub fn as_select(&mut self) -> Result<&mut String, ViewError> {
+        match &mut self.behaviour {
+            Behaviour::Select(value) => Ok(value),
+            _ => Err(ViewError::ElementInvalidBehaviour),
+        }
+    }
+
+    pub fn as_select_multiple(&mut self) -> Result<&mut HashSet<String>, ViewError> {
+        match &mut self.behaviour {
+            Behaviour::SelectMultiple(value) => Ok(value),
+            _ => Err(ViewError::ElementInvalidBehaviour),
+        }
+    }
+}
+
+#[derive(Default)]
+pub enum Behaviour {
+    #[default]
+    None,
+    Input(String),
+    Select(String),
+    SelectMultiple(HashSet<String>),
 }
 
 #[derive(Default, PartialEq)]

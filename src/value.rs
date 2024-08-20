@@ -2,12 +2,20 @@ use serde_json::Value;
 use std::num::ParseIntError;
 
 pub trait ValueExtensions {
+    fn eval_array(&self) -> Vec<String>;
     fn eval_u64(&self) -> u64;
-    fn as_string(&self) -> String;
+    fn eval_string(&self) -> String;
     fn as_boolean(&self) -> bool;
 }
 
 impl ValueExtensions for Value {
+    fn eval_array(&self) -> Vec<String> {
+        match self {
+            Value::Array(array) => array.iter().map(|value| value.eval_string()).collect(),
+            _ => vec![self.eval_string()],
+        }
+    }
+
     fn eval_u64(&self) -> u64 {
         match self {
             Value::Null => 0,
@@ -28,7 +36,7 @@ impl ValueExtensions for Value {
         }
     }
 
-    fn as_string(&self) -> String {
+    fn eval_string(&self) -> String {
         match self {
             Value::Null => "".to_string(),
             Value::Bool(value) => value.to_string(),

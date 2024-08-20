@@ -22,7 +22,7 @@ async fn main() {
     let mut fonts = FontSystem { font };
     let mut view = View::watch("../shared/view.html", "../shared/style.css", "../shared/")
         .unwrap()
-        .pipe("cap", |value| value.as_string().to_uppercase().into());
+        .pipe("cap", |value| value.eval_string().to_uppercase().into());
     let mut todos_done = vec![];
     let mut todos = vec![
         "learn bumaga documentation".to_string(),
