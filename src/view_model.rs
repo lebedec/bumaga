@@ -7,6 +7,7 @@ use pest::pratt_parser::Op;
 use serde::de::Unexpected::Str;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::time::Duration;
 use taffy::{NodeId, TaffyTree};
 
 pub type Bindings = BTreeMap<String, Vec<Binding>>;
@@ -28,7 +29,7 @@ impl ViewModel {
         Self {
             bindings,
             model,
-            transformers: HashMap::new(),
+            transformers: default_transformers(),
             mouse: [0.0, 0.0],
             mouse_hovers: HashSet::new(),
         }
@@ -249,12 +250,17 @@ impl ViewModel {
                             element.state.focus = true;
                         } else {
                             if element.state.focus {
-                                let this = match &element.state.as_input() {
-                                    _ => Value::Null,
-                                    Ok(value) => Value::String(value.to_string()),
-                                };
-                                self.fire(element, "onblur", this.clone(), output);
-                                self.fire(element, "onchange", this, output);
+                                match element.tag.as_str() {
+                                    "input" => {
+                                        let this = match &element.state.as_input() {
+                                            _ => Value::Null,
+                                            Ok(value) => Value::String(value.to_string()),
+                                        };
+                                        self.fire(element, "onchange", this, output);
+                                    }
+                                    _ => {}
+                                }
+                                self.fire(element, "onblur", Value::Null, output);
                             }
                             element.state.focus = false;
                         }
@@ -488,4 +494,20 @@ impl Call {
     pub fn get_str(&self, index: usize) -> Option<&str> {
         self.arguments.get(index).and_then(Value::as_str)
     }
+}
+
+fn default_transformers() -> HashMap<String, Transformer> {
+    fn duration(value: Value) -> Value {
+        match value.as_f64() {
+            None => value,
+            Some(value) => {
+                let value = Duration::from_secs_f64(value);
+                let value = format!("{value:?}");
+                Value::String(value)
+            }
+        }
+    }
+    let mut transformers = HashMap::new();
+    transformers.insert("duration".to_string(), duration as Transformer);
+    transformers
 }
