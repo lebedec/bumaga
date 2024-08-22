@@ -36,6 +36,15 @@ pub struct Html {
 }
 
 impl Html {
+    pub fn empty() -> Self {
+        Html {
+            tag: "".to_string(),
+            bindings: vec![],
+            text: None,
+            children: vec![],
+        }
+    }
+
     pub fn as_visibility(&self) -> Option<(bool, &Binder)> {
         for binding in &self.bindings {
             if let ElementBinding::Visibility(visible, binder) = binding {

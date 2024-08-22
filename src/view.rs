@@ -1,5 +1,5 @@
 use crate::css::{read_css, Css, PseudoClassMatcher};
-use crate::html::{read_html, Html};
+use crate::html::{read_html, ElementBinding, Html};
 use crate::input::DummyFonts;
 use crate::rendering::Renderer;
 use crate::styles::{create_element, default_layout, inherit, Cascade, Scrolling, Sizes};
@@ -34,6 +34,58 @@ pub struct View {
 }
 
 impl View {
+    pub fn from_html(path: &str, resources: &str) -> Result<Self, ViewError> {
+        let mut html_source = Source::file(path);
+        let html = html_source.get_content()?;
+        let html = read_html(&html)?;
+        // TODO: rework
+        let mut css_files = vec![];
+        let css_base_directory = html_source.folder();
+        let mut body = Html::empty();
+        for child in html.children {
+            if child.tag == "link" {
+                let mut attrs = HashMap::new();
+                for binding in &child.bindings {
+                    if let ElementBinding::None(key, value) = binding {
+                        attrs.insert(key.clone(), value.as_str());
+                    }
+                }
+                if attrs.get("rel") == Some(&"stylesheet") {
+                    if let Some(href) = attrs.get("href") {
+                        let mut file = css_base_directory.clone();
+                        file.push(href);
+                        css_files.push(file);
+                    }
+                }
+            }
+            if child.tag == "body" {
+                body = child;
+                break;
+            }
+        }
+        let mut css_source = Source::files(css_files);
+        let css = css_source.get_content()?;
+        let css = read_css(&css)?;
+        //
+        let mut renderer = Renderer::new();
+        let [root, body] = renderer.render(body)?;
+        let bindings = renderer.bindings;
+        let schema = renderer.schema;
+        let tree = renderer.tree;
+        let model = ViewModel::create(bindings, schema.value);
+        let resources = resources.to_string();
+        Ok(Self {
+            model,
+            tree,
+            root,
+            body,
+            css,
+            html_source,
+            css_source,
+            resources,
+        })
+    }
+
     pub fn compile(html: &str, css: &str, resources: &str) -> Result<Self, ViewError> {
         let html = Source::memory(html);
         let css = Source::memory(css);
@@ -46,7 +98,7 @@ impl View {
         Self::create(html, css, resources)
     }
 
-    fn create(
+    pub fn create(
         mut html_source: Source,
         mut css_source: Source,
         resources: &str,
@@ -56,7 +108,27 @@ impl View {
         let html = read_html(&html)?;
         let css = read_css(&css)?;
         let mut renderer = Renderer::new();
-        let [root, body] = renderer.render(html)?;
+        // TODO: remove cloned, take ownership
+        for child in &html.children {
+            if child.tag == "link" {
+                let mut attrs = HashMap::new();
+                for binding in &child.bindings {
+                    if let ElementBinding::None(key, value) = binding {
+                        attrs.insert(key.clone(), value.as_str());
+                    }
+                }
+                if attrs.get("rel") == Some(&"stylesheet") {
+                    if let Some(href) = attrs.get("href") {}
+                }
+            }
+        }
+        let body = html
+            .children
+            .last()
+            .cloned()
+            .ok_or(ViewError::BodyNotFound)?;
+        //
+        let [root, body] = renderer.render(body)?;
         let bindings = renderer.bindings;
         let schema = renderer.schema;
         let tree = renderer.tree;
@@ -431,6 +503,7 @@ impl PseudoClassMatcher for View {
 enum Source {
     Memory(String),
     File(PathBuf, SystemTime),
+    Files(Vec<(PathBuf, SystemTime)>),
 }
 
 impl Source {
@@ -442,12 +515,45 @@ impl Source {
         Self::File(PathBuf::from(path), SystemTime::UNIX_EPOCH)
     }
 
+    fn files(files: Vec<PathBuf>) -> Self {
+        Self::Files(
+            files
+                .into_iter()
+                .map(|path| (path, SystemTime::UNIX_EPOCH))
+                .collect(),
+        )
+    }
+
+    fn folder(&self) -> PathBuf {
+        match self {
+            Source::Memory(_) => PathBuf::from("."),
+            Source::File(path, _) => {
+                let mut path = path.clone();
+                path.pop();
+                path
+            }
+            Source::Files(files) => {
+                let mut path = files[0].0.clone();
+                path.pop();
+                path
+            }
+        }
+    }
+
     fn get_content(&mut self) -> Result<String, ViewError> {
         match self {
             Source::Memory(content) => Ok(content.clone()),
             Source::File(path, modified) => {
                 *modified = Self::modified(path);
                 fs::read_to_string(path).map_err(ViewError::from)
+            }
+            Source::Files(files) => {
+                let mut content = String::new();
+                for (path, modified) in files.iter_mut() {
+                    *modified = Self::modified(path);
+                    content += &fs::read_to_string(path).map_err(ViewError::from)?;
+                }
+                Ok(content)
             }
         }
     }
@@ -463,6 +569,16 @@ impl Source {
                 } else {
                     false
                 }
+            }
+            Source::Files(files) => {
+                for (path, modified) in files.iter_mut() {
+                    let timestamp = Self::modified(&path);
+                    if *modified < timestamp {
+                        *modified = timestamp;
+                        return true;
+                    }
+                }
+                false
             }
         }
     }

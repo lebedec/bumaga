@@ -29,16 +29,10 @@ impl Renderer {
         }
     }
 
-    pub fn render(&mut self, html: Html) -> Result<[NodeId; 2], ViewError> {
+    pub fn render(&mut self, body: Html) -> Result<[NodeId; 2], ViewError> {
         let root = self.tree.new_leaf(default_layout())?;
         self.tree
             .set_node_context(root, Some(create_element(root)))?;
-        // TODO: remove cloned, take ownership
-        let body = html
-            .children
-            .last()
-            .cloned()
-            .ok_or(ViewError::BodyNotFound)?;
         let body = self.render_node(body)?;
         self.tree.add_child(root, body)?;
         Ok([root, body])
