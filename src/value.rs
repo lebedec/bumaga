@@ -4,6 +4,7 @@ use std::num::ParseIntError;
 pub trait ValueExtensions {
     fn eval_array(&self) -> Vec<String>;
     fn eval_u64(&self) -> u64;
+    fn eval_usize(&self) -> usize;
     fn eval_string(&self) -> String;
     fn as_boolean(&self) -> bool;
 }
@@ -34,6 +35,10 @@ impl ValueExtensions for Value {
             Value::Array(_) => 0,
             Value::Object(_) => 0,
         }
+    }
+
+    fn eval_usize(&self) -> usize {
+        self.eval_u64() as usize
     }
 
     fn eval_string(&self) -> String {
