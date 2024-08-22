@@ -1,3 +1,6 @@
+use log::error;
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use serde_json::Value;
 use std::num::ParseIntError;
 
@@ -7,6 +10,7 @@ pub trait ValueExtensions {
     fn eval_usize(&self) -> usize;
     fn eval_string(&self) -> String;
     fn as_boolean(&self) -> bool;
+    fn eval<T: Default + DeserializeOwned>(&self) -> T;
 }
 
 impl ValueExtensions for Value {
@@ -39,6 +43,13 @@ impl ValueExtensions for Value {
 
     fn eval_usize(&self) -> usize {
         self.eval_u64() as usize
+    }
+
+    fn eval<T: Default + DeserializeOwned>(&self) -> T {
+        serde_json::from_value(self.clone()).unwrap_or_else(|error| {
+            error!("unable to eval JSON value, {error}");
+            T::default()
+        })
     }
 
     fn eval_string(&self) -> String {
