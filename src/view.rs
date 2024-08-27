@@ -34,7 +34,7 @@ pub struct View {
 }
 
 impl View {
-    pub fn from_html(path: &str, resources: &str) -> Result<Self, ViewError> {
+    pub fn from_html(path: &str) -> Result<Self, ViewError> {
         let mut html_source = Source::file(path);
         let html = html_source.get_content()?;
         let html = read_html(&html)?;
@@ -73,7 +73,7 @@ impl View {
         let schema = renderer.schema;
         let tree = renderer.tree;
         let model = ViewModel::create(bindings, schema.value);
-        let resources = resources.to_string();
+        let resources = "./todo".to_string();
         Ok(Self {
             model,
             tree,
