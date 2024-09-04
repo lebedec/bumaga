@@ -290,6 +290,10 @@ impl View {
                         "value" => self.update_select_view(node, value)?,
                         _ => {}
                     },
+                    "img" => match key.as_str() {
+                        "src" => self.update_img_view(node, value.eval_string())?,
+                        _ => {}
+                    },
                     "input" => match key.as_str() {
                         "value" => self.update_input_view(node, value.eval_string())?,
                         _ => {}

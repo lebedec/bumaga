@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 
-use taffy::{NodeId, TaffyTree};
+use taffy::{Dimension, NodeId, Size, TaffyTree};
 
 use crate::html::{ElementBinding, Html, TextBinding, TextSpan};
 use crate::styles::{create_element, default_layout};
@@ -69,6 +69,23 @@ impl Renderer {
             .collect();
         let mut element = create_element(node);
         element.text = Some(TextContent { spans });
+        self.tree.set_node_context(node, Some(element))?;
+        Ok(node)
+    }
+
+    pub(crate) fn render_bg_image(&mut self, src: String) -> Result<NodeId, ViewError> {
+        let mut layout = default_layout();
+        layout.size = Size {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Percent(1.0),
+        };
+        layout.min_size = Size {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Percent(1.0),
+        };
+        let node = self.tree.new_leaf(layout)?;
+        let mut element = create_element(node);
+        element.background.image = Some(src);
         self.tree.set_node_context(node, Some(element))?;
         Ok(node)
     }
@@ -143,7 +160,9 @@ impl Renderer {
 
         match element.tag.as_str() {
             // void elements
-            "img" => {}
+            "img" => {
+                children.extend(self.render_img(&mut element)?);
+            }
             "input" => {
                 children.extend(self.render_input(&mut element)?);
             }

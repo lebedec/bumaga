@@ -20,7 +20,7 @@ use crate::css::{
 use crate::html::TextBinding;
 use crate::{
     Background, Borders, Element, FontFace, Input, Length, MyBorder, ObjectFit, PointerEvents,
-    TransformFunction,
+    TextAlign, TransformFunction,
 };
 
 impl FontFace {
@@ -64,6 +64,7 @@ pub fn create_element(node: NodeId) -> Element {
             // font_stretch: TextStyle::DEFAULT_FONT_STRETCH,
             line_height: 16.0,
             // wrap: OverflowWrap::Normal,
+            align: TextAlign::Start,
         },
         listeners: Default::default(),
         opacity: 1.0,
@@ -402,6 +403,19 @@ impl<'c> Cascade<'c> {
                     "normal" => "normal".to_string(),
                     "italic" => "italic".to_string(),
                     "oblique" => "oblique".to_string(),
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
+            }
+            (PropertyKey::TextAlign, [Keyword(keyword)]) => {
+                element.font.align = match keyword.as_str(css) {
+                    "start" => TextAlign::Start,
+                    "end" => TextAlign::End,
+                    "left" => TextAlign::Left,
+                    "right" => TextAlign::Right,
+                    "center" => TextAlign::Center,
+                    "justify" => TextAlign::Justify,
+                    "justify-all" => TextAlign::JustifyAll,
+                    "match-parent" => TextAlign::MatchParent,
                     keyword => return CascadeError::invalid_keyword(keyword),
                 }
             }

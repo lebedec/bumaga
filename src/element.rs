@@ -190,6 +190,19 @@ pub struct FontFace {
     pub line_height: f32,
     // The text overflow wrap.
     // pub wrap: OverflowWrap,
+    pub align: TextAlign,
+}
+
+#[derive(Clone, Debug)]
+pub enum TextAlign {
+    Start,
+    End,
+    Left,
+    Right,
+    Center,
+    Justify,
+    JustifyAll,
+    MatchParent,
 }
 
 #[derive(Default)]
