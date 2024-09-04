@@ -5,8 +5,8 @@ use crate::rendering::Renderer;
 use crate::styles::{create_element, default_layout, inherit, Cascade, Scrolling, Sizes};
 use crate::view_model::{Reaction, Schema, ViewModel};
 use crate::{
-    Call, Element, Fonts, Input, InputEvent, MouseButtons, Output, Transformer, ValueExtensions,
-    ViewError,
+    Call, Element, Fonts, Input, InputEvent, MouseButtons, Output, PointerEvents, Transformer,
+    ValueExtensions, ViewError,
 };
 use log::error;
 use serde_json::{json, Value};
@@ -225,6 +225,7 @@ impl View {
         let element = self.tree.get_node_context_mut(node).unwrap();
         element.position = [layout.location.x, layout.location.y];
         element.size = [layout.size.width, layout.size.height];
+        element.content_size = [layout.content_size.width, layout.content_size.height];
         element.scrolling = Scrolling::ensure(&layout, &element.scrolling);
         element.clipping = clipping;
         let mut location = layout.location;
@@ -334,16 +335,21 @@ impl View {
         match element.tag.as_str() {
             // TODO: move to render ?
             "body" => {
-                layout.size = Size {
-                    width: Dimension::Length(sizes.viewport_width),
-                    height: Dimension::Length(sizes.viewport_height),
-                };
-                layout.margin = Rect {
-                    left: LengthPercentageAuto::Length(8.0),
-                    right: LengthPercentageAuto::Length(8.0),
-                    top: LengthPercentageAuto::Length(8.0),
-                    bottom: LengthPercentageAuto::Length(8.0),
-                };
+                // layout.size = Size {
+                //     width: Dimension::Length(sizes.viewport_width),
+                //     height: Dimension::Length(sizes.viewport_height),
+                // };
+                // layout.size = Size {
+                //     width: Dimension::Auto,
+                //     height: Dimension::Auto,
+                // };
+                // layout.margin = Rect {
+                //     left: LengthPercentageAuto::Length(8.0),
+                //     right: LengthPercentageAuto::Length(8.0),
+                //     top: LengthPercentageAuto::Length(8.0),
+                //     bottom: LengthPercentageAuto::Length(8.0),
+                // };
+                element.pointer_events = PointerEvents::None;
             }
             "input" => {
                 layout.display = Display::Flex;

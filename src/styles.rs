@@ -29,6 +29,33 @@ impl FontFace {
     // pub const DEFAULT_FONT_STRETCH: FontStretchKeyword = FontStretchKeyword::Normal;
 }
 
+pub fn initial(element: &mut Element) {
+    // TODO: extract element style to struct
+    element.background = Background {
+        image: None,
+        color: [0; 4],
+    };
+    element.borders = Borders {
+        top: Default::default(),
+        bottom: Default::default(),
+        right: Default::default(),
+        left: Default::default(),
+        radius: [Length::zero(); 4],
+    };
+    element.color = [0, 0, 0, 255];
+    element.font = FontFace {
+        family: FontFace::DEFAULT_FONT_FAMILY.to_string(),
+        size: 16.0,
+        style: "normal".to_string(),
+        weight: FontFace::DEFAULT_FONT_WEIGHT,
+        // font_stretch: TextStyle::DEFAULT_FONT_STRETCH,
+        line_height: 16.0,
+        // wrap: OverflowWrap::Normal,
+        align: TextAlign::Start,
+    };
+    element.opacity = 1.0;
+}
+
 pub fn create_element(node: NodeId) -> Element {
     Element {
         node,
@@ -38,15 +65,11 @@ pub fn create_element(node: NodeId) -> Element {
         attrs: Default::default(),
         position: [0.0; 2],
         size: [0.0; 2],
+        content_size: [0.0; 2],
         object_fit: ObjectFit::Fill,
         background: Background {
             image: None,
             color: [0; 4],
-            // position: Default::default(),
-            // repeat: Default::default(),
-            // size: Default::default(),
-            // attachment: Default::default(),
-            // clip: Default::default(),
         },
         borders: Borders {
             top: Default::default(),
@@ -161,6 +184,7 @@ pub fn inherit(parent: &Element, element: &mut Element) {
     // caption-side
     // color
     element.color = parent.color;
+
     // cursor
     // direction
     // empty-cells
@@ -169,7 +193,7 @@ pub fn inherit(parent: &Element, element: &mut Element) {
     // font-size
     element.font.size = parent.font.size;
     // font-style
-    //view.text_style.font_style = parent.text_style.font_style.clone();
+    element.font.style = parent.font.style.clone();
     // font-variant
     // font-weight
     element.font.weight = parent.font.weight;
@@ -260,13 +284,19 @@ impl<'c> Cascade<'c> {
         element: &mut Element,
         matcher: &impl PseudoClassMatcher,
     ) {
+        // -1: initial
+        initial(element);
+        // 0: inheritance
+        inherit(parent, element);
         let css = &self.css.source;
-        let time = input.time.as_secs_f32();
+        // 1: css rules
         for style in &self.css.styles {
             if match_style(css, &style, node, tree, matcher) {
                 self.apply_style(style, parent, layout, element);
             }
         }
+        // 2: transitions
+        let time = input.time.as_secs_f32();
         let transitions: Vec<AnimationResult> = element
             .transitions
             .values_mut()
@@ -281,6 +311,7 @@ impl<'c> Cascade<'c> {
                 );
             }
         }
+        // 3: animations
         if !element.animator.name.is_empty() {
             let key = element.animator.name.as_str(css);
             if let Some(animation) = self.css.animations.get(key) {
@@ -304,7 +335,6 @@ impl<'c> Cascade<'c> {
         layout: &mut taffy::Style,
         element: &mut Element,
     ) {
-        inherit(parent, element);
         for property in &style.declaration {
             if let PropertyKey::Variable(name) = property.key {
                 self.push_variable(name, &property.values);
@@ -388,7 +418,9 @@ impl<'c> Cascade<'c> {
             (PropertyKey::BackgroundColor, [color]) => {
                 element.background.color = resolve_color(color, self)?
             }
-            (PropertyKey::Color, [color]) => element.color = resolve_color(color, self)?,
+            (PropertyKey::Color, [color]) => {
+                element.color = resolve_color(color, self)?;
+            }
             (PropertyKey::FontSize, [size]) => {
                 element.font.size = resolve_length(size, self, self.sizes.parent_font_size)?;
             }
@@ -883,6 +915,15 @@ fn resolve_font_weight(value: &Value, cascade: &Cascade) -> Result<u16, CascadeE
 fn resolve_color(value: &Value, cascade: &Cascade) -> Result<[u8; 4], CascadeError> {
     let value = match value {
         Value::Color(color) => *color,
+        Value::Keyword(keyword) => match keyword.as_str(&cascade.css.source) {
+            "black" => [0, 0, 0, 255],
+            "white" => [255, 255, 255, 255],
+            "red" => [255, 0, 0, 255],
+            "blue" => [0, 0, 255, 255],
+            "green" => [0, 255, 0, 255],
+            "transparent" => [0, 0, 0, 0],
+            keyword => return Err(CascadeError::InvalidKeyword(keyword.to_string())),
+        },
         Value::Var(variable) => {
             let value = cascade.get_variable_value(variable)?;
             return resolve_color(value, cascade);

@@ -4,7 +4,7 @@ use std::hash::Hash;
 use taffy::{Dimension, NodeId, Size, TaffyTree};
 
 use crate::html::{ElementBinding, Html, TextBinding, TextSpan};
-use crate::styles::{create_element, default_layout};
+use crate::styles::{create_element, default_layout, inherit};
 use crate::view_model::{Binding, Bindings, Schema};
 use crate::{BindingParams, Element, Handler, TextContent, ViewError};
 

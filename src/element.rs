@@ -18,6 +18,7 @@ pub struct Element {
     pub attrs: HashMap<String, String>,
     pub position: [f32; 2],
     pub size: [f32; 2],
+    pub content_size: [f32; 2],
     pub object_fit: ObjectFit,
     pub background: Background,
     pub borders: Borders,
@@ -39,7 +40,7 @@ pub struct Element {
 impl Element {
     #[inline(always)]
     pub fn is_visible_rectangle(&self) -> bool {
-        self.color[3] != 0 && self.background.color[3] != 0
+        self.color[3] != 0 || self.background.color[3] != 0 || self.borders.top.color[3] != 0
     }
 }
 
