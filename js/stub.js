@@ -99,6 +99,7 @@ function traverse(node, value) {
 }
 
 window.onload = () => {
+    console.log('BEGIN', VALUE);
     traverse(document.body, VALUE)
 }
 

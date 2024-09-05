@@ -1,6 +1,6 @@
 use crate::css::{read_css, Css, PseudoClassMatcher};
+use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
-use crate::input::DummyFonts;
 use crate::rendering::Renderer;
 use crate::styles::{create_element, default_layout, inherit, Cascade, Scrolling, Sizes};
 use crate::view_model::{Reaction, Schema, ViewModel};
@@ -31,10 +31,12 @@ pub struct View {
     html_source: Source,
     css_source: Source,
     resources: String,
+    pub visible: bool,
+    pub fonts: Box<dyn Fonts>,
 }
 
 impl View {
-    pub fn from_html(path: &str) -> Result<Self, ViewError> {
+    pub fn from_html(path: &str, fonts: impl Fonts + 'static) -> Result<Self, ViewError> {
         let mut html_source = Source::file(path);
         let html = html_source.get_content()?;
         let html = read_html(&html)?;
@@ -83,7 +85,14 @@ impl View {
             html_source,
             css_source,
             resources,
+            visible: true,
+            fonts: Box::new(fonts),
         })
+    }
+
+    pub fn fonts(mut self, fonts: impl Fonts + 'static) -> Self {
+        self.fonts = Box::new(fonts);
+        self
     }
 
     pub fn compile(html: &str, css: &str, resources: &str) -> Result<Self, ViewError> {
@@ -143,6 +152,8 @@ impl View {
             html_source,
             css_source,
             resources,
+            visible: true,
+            fonts: Box::new(DummyFonts),
         })
     }
 
@@ -176,9 +187,9 @@ impl View {
         }
     }
 
-    pub fn update(&mut self, mut input: Input) -> Result<Output, ViewError> {
+    pub fn update(&mut self, input: Input, value: Value) -> Result<Output, ViewError> {
         self.watch_changes();
-        let reactions = self.model.bind(&Value::Object(input.value.clone()));
+        let reactions = self.model.bind(&value);
         for reaction in reactions {
             self.update_tree(reaction).unwrap();
         }
@@ -200,11 +211,11 @@ impl View {
             viewport_width,
             viewport_height,
         };
-        self.apply_styles(self.body, &mut input, sizes)?;
+        self.apply_styles(self.body, &input, sizes)?;
         self.tree.compute_layout_with_measure(
             self.body,
             Size::MAX_CONTENT,
-            |size, space, _, view, _| measure_text(&mut input, size, space, view),
+            |size, space, _, view, _| measure_text(self.fonts.as_ref(), size, space, view),
         )?;
         // TODO: clipping of viewport
         self.compute_positions_and_clipping(self.body, Point::ZERO, None)?;
@@ -309,7 +320,7 @@ impl View {
     fn apply_styles(
         &mut self,
         node: NodeId,
-        input: &mut Input,
+        input: &Input,
         mut sizes: Sizes,
     ) -> Result<(), ViewError> {
         let parent = unsafe {
@@ -455,8 +466,8 @@ impl Deref for Fragment<'_> {
     }
 }
 
-fn measure_text(
-    input: &mut Input,
+fn measure_text<F: Fonts + ?Sized>(
+    fonts: &F,
     size: Size<Option<f32>>,
     space: Size<AvailableSpace>,
     element: Option<&mut Element>,
@@ -478,10 +489,7 @@ fn measure_text(
             AvailableSpace::MaxContent => None,
             AvailableSpace::Definite(width) => Some(width),
         });
-        let [width, height] = match input.fonts.as_mut() {
-            None => DummyFonts.measure(&text, &element.font, max_width),
-            Some(fonts) => fonts.measure(&text, &element.font, max_width),
-        };
+        let [width, height] = fonts.measure(&text, &element.font, max_width);
         return Size { width, height };
     }
     Size::ZERO

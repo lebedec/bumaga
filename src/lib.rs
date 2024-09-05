@@ -1,5 +1,6 @@
 pub use element::*;
 pub use error::*;
+pub use fonts::*;
 pub use input::*;
 pub use output::*;
 pub use value::*;
@@ -11,6 +12,7 @@ mod browser;
 mod css;
 mod element;
 mod error;
+mod fonts;
 mod html;
 mod input;
 mod output;

@@ -224,16 +224,14 @@ impl ViewModel {
                         let hover = hovers(cursor, element);
                         if hover {
                             if !element.state.hover {
-                                // fire enter
-                                //println!("enter {}", element.tag);
+                                self.fire(element, "onmouseenter", Value::Null, output);
                             }
                             // TODO: rework algorithm (user input not only way to change hover)
                             element.state.hover = true;
                             self.mouse_hovers.insert(element.node);
                         } else {
                             if element.state.hover {
-                                // fire leave
-                                //println!("leave {}", element.tag);
+                                self.fire(element, "onmouseleave", Value::Null, output);
                             }
                             element.state.hover = false;
                             self.mouse_hovers.remove(&element.node);
