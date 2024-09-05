@@ -1,8 +1,8 @@
 use crate::css::{Complex, Matcher, Simple, Style};
 use crate::Element;
 use log::error;
-use std::collections::{HashMap, HashSet};
-use taffy::{NodeId, TaffyTree, TraversePartialTree};
+
+use taffy::{NodeId, TaffyTree};
 
 pub fn match_style(
     css: &str,

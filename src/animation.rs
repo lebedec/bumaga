@@ -151,7 +151,7 @@ impl Animator {
         result
     }
 
-    pub fn play_keyframe(&mut self, css: &Css, keyframe: &Keyframe, t: u32) -> AnimationResult {
+    pub fn play_keyframe(&mut self, _css: &Css, keyframe: &Keyframe, t: u32) -> AnimationResult {
         let mut a = 0;
         let mut b = 0;
         for step in keyframe.frames.keys() {
@@ -271,6 +271,6 @@ fn number(a: &f32, b: &f32, t: f32) -> Value {
     Number(a + (b - a) * t)
 }
 
-fn transform(a: &[Value], b: &[Value], t: f32) -> Vec<Value> {
+fn transform(_a: &[Value], _b: &[Value], _t: f32) -> Vec<Value> {
     unimplemented!()
 }

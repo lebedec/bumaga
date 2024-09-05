@@ -3,9 +3,8 @@ use crate::{
     ViewError,
 };
 use log::error;
-use pest::pratt_parser::Op;
-use serde::de::Unexpected::Str;
-use serde_json::{json, Map, Value};
+
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Duration;
 use taffy::{NodeId, TaffyTree};
@@ -190,7 +189,7 @@ impl ViewModel {
                     }
                     _ => {}
                 },
-                InputEvent::KeyDown(key) => {}
+                InputEvent::KeyDown(_key) => {}
                 InputEvent::KeyUp(key) if element.state.focus => {
                     match element.tag.as_str() {
                         "input" => {
@@ -251,8 +250,8 @@ impl ViewModel {
                                 match element.tag.as_str() {
                                     "input" => {
                                         let this = match &element.state.as_input() {
-                                            _ => Value::Null,
                                             Ok(value) => Value::String(value.to_string()),
+                                            _ => Value::Null,
                                         };
                                         self.fire(element, "onchange", this, output);
                                     }

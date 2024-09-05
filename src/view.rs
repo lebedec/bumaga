@@ -2,24 +2,23 @@ use crate::css::{read_css, Css, PseudoClassMatcher};
 use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
 use crate::rendering::Renderer;
-use crate::styles::{create_element, default_layout, inherit, Cascade, Scrolling, Sizes};
-use crate::view_model::{Reaction, Schema, ViewModel};
+use crate::styles::{inherit, Cascade, Scrolling, Sizes};
+use crate::view_model::{Reaction, ViewModel};
 use crate::{
-    Call, Element, Fonts, Input, InputEvent, MouseButtons, Output, PointerEvents, Transformer,
-    ValueExtensions, ViewError,
+    Element, Fonts, Input, Output, PointerEvents, Transformer, ValueExtensions, ViewError,
 };
 use log::error;
-use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap};
+use serde_json::Value;
+use std::collections::HashMap;
 use std::fs;
-use std::ops::{Add, Deref, DerefMut};
+use std::ops::{Add, Deref};
 use std::path::PathBuf;
 use std::time::SystemTime;
 use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
 use taffy::{
-    AlignItems, AvailableSpace, Dimension, Display, Layout, LengthPercentageAuto, NodeId, Point,
-    Position, PrintTree, Rect, Size, Style, TaffyTree,
+    AlignItems, AvailableSpace, Display, Layout, NodeId, Point, Position, PrintTree, Size,
+    TaffyTree,
 };
 
 pub struct View {
@@ -127,7 +126,7 @@ impl View {
                     }
                 }
                 if attrs.get("rel") == Some(&"stylesheet") {
-                    if let Some(href) = attrs.get("href") {}
+                    if let Some(_href) = attrs.get("href") {}
                 }
             }
         }
@@ -500,14 +499,14 @@ impl PseudoClassMatcher for View {
         match class {
             "hover" => element.state.hover,
             "active" => element.state.active,
-            /// The :checked CSS pseudo-class represents any radio, checkbox, or option element
-            /// that is checked or toggled to an "on" state.
+            // The :checked CSS pseudo-class represents any radio, checkbox, or option element
+            // that is checked or toggled to an "on" state.
             "checked" => element.state.checked,
-            /// The :focus CSS pseudo-class represents an element (such as a form input) that
-            /// has received focus. It is generally triggered when the user clicks or taps
-            /// on an element or selects it with the keyboard's Tab key.
+            // The :focus CSS pseudo-class represents an element (such as a form input) that
+            // has received focus. It is generally triggered when the user clicks or taps
+            // on an element or selects it with the keyboard's Tab key.
             "focus" => element.state.focus,
-            /// The :blank CSS pseudo-class selects empty user input elements.
+            // The :blank CSS pseudo-class selects empty user input elements.
             "blank" => false,
             _ => {
                 error!("unable to match unknown pseudo class {class}");

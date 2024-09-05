@@ -1,25 +1,24 @@
 use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
+
 
 use log::error;
-use taffy::style_helpers::TaffyZero;
+
 use taffy::{
-    Dimension, Layout, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect,
-    Style as LayoutStyle, TaffyTree,
+    Dimension, Layout, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect, TaffyTree,
 };
 
 use crate::animation::{
     AnimationDirection, AnimationFillMode, AnimationIterations, AnimationResult, Animator,
     TimingFunction, Transition,
 };
-use crate::css::Value::{Color, Keyword, Number, Time};
+use crate::css::Value::{Keyword, Number, Time};
 use crate::css::{
-    match_style, Css, Dim, Property, PropertyKey, PseudoClassMatcher, Str, Style, Value, Values,
+    match_style, Css, Dim, PropertyKey, PseudoClassMatcher, Str, Style, Value, Values,
     Var,
 };
-use crate::html::TextBinding;
+
 use crate::{
-    Background, Borders, Element, FontFace, Input, Length, MyBorder, ObjectFit, PointerEvents,
+    Background, Borders, Element, FontFace, Input, Length, ObjectFit, PointerEvents,
     TextAlign, TransformFunction,
 };
 
@@ -331,7 +330,7 @@ impl<'c> Cascade<'c> {
     fn apply_style(
         &mut self,
         style: &'c Style,
-        parent: &Element,
+        _parent: &Element,
         layout: &mut taffy::Style,
         element: &mut Element,
     ) {
@@ -403,11 +402,11 @@ impl<'c> Cascade<'c> {
         &mut self,
         key: PropertyKey,
         shorthand: &[Value],
-        mut layout: &mut taffy::Style,
+        layout: &mut taffy::Style,
         element: &mut Element,
     ) -> Result<(), CascadeError> {
         let css = &self.css.source;
-        let ctx = self.sizes;
+        let _ctx = self.sizes;
         match (key, shorthand) {
             //
             // Element
@@ -971,7 +970,7 @@ fn resolve_transforms(
                 ("translate", [x, y]) => {
                     let x = length(x, cascade)?;
                     let y = length(y, cascade)?;
-                    let z = 0.0;
+                    let _z = 0.0;
                     transforms.push(TransformFunction::translate(x, y, 0.0))
                 }
                 ("translate3d", [x, y, z]) => {

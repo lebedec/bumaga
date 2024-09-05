@@ -3,14 +3,12 @@ use crate::css::{
     Animation, Arguments, Complex, Css, Dim, Function, Keyframe, Matcher, Property, Simple, Style,
     Unit,
 };
-use log::{error, warn};
+use log::error;
 use pest::error::Error;
 use pest::iterators::Pair;
 use pest::{Parser, Span};
 use pest_derive::Parser;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::num::ParseFloatError;
-use std::slice::Iter;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Parser)]
 #[grammar = "css/css.pest"]
@@ -27,10 +25,6 @@ impl From<Error<Rule>> for ReaderError {
     fn from(error: Error<Rule>) -> Self {
         Self::Parsing(error)
     }
-}
-
-pub fn read_css_unchecked(css: &str) -> Css {
-    read_css(css).expect("must be valid css")
 }
 
 pub fn read_css(css: &str) -> Result<Css, ReaderError> {
@@ -367,8 +361,7 @@ impl From<Span<'_>> for Str {
 mod tests {
     use crate::css::model::Value;
     use crate::css::reader::read_css;
-    use crate::css::{Complex, Css, Matcher, Simple};
-    use crate::system::setup_tests_logging;
+    use crate::css::{Css, Matcher, Simple};
 
     fn style_values<const N: usize>(css: &Css) -> [Value; N] {
         let mut values = [Value::Unset; N];
