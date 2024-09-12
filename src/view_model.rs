@@ -83,8 +83,11 @@ impl ViewModel {
                     Self::bind_value(dst, src, &path, bindings, reactions, transformers);
                 }
             }
-            (Value::Object(_), _) => {
-                error!("unable to bind '{path}', must be object")
+            (Value::Object(object), Value::Null) => {
+                for (key, dst) in object.iter_mut() {
+                    let path = format!("{path}/{key}");
+                    Self::bind_value(dst, &Value::Null, &path, bindings, reactions, transformers);
+                }
             }
             (dst, src) => {
                 if *dst != src {
@@ -329,7 +332,7 @@ pub struct Binding {
 #[derive(Debug, Clone)]
 pub enum BindingParams {
     Text(NodeId, usize),
-    Visibility(NodeId, bool),
+    Visibility(NodeId, NodeId, bool),
     Attribute(NodeId, String),
     Repeat(NodeId, usize, usize),
 }
@@ -337,9 +340,13 @@ pub enum BindingParams {
 impl Binding {
     fn react_value_change(&self, value: &Value) -> Reaction {
         match self.params.clone() {
-            BindingParams::Visibility(node, visible) => {
+            BindingParams::Visibility(parent, node, visible) => {
                 let visible = value.as_boolean() == visible;
-                Reaction::Reattach { node, visible }
+                Reaction::Reattach {
+                    parent,
+                    node,
+                    visible,
+                }
             }
             BindingParams::Attribute(node, key) => Reaction::Bind {
                 node,
@@ -387,6 +394,7 @@ pub enum Reaction {
         text: String,
     },
     Reattach {
+        parent: NodeId,
         node: NodeId,
         visible: bool,
     },

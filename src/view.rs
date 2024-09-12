@@ -261,8 +261,11 @@ impl View {
                 element_text.spans[span] = text;
                 self.tree.mark_dirty(node)?;
             }
-            Reaction::Reattach { node, visible } => {
-                let parent = self.tree.parent(node).ok_or(ViewError::ParentNotFound)?;
+            Reaction::Reattach {
+                parent,
+                node,
+                visible,
+            } => {
                 if visible {
                     self.tree.add_child(parent, node)?;
                 } else {

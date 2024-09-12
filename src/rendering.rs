@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
 
-
 use taffy::{Dimension, NodeId, Size, TaffyTree};
 
 use crate::html::{ElementBinding, Html, TextBinding, TextSpan};
@@ -139,15 +138,6 @@ impl Renderer {
                     };
                     element.listeners.insert(event.clone(), handler);
                 }
-                ElementBinding::Visibility(visible, binder) => {
-                    let path = self.schema.field(&binder, &self.locals);
-                    let params = BindingParams::Visibility(node, visible);
-                    let binding = Binding {
-                        params,
-                        pipe: binder.pipe.clone(),
-                    };
-                    self.bindings.entry(path).or_default().push(binding);
-                }
                 _ => {}
             }
         }
@@ -182,7 +172,15 @@ impl Renderer {
             "wbr" => {}
             _ => {
                 for child in template.children {
-                    if let Some((name, count, binder)) = child.as_repeat() {
+                    if let Some((visible, binder)) = child.as_visibility() {
+                        let path = self.schema.field(&binder, &self.locals);
+                        let pipe = binder.pipe.clone();
+                        let child_id = self.render_node(child)?;
+                        children.push(child_id);
+                        let params = BindingParams::Visibility(node, child_id, visible);
+                        let binding = Binding { params, pipe };
+                        self.bindings.entry(path).or_default().push(binding);
+                    } else if let Some((name, count, binder)) = child.as_repeat() {
                         let array = self.schema.field(binder, &self.locals);
                         let start = children.len();
                         let params = BindingParams::Repeat(node, start, count);
