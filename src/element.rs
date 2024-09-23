@@ -247,7 +247,7 @@ pub enum Behaviour {
     SelectMultiple(HashSet<String>),
 }
 
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, Clone, Copy)]
 pub enum PointerEvents {
     #[default]
     Auto,

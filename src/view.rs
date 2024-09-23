@@ -613,3 +613,162 @@ impl Source {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+    use serde::Serialize;
+    use serde_json::json;
+    use crate::{Call, InputEvent};
+    use super::*;
+
+    fn call<T: Serialize>(function: &str, value: T) -> Call {
+        Call {
+            function: function.to_string(),
+            arguments: vec![serde_json::to_value(value).expect("valid value")],
+        }
+    }
+
+    #[test]
+    pub fn test_none_pointer_events() {
+        let css = r#"
+            body {
+                pointer-events: none;
+            }
+            div {
+                pointer-events: auto;
+                width: 32px;
+                height: 32px;
+            }
+        "#;
+        let html = r#"<html>
+        <body [onmouseenter]~enter={body} [onmouseleave]~leave={body}>
+            <div [onmouseenter]~enter={a} [onmouseleave]~leave={a}></div>
+        </body>
+        </html>"#;
+        let value = json!({
+            "body": "Body",
+            "a": "A",
+        });
+        let mut view = View::compile(html, css, "").expect("view valid");
+
+        let user_input = vec![
+            InputEvent::MouseMove([20.0, 20.0]),
+            InputEvent::MouseMove([20.0, 40.0]),
+        ];
+        let mut output = Output::new();
+        for event in user_input {
+            output = view.update(Input::new().event(event), value.clone()).expect("valid update");
+        }
+
+        assert_eq!(output.is_cursor_over_view, false, "cursor over view");
+        assert_eq!(output.calls, vec![call("leave", "A")]);
+    }
+
+    #[test]
+    pub fn test_mouse_enter_leave_events_forward() {
+        let css = r#"
+            div {
+                width: 32px;
+                height: 32px;
+            }
+        "#;
+        let html = r#"<html>
+        <body>
+            <div [onmouseenter]~enter={a} [onmouseleave]~leave={a}></div>
+            <div [onmouseenter]~enter={b} [onmouseleave]~leave={b}></div>
+        </body>
+        </html>"#;
+        let value = json!({
+            "a": "A",
+            "b": "B"
+        });
+        let mut view = View::compile(html, css, "").expect("view valid");
+
+        let user_input = vec![
+            InputEvent::MouseMove([20.0, 20.0]),
+            InputEvent::MouseMove([20.0, 40.0]),
+        ];
+        let mut output = Output::new();
+        for event in user_input {
+            output = view.update(Input::new().event(event), value.clone()).expect("valid update");
+        }
+
+        assert_eq!(output.is_cursor_over_view, true, "cursor over view");
+        assert_eq!(output.calls, vec![call("leave", "A"), call("enter", "B")]);
+    }
+
+    #[test]
+    pub fn test_mouse_enter_leave_events_backward() {
+        let css = r#"
+            div {
+                width: 32px;
+                height: 32px;
+            }
+        "#;
+        let html = r#"<html>
+        <body>
+            <div [onmouseenter]~enter={a} [onmouseleave]~leave={a}></div>
+            <div [onmouseenter]~enter={b} [onmouseleave]~leave={b}></div>
+        </body>
+        </html>"#;
+        let value = json!({
+            "a": "A",
+            "b": "B"
+        });
+        let mut view = View::compile(html, css, "").expect("view valid");
+
+        let user_input = vec![
+            InputEvent::MouseMove([20.0, 40.0]),
+            InputEvent::MouseMove([20.0, 20.0]),
+        ];
+        let mut output = Output::new();
+        for event in user_input {
+            output = view.update(Input::new().event(event), value.clone()).expect("valid update");
+        }
+        assert_eq!(output.is_cursor_over_view, true, "cursor over view");
+        assert_eq!(output.calls, vec![call("leave", "B"), call("enter", "A")]);
+    }
+
+    #[test]
+    pub fn test_mouse_enter_leave_events_via_animation() {
+        let css = r#"
+            div {
+                width: 32px;
+                height: 32px;
+                animation: 1s linear HeightAnimation;
+            }
+            @keyframes HeightAnimation {
+                0% {
+                    height: 32px;
+                }
+                50% {
+                    height: 64px;
+                }
+                100% {
+                    height: 32px;
+                }
+            }
+        "#;
+        let html = r#"<html>
+        <body>
+            <div [onmouseenter]~enter={a} [onmouseleave]~leave={a}></div>
+        </body>
+        </html>"#;
+        let value = json!({
+            "a": "A",
+        });
+        let mut view = View::compile(html, css, "").expect("view valid");
+        let initial_mouse_input = Input::new().event(InputEvent::MouseMove([20.0, 40.0]));
+        view.update(initial_mouse_input, value.clone()).expect("valid update");
+
+        let mut output = Output::new();
+        for time in [0.0, 0.5, 1.0].map(Duration::from_secs_f32) {
+            output = view.update(Input::new().time(time), value.clone()).expect("valid update");
+        }
+
+        assert_eq!(output.is_cursor_over_view, false, "cursor over view");
+        assert_eq!(output.calls, vec![call("leave", "A")]);
+
+    }
+}

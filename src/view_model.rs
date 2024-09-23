@@ -204,32 +204,46 @@ impl ViewModel {
             }
         }
         let mut output = Output::new();
+        self.capture_hovers(body, &mut output, tree)?;
         self.capture_element_events(body, &input.events, &mut output, tree)?;
         output.is_cursor_over_view = !self.mouse_hovers.is_empty();
 
         Ok(output)
     }
 
-    pub(crate) fn fire(&self, element: &Element, event: &str, this: Value, output: &mut Output) {
-        if let Some(handler) = element.listeners.get(event) {
-            let mut value = if handler.argument == Schema::THIS {
-                this
-            } else {
-                self.model
-                    .pointer(&handler.argument)
-                    .cloned()
-                    .unwrap_or(Value::Null)
-            };
-            for name in &handler.pipe {
-                match self.transformers.get(name) {
-                    Some(transform) => value = transform(value),
-                    None => error!("unable to bind value, transformer {name} not found"),
+    fn capture_hovers(&mut self, body: NodeId, output: &mut Output, tree: &mut TaffyTree<Element>) -> Result<(), ViewError> {
+        for node in self.mouse_hovers.clone() {
+            let element = tree.get_node_context_mut(node).unwrap();
+            let hover = hovers(self.mouse, element);
+            if !hover {
+                self.fire(element, "onmouseleave", Value::Null, output);
+                element.state.hover = false;
+                self.mouse_hovers.remove(&element.node);
+            }
+        }
+        self.capture_element_hover(body, output, tree);
+        Ok(())
+    }
+
+    fn capture_element_hover(
+        &mut self,
+        node: NodeId,
+        output: &mut Output,
+        tree: &mut TaffyTree<Element>,
+    ) {
+        let element = tree.get_node_context_mut(node).unwrap();
+        let hover = hovers(self.mouse, element);
+        if hover {
+            if !element.state.hover {
+                if element.pointer_events == PointerEvents::Auto {
+                    self.fire(element, "onmouseenter", Value::Null, output);
+                    element.state.hover = true;
+                    self.mouse_hovers.insert(element.node);
                 }
             }
-            output.calls.push(Call {
-                function: handler.function.clone(),
-                arguments: vec![value],
-            })
+            for child in tree.children(node).unwrap() {
+                self.capture_element_hover(child, output, tree);
+            }
         }
     }
 
@@ -283,23 +297,6 @@ impl ViewModel {
                             scrolling.offset(wheel);
                         }
                     }
-                    InputEvent::MouseMove(cursor) => {
-                        let hover = hovers(cursor, element);
-                        if hover {
-                            if !element.state.hover {
-                                self.fire(element, "onmouseenter", Value::Null, output);
-                            }
-                            // TODO: rework algorithm (user input not only way to change hover)
-                            element.state.hover = true;
-                            self.mouse_hovers.insert(element.node);
-                        } else {
-                            if element.state.hover {
-                                self.fire(element, "onmouseleave", Value::Null, output);
-                            }
-                            element.state.hover = false;
-                            self.mouse_hovers.remove(&element.node);
-                        }
-                    }
                     InputEvent::MouseButtonDown(button) => {
                         if button == MouseButtons::Left && element.state.hover {
                             element.state.active = true;
@@ -349,6 +346,29 @@ impl ViewModel {
             self.capture_element_events(child, events, output, tree)?;
         }
         Ok(())
+    }
+
+    pub(crate) fn fire(&self, element: &Element, event: &str, this: Value, output: &mut Output) {
+        if let Some(handler) = element.listeners.get(event) {
+            let mut value = if handler.argument == Schema::THIS {
+                this
+            } else {
+                self.model
+                    .pointer(&handler.argument)
+                    .cloned()
+                    .unwrap_or(Value::Null)
+            };
+            for name in &handler.pipe {
+                match self.transformers.get(name) {
+                    Some(transform) => value = transform(value),
+                    None => error!("unable to bind value, transformer {name} not found"),
+                }
+            }
+            output.calls.push(Call {
+                function: handler.function.clone(),
+                arguments: vec![value],
+            })
+        }
     }
 }
 
@@ -535,7 +555,7 @@ impl Schema {
 
 /// It is a mechanism that allows a Bumaga component to request
 /// interaction event handling in application.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Call {
     /// The identifier of event handler (function name probably).
     pub function: String,
@@ -580,10 +600,8 @@ fn default_transformers() -> HashMap<String, Transformer> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Binding, BindingParams, Reaction, ViewModel};
-    use serde_json::{json, Value};
-    use std::collections::BTreeMap;
-    use taffy::NodeId;
+    use crate::styles::create_element;
+    use super::*;
 
     fn node(id: u64) -> NodeId {
         NodeId::new(id)
@@ -634,7 +652,7 @@ mod tests {
                 start: 0,
                 cursor: 1,
                 end: 3,
-            },]
+            }, ]
         );
     }
 

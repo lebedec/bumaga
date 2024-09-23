@@ -1,5 +1,6 @@
 use crate::Call;
 
+#[derive(Debug)]
 pub struct Output {
     pub calls: Vec<Call>,
     pub is_cursor_over_view: bool,

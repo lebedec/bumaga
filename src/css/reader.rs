@@ -359,9 +359,10 @@ impl From<Span<'_>> for Str {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, HashMap};
     use crate::css::model::Value;
     use crate::css::reader::read_css;
-    use crate::css::{Css, Matcher, Simple};
+    use crate::css::{Animation, Css, Keyframe, Matcher, PropertyKey, Shorthand, Simple};
 
     fn style_values<const N: usize>(css: &Css) -> [Value; N] {
         let mut values = [Value::Unset; N];
@@ -431,6 +432,50 @@ mod tests {
         } else {
             assert!(false, "selector type")
         }
+    }
+
+    #[test]
+    pub fn test_animation_shorthand() {
+        let css = "div { animation: 1s linear HeightAnimation; }";
+        let css = read_css(css).expect("valid css");
+
+        let animation = css.get_shorthand(css.styles[0].declaration[0].values.as_shorthand());
+
+        assert_eq!(animation.len(), 3);
+    }
+
+    #[test]
+    pub fn test_simple_keyframes() {
+        let css = r#"
+            @keyframes HeightAnimation {
+                0% {
+                    line-height: 1.0;
+                }
+                50% {
+                    line-height: 2.0;
+                }
+                100% {
+                    line-height: 3.0;
+                }
+            }
+        "#;
+        let css = read_css(css).expect("valid css");
+
+        let animation = Animation {
+            keyframes: vec![
+                Keyframe {
+                    key: PropertyKey::LineHeight,
+                    frames: BTreeMap::from([
+                        (0, vec![Value::Number(1.0)]),
+                        (50, vec![Value::Number(2.0)]),
+                        (100, vec![Value::Number(3.0)]),
+                    ])
+                }
+            ],
+        };
+        let animations = HashMap::from([("HeightAnimation".to_string(), animation)]);
+
+        assert_eq!(css.animations, animations);
     }
 
     // #[test]

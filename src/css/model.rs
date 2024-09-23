@@ -48,12 +48,12 @@ impl Css {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Animation {
     pub keyframes: Vec<Keyframe>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Keyframe {
     pub key: PropertyKey,
     pub frames: BTreeMap<u32, Vec<Value>>,

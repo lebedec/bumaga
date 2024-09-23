@@ -224,6 +224,7 @@ pub fn inherit(parent: &Element, element: &mut Element) {
     // word-spacing
     // word-wrap
     //view.text_style.wrap = parent.text_style.wrap;
+    element.pointer_events = parent.pointer_events;
 }
 
 /// The cascade is an algorithm that defines how to combine CSS (Cascading Style Sheets)
