@@ -16,7 +16,7 @@ pub struct Animation {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Keyframe {
     pub key: PropertyKey,
-    pub frames: BTreeMap<u32, Vec<Value>>,
+    pub frames: BTreeMap<u32, Vec<Shorthand>>,
 }
 
 /// A complex selector is a sequence of one or more simple and/or compound selectors that are
@@ -75,7 +75,20 @@ impl Simple {
 pub struct Style {
     /// A selector list is a comma-separated list of selectors.
     pub selectors: Vec<Complex>,
-    pub declaration: Vec<Property>,
+    pub declaration: Vec<Declaration>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Declaration {
+    Variable(Variable),
+    Property(Property),
+}
+
+#[derive(Debug, Clone)]
+pub struct Variable {
+    pub id: usize,
+    pub key: String,
+    pub values: Vec<Shorthand>,
 }
 
 /// A CSS property is a characteristic (like color) whose associated value
@@ -84,24 +97,26 @@ pub struct Style {
 pub struct Property {
     pub id: usize,
     pub key: PropertyKey,
+    // TODO: global keywords: initial, inherit, unset
+    // TODO: !important declaration
     pub values: Vec<Shorthand>,
 }
 
-impl Property {
-    pub fn get_first_shorthand(&self) -> Shorthand {
-        self.values[0].clone()
-    }
+pub type Shorthand = Vec<Definition>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Definition {
+    Var(String),
+    // TODO: any specific CSS function with custom syntax
+    // CalcFunction(...)
+    // CircleFunction(...)
+    Function(Function),
+    Explicit(ComputedValue),
 }
 
-pub type Shorthand = Vec<Value>;
-
-// Used to optimize frequently used or complex values.
-// At same time provides ease parsing.
+// Explicitly specified in styles or as a result of computations.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Value {
-    Inherit,
-    Initial,
-    Unset,
+pub enum ComputedValue {
     Keyword(String),
     Zero,
     Percentage(f32),
@@ -109,16 +124,19 @@ pub enum Value {
     Dimension(Dim),
     Number(f32),
     Color([u8; 4]),
-    Var(Var),
-    Function(Function),
     String(String),
-    Unparsed(String),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Dim {
     pub value: f32,
     pub unit: Units,
+}
+
+impl Dim {
+    pub fn new(value: f32, unit: Units) -> Self {
+        Self { value, unit }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -151,12 +169,12 @@ impl Units {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub name: String,
-    pub arguments: Vec<Value>,
+    pub arguments: Vec<Definition>,
 }
 
 impl Function {
     #[inline(always)]
-    pub fn describe(&self) -> (&str, &[Value]) {
+    pub fn describe(&self) -> (&str, &[Definition]) {
         let name = self.name.as_str();
         let arguments = &self.arguments;
         (name, arguments)

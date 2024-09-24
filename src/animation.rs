@@ -1,7 +1,7 @@
 use std::mem::take;
 
-use crate::css::Value::{Color, Dimension, Number};
-use crate::css::{Animation, Css, Dim, Keyframe, PropertyKey, Value};
+use crate::css::ComputedValue::{Color, Dimension, Number};
+use crate::css::{Animation, ComputedValue, Css, Dim, Keyframe, PropertyKey};
 use crate::Rgba;
 
 #[derive(Clone)]
@@ -9,61 +9,61 @@ pub struct Transition {
     animator: Animator,
     keyframe: Keyframe,
     target_id: usize,
-    current: Option<Vec<Value>>,
+    current: Option<Vec<ComputedValue>>,
     // Debounced setter of target value (only last value declaration take effect).
-    setter: Option<(usize, Vec<Value>)>,
+    setter: Option<(usize, Vec<ComputedValue>)>,
 }
 
 impl Transition {
-    pub fn play(&mut self, css: &Css, time: f32) -> Vec<AnimationResult> {
-        if let Some((target_id, target)) = take(&mut self.setter) {
-            self.update_keyframe(target_id, target);
-        }
-        let mut result = vec![];
-        if self.animator.running {
-            if let Some(t) = self.animator.update(time) {
-                let t = (t * 100.0) as u32;
-                let r = self.animator.play_keyframe(css, &self.keyframe, t);
-                self.current = Some(r.shorthand.clone());
-                result.push(r);
-            }
-        }
-        result
-    }
-
-    pub fn set(&mut self, target_id: usize, target: Vec<Value>) {
-        self.setter = Some((target_id, target));
-    }
-
-    fn update_keyframe(&mut self, target_id: usize, target: Vec<Value>) {
-        if let Some(current) = self.current.as_ref() {
-            if target_id != self.target_id {
-                self.target_id = target_id;
-                self.animator.time = 0.0;
-                self.animator.running = true;
-                self.keyframe.frames.insert(0, current.clone());
-                self.keyframe.frames.insert(100, target);
-            }
-        } else {
-            self.target_id = target_id;
-            self.current = Some(target.clone());
-            self.animator.running = true;
-            self.keyframe.frames.insert(0, target.clone());
-            self.keyframe.frames.insert(100, target.clone());
-        }
-    }
-
-    pub fn set_timing(&mut self, timing: TimingFunction) {
-        self.animator.timing = timing;
-    }
-
-    pub fn set_duration(&mut self, duration: f32) {
-        self.animator.duration = duration;
-    }
-
-    pub fn set_delay(&mut self, delay: f32) {
-        self.animator.delay = delay;
-    }
+    // pub fn play(&mut self, css: &Css, time: f32) -> Vec<AnimationResult> {
+    //     if let Some((target_id, target)) = take(&mut self.setter) {
+    //         self.update_keyframe(target_id, target);
+    //     }
+    //     let mut result = vec![];
+    //     if self.animator.running {
+    //         if let Some(t) = self.animator.update(time) {
+    //             let t = (t * 100.0) as u32;
+    //             let r = self.animator.play_keyframe(css, &self.keyframe, t);
+    //             self.current = Some(r.shorthand.clone());
+    //             result.push(r);
+    //         }
+    //     }
+    //     result
+    // }
+    //
+    // pub fn set(&mut self, target_id: usize, target: Vec<ComputedValue>) {
+    //     self.setter = Some((target_id, target));
+    // }
+    //
+    // fn update_keyframe(&mut self, target_id: usize, target: Vec<ComputedValue>) {
+    //     if let Some(current) = self.current.as_ref() {
+    //         if target_id != self.target_id {
+    //             self.target_id = target_id;
+    //             self.animator.time = 0.0;
+    //             self.animator.running = true;
+    //             self.keyframe.frames.insert(0, current.clone());
+    //             self.keyframe.frames.insert(100, target);
+    //         }
+    //     } else {
+    //         self.target_id = target_id;
+    //         self.current = Some(target.clone());
+    //         self.animator.running = true;
+    //         self.keyframe.frames.insert(0, target.clone());
+    //         self.keyframe.frames.insert(100, target.clone());
+    //     }
+    // }
+    //
+    // pub fn set_timing(&mut self, timing: TimingFunction) {
+    //     self.animator.timing = timing;
+    // }
+    //
+    // pub fn set_duration(&mut self, duration: f32) {
+    //     self.animator.duration = duration;
+    // }
+    //
+    // pub fn set_delay(&mut self, delay: f32) {
+    //     self.animator.delay = delay;
+    // }
 }
 
 impl Transition {
@@ -120,88 +120,88 @@ impl Animator {
         !self.name.is_empty()
     }
 
-    pub fn update(&mut self, time: f32) -> Option<f32> {
-        if self.running && self.duration > 0.0 {
-            self.time += time;
-        }
-        let t = self.time - self.delay;
-        if t < 0.0 {
-            return None;
-        }
-        let mut t = match self.iterations {
-            AnimationIterations::Number(iterations) => t.min(iterations * self.duration),
-            AnimationIterations::Infinite => t,
-        };
-        // use this loop instead of % to stop at last frame 1.0 (100%)
-        while t > self.duration {
-            t -= self.duration;
-        }
-        let x = t / self.duration;
-        Some(x)
-    }
-
-    pub fn play(&mut self, css: &Css, animation: &Animation, time: f32) -> Vec<AnimationResult> {
-        let mut result = vec![];
-        if let Some(t) = self.update(time) {
-            let t = (t * 100.0) as u32;
-            for keyframe in &animation.keyframes {
-                result.push(self.play_keyframe(css, keyframe, t))
-            }
-        }
-        result
-    }
-
-    pub fn play_keyframe(&mut self, _css: &Css, keyframe: &Keyframe, t: u32) -> AnimationResult {
-        let mut a = 0;
-        let mut b = 0;
-        for step in keyframe.frames.keys() {
-            if t >= *step {
-                a = *step;
-            }
-            if t <= *step {
-                b = *step;
-                break;
-            }
-        }
-        // println!("a{a} b{b} keys{:?} t{t}", keyframe.frames.keys());
-        if b > a {
-            let t = (t - a) as f32 / (b - a) as f32;
-            let a = keyframe.frames[&a].as_slice();
-            let b = keyframe.frames[&b].as_slice();
-            AnimationResult {
-                key: keyframe.key,
-                shorthand: self.interpolate_shorthand(keyframe.key, a, b, t),
-            }
-        } else {
-            // last or exact frame (no interpolation)
-            let a = keyframe.frames[&a].clone();
-            AnimationResult {
-                key: keyframe.key,
-                shorthand: a.to_vec(),
-            }
-        }
-    }
-
-    fn interpolate_shorthand(
-        &self,
-        key: PropertyKey,
-        a: &[Value],
-        b: &[Value],
-        t: f32,
-    ) -> Vec<Value> {
-        match (key, a, b) {
-            (PropertyKey::Transition, a, b) => transform(a, b, t),
-            (_, [Color(a)], [Color(b)]) => vec![color(a, b, t)],
-            (_, [Number(a)], [Number(b)]) => vec![number(a, b, t)],
-            (_, [Dimension(a)], [Dimension(b)]) => vec![dimension(a, b, t)],
-            (_, a, b) => if t < 0.5 { a } else { b }.to_vec(),
-        }
-    }
+    // pub fn update(&mut self, time: f32) -> Option<f32> {
+    //     if self.running && self.duration > 0.0 {
+    //         self.time += time;
+    //     }
+    //     let t = self.time - self.delay;
+    //     if t < 0.0 {
+    //         return None;
+    //     }
+    //     let mut t = match self.iterations {
+    //         AnimationIterations::Number(iterations) => t.min(iterations * self.duration),
+    //         AnimationIterations::Infinite => t,
+    //     };
+    //     // use this loop instead of % to stop at last frame 1.0 (100%)
+    //     while t > self.duration {
+    //         t -= self.duration;
+    //     }
+    //     let x = t / self.duration;
+    //     Some(x)
+    // }
+    //
+    // pub fn play(&mut self, css: &Css, animation: &Animation, time: f32) -> Vec<AnimationResult> {
+    //     let mut result = vec![];
+    //     if let Some(t) = self.update(time) {
+    //         let t = (t * 100.0) as u32;
+    //         for keyframe in &animation.keyframes {
+    //             result.push(self.play_keyframe(css, keyframe, t))
+    //         }
+    //     }
+    //     result
+    // }
+    //
+    // pub fn play_keyframe(&mut self, _css: &Css, keyframe: &Keyframe, t: u32) -> AnimationResult {
+    //     let mut a = 0;
+    //     let mut b = 0;
+    //     for step in keyframe.frames.keys() {
+    //         if t >= *step {
+    //             a = *step;
+    //         }
+    //         if t <= *step {
+    //             b = *step;
+    //             break;
+    //         }
+    //     }
+    //     // println!("a{a} b{b} keys{:?} t{t}", keyframe.frames.keys());
+    //     if b > a {
+    //         let t = (t - a) as f32 / (b - a) as f32;
+    //         let a = keyframe.frames[&a].as_slice();
+    //         let b = keyframe.frames[&b].as_slice();
+    //         AnimationResult {
+    //             key: keyframe.key,
+    //             shorthand: self.interpolate_shorthand(keyframe.key, a, b, t),
+    //         }
+    //     } else {
+    //         // last or exact frame (no interpolation)
+    //         let a = keyframe.frames[&a].clone();
+    //         AnimationResult {
+    //             key: keyframe.key,
+    //             shorthand: a.to_vec(),
+    //         }
+    //     }
+    // }
+    //
+    // fn interpolate_shorthand(
+    //     &self,
+    //     key: PropertyKey,
+    //     a: &[ComputedValue],
+    //     b: &[ComputedValue],
+    //     t: f32,
+    // ) -> Vec<ComputedValue> {
+    //     match (key, a, b) {
+    //         (PropertyKey::Transition, a, b) => transform(a, b, t),
+    //         (_, [Color(a)], [Color(b)]) => vec![color(a, b, t)],
+    //         (_, [Number(a)], [Number(b)]) => vec![number(a, b, t)],
+    //         (_, [Dimension(a)], [Dimension(b)]) => vec![dimension(a, b, t)],
+    //         (_, a, b) => if t < 0.5 { a } else { b }.to_vec(),
+    //     }
+    // }
 }
 
 pub struct AnimationResult {
     pub key: PropertyKey,
-    pub shorthand: Vec<Value>,
+    pub shorthand: Vec<ComputedValue>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -247,7 +247,7 @@ pub enum AnimationIterations {
     Infinite,
 }
 
-fn color(x: &Rgba, y: &Rgba, t: f32) -> Value {
+fn color(x: &Rgba, y: &Rgba, t: f32) -> ComputedValue {
     let r = (x[0] as f32 + (y[0] as f32 - x[0] as f32) * t).max(0.0) as u8;
     let g = (x[1] as f32 + (y[1] as f32 - x[1] as f32) * t).max(0.0) as u8;
     let b = (x[2] as f32 + (y[2] as f32 - x[2] as f32) * t).max(0.0) as u8;
@@ -255,7 +255,7 @@ fn color(x: &Rgba, y: &Rgba, t: f32) -> Value {
     Color([r, g, b, a])
 }
 
-fn dimension(a: &Dim, b: &Dim, t: f32) -> Value {
+fn dimension(a: &Dim, b: &Dim, t: f32) -> ComputedValue {
     // TODO: convertable units
     if a.unit != b.unit {
         Dimension(if t < 0.5 { *a } else { *b })
@@ -267,10 +267,10 @@ fn dimension(a: &Dim, b: &Dim, t: f32) -> Value {
     }
 }
 
-fn number(a: &f32, b: &f32, t: f32) -> Value {
+fn number(a: &f32, b: &f32, t: f32) -> ComputedValue {
     Number(a + (b - a) * t)
 }
 
-fn transform(_a: &[Value], _b: &[Value], _t: f32) -> Vec<Value> {
+fn transform(_a: &[ComputedValue], _b: &[ComputedValue], _t: f32) -> Vec<ComputedValue> {
     unimplemented!()
 }

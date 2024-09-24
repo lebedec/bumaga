@@ -11,11 +11,12 @@ use crate::animation::{
     AnimationDirection, AnimationFillMode, AnimationIterations, AnimationResult, Animator,
     TimingFunction, Transition,
 };
-use crate::css::Value::{Keyword, Number, Time};
 use crate::css::{
-    match_style, Css, Dim, PropertyKey, PseudoClassMatcher, Shorthand, Style, Units, Value, Var,
+    match_style, ComputedValue, Css, Declaration, Definition, Dim, PropertyKey, PseudoClassMatcher,
+    Shorthand, Style, Units, Var, Variable,
 };
 
+use crate::css::ComputedValue::{Keyword, Time};
 use crate::{
     Background, Borders, Element, FontFace, Input, Length, ObjectFit, PointerEvents, TextAlign,
     TransformFunction,
@@ -261,18 +262,6 @@ impl<'c> Cascade<'c> {
         }
     }
 
-    pub fn push_variable(&mut self, name: &'c str, values: &'c Vec<Shorthand>) {
-        self.variables.insert(name, values);
-    }
-
-    pub fn get_variable_value(&self, variable: &Var) -> Result<&Value, CascadeError> {
-        let name = variable.name.as_str();
-        self.variables
-            .get(name)
-            .map(|values| &values[0][0])
-            .ok_or(CascadeError::VariableNotFound)
-    }
-
     pub fn apply_styles(
         &mut self,
         input: &Input,
@@ -294,35 +283,41 @@ impl<'c> Cascade<'c> {
             }
         }
         // 2: transitions
-        let time = input.time.as_secs_f32();
-        let transitions: Vec<AnimationResult> = element
-            .transitions
-            .values_mut()
-            .flat_map(|transition| transition.play(self.css, time))
-            .collect();
-        for play in transitions {
-            let result = self.apply_shorthand(play.key, &play.shorthand, layout, element);
-            if let Err(error) = result {
-                error!(
-                    "unable to apply transition result of {:?}, {:?}, {:?}",
-                    play.key, play.shorthand, error
-                );
-            }
-        }
+        // let time = input.time.as_secs_f32();
+        // let transitions: Vec<AnimationResult> = element
+        //     .transitions
+        //     .values_mut()
+        //     .flat_map(|transition| transition.play(self.css, time))
+        //     .collect();
+        // for play in transitions {
+        //     let result =
+        //         self.apply_shorthand___to_delete(play.key, &play.shorthand, layout, element);
+        //     if let Err(error) = result {
+        //         error!(
+        //             "unable to apply transition result of {:?}, {:?}, {:?}",
+        //             play.key, play.shorthand, error
+        //         );
+        //     }
+        // }
         // 3: animations
-        if !element.animator.name.is_empty() {
-            if let Some(animation) = self.css.animations.get(&element.animator.name) {
-                for play in element.animator.play(self.css, animation, time) {
-                    let result = self.apply_shorthand(play.key, &play.shorthand, layout, element);
-                    if let Err(error) = result {
-                        error!(
-                            "unable to apply animation result of {:?}, {:?}, {:?}",
-                            play.key, play.shorthand, error
-                        );
-                    }
-                }
-            }
-        }
+        // if !element.animator.name.is_empty() {
+        //     if let Some(animation) = self.css.animations.get(&element.animator.name) {
+        //         for play in element.animator.play(self.css, animation, time) {
+        //             let result = self.apply_shorthand___to_delete(
+        //                 play.key,
+        //                 &play.shorthand,
+        //                 layout,
+        //                 element,
+        //             );
+        //             if let Err(error) = result {
+        //                 error!(
+        //                     "unable to apply animation result of {:?}, {:?}, {:?}",
+        //                     play.key, play.shorthand, error
+        //                 );
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     fn apply_style(
@@ -332,257 +327,316 @@ impl<'c> Cascade<'c> {
         layout: &mut taffy::Style,
         element: &mut Element,
     ) {
-        for property in &style.declaration {
-            // if let PropertyKey::Variable(name) = property.key {
-            //     self.push_variable(name, &property.values);
-            //     continue;
-            // }
-            if PropertyKey::Transition == property.key {
-                for shorthand in property.values.to_vec() {
-                    let key = match &shorthand[0] {
-                        Keyword(name) => {
-                            let key = match PropertyKey::parse(name) {
-                                Some(key) => key,
-                                None => {
-                                    error!("unable to make transition of {name}, not supported");
-                                    continue;
-                                }
-                            };
-                            key
-                        }
-                        _ => {
-                            error!("invalid transition property value");
-                            continue;
-                        }
-                    };
-                    let transition = element
-                        .transitions
-                        .entry(key)
-                        .or_insert_with(|| Transition::new(key));
-                    match &shorthand[1..] {
-                        [Time(duration)] => {
-                            transition.set_duration(*duration);
-                        }
-                        [Time(duration), timing] => {
-                            transition.set_duration(*duration);
-                            transition.set_timing(resolve_timing(&timing, self).unwrap());
-                        }
-                        [Time(duration), timing, Time(delay)] => {
-                            transition.set_duration(*duration);
-                            transition.set_timing(resolve_timing(&timing, self).unwrap());
-                            transition.set_delay(*delay);
-                        }
-                        shorthand => {
-                            error!("transition value not supported {shorthand:?}");
-                            continue;
-                        }
+        // for property in &style.declaration {
+        //     // if let PropertyKey::Variable(name) = property.key {
+        //     //     self.push_variable(name, &property.values);
+        //     //     continue;
+        //     // }
+        //     if PropertyKey::Transition == property.key {
+        //         for shorthand in property.values.to_vec() {
+        //             let key = match &shorthand[0] {
+        //                 Keyword(name) => {
+        //                     let key = match PropertyKey::parse(name) {
+        //                         Some(key) => key,
+        //                         None => {
+        //                             error!("unable to make transition of {name}, not supported");
+        //                             continue;
+        //                         }
+        //                     };
+        //                     key
+        //                 }
+        //                 _ => {
+        //                     error!("invalid transition property value");
+        //                     continue;
+        //                 }
+        //             };
+        //             let transition = element
+        //                 .transitions
+        //                 .entry(key)
+        //                 .or_insert_with(|| Transition::new(key));
+        //             match &shorthand[1..] {
+        //                 [Time(duration)] => {
+        //                     transition.set_duration(*duration);
+        //                 }
+        //                 [Time(duration), timing] => {
+        //                     transition.set_duration(*duration);
+        //                     transition.set_timing(resolve_timing(&timing, self).unwrap());
+        //                 }
+        //                 [Time(duration), timing, Time(delay)] => {
+        //                     transition.set_duration(*duration);
+        //                     transition.set_timing(resolve_timing(&timing, self).unwrap());
+        //                     transition.set_delay(*delay);
+        //                 }
+        //                 shorthand => {
+        //                     error!("transition value not supported {shorthand:?}");
+        //                     continue;
+        //                 }
+        //             }
+        //         }
+        //         continue;
+        //     }
+        //     if let Some(transition) = element.transitions.get_mut(&property.key) {
+        //         let shorthand = property.get_first_shorthand();
+        //         // ID ?
+        //         transition.set(property.id, shorthand);
+        //         continue;
+        //     }
+        //     if let Err(error) =
+        //         self.apply_shorthand(property.key, &property.values[0], layout, element)
+        //     {
+        //         error!("unable to apply property {property:?}, {error:?}")
+        //     }
+        // }
+        for declaration in &style.declaration {
+            match declaration {
+                Declaration::Variable(variable) => self.set_variable(variable),
+                Declaration::Property(property) => {
+                    // TODO: properties with multiple values
+                    let mut shorthand = vec![];
+                    self.compute_shorthand(&property.values[0], &mut shorthand);
+                    let result = self.apply_shorthand(property.key, &shorthand, layout, element);
+                    if let Err(error) = result {
+                        error!(
+                            "unable to apply property {:?} shorthand, {:?}",
+                            property.key, error
+                        );
                     }
                 }
-                continue;
-            }
-            if let Some(transition) = element.transitions.get_mut(&property.key) {
-                let shorthand = property.get_first_shorthand();
-                // ID ?
-                transition.set(property.id, shorthand);
-                continue;
-            }
-            if let Err(error) =
-                self.apply_shorthand(property.key, &property.values[0], layout, element)
-            {
-                error!("unable to apply property {property:?}, {error:?}")
             }
         }
+    }
+
+    fn compute_shorthand(
+        &self,
+        definition: &[Definition],
+        computed_values: &mut Vec<ComputedValue>,
+    ) {
+        for value in definition {
+            match value {
+                Definition::Var(name) => {
+                    self.compute_variable(name, computed_values);
+                }
+                Definition::Function(_) => {}
+                Definition::Explicit(value) => {
+                    // TODO: remove clone ? remove string from value
+                    computed_values.push(value.clone())
+                }
+            }
+        }
+    }
+
+    fn compute_variable(&self, name: &str, computed_values: &mut Vec<ComputedValue>) {
+        let shorthand = match self.get_variable(name) {
+            Some(shorthand) => shorthand,
+            None => {
+                error!("unable to compute variable {name}, not found");
+                return;
+            }
+        };
+        self.compute_shorthand(shorthand, computed_values);
+    }
+
+    fn set_variable(&self, variable: &Variable) {
+        unimplemented!()
+    }
+
+    fn get_variable(&self, name: &str) -> Option<&Shorthand> {
+        unimplemented!()
     }
 
     fn apply_shorthand(
         &mut self,
         key: PropertyKey,
-        shorthand: &[Value],
+        shorthand: &[ComputedValue],
         layout: &mut taffy::Style,
         element: &mut Element,
     ) -> Result<(), CascadeError> {
-        let css = &self.css.source;
-        let _ctx = self.sizes;
         match (key, shorthand) {
             //
             // Element
             //
             (PropertyKey::Background, [color]) => {
-                element.background.color = resolve_color(color, self)?
+                self.apply(PropertyKey::BackgroundColor, color, layout, element)?;
             }
-            (PropertyKey::BackgroundColor, [color]) => {
-                element.background.color = resolve_color(color, self)?
-            }
-            (PropertyKey::Color, [color]) => {
-                element.color = resolve_color(color, self)?;
-            }
-            (PropertyKey::FontSize, [size]) => {
-                element.font.size = resolve_length(size, self, self.sizes.parent_font_size)?;
-            }
-            (PropertyKey::FontWeight, [value]) => {
-                element.font.weight = resolve_font_weight(value, self)?
-            }
-            (PropertyKey::FontFamily, [value]) => {
-                element.font.family = resolve_string(value, self)?;
-            }
-            (PropertyKey::FontStyle, [Keyword(keyword)]) => {
-                element.font.style = match keyword.as_str() {
-                    "normal" => "normal".to_string(),
-                    "italic" => "italic".to_string(),
-                    "oblique" => "oblique".to_string(),
-                    keyword => return CascadeError::invalid_keyword(keyword),
-                }
-            }
-            (PropertyKey::TextAlign, [Keyword(keyword)]) => {
-                element.font.align = match keyword.as_str() {
-                    "start" => TextAlign::Start,
-                    "end" => TextAlign::End,
-                    "left" => TextAlign::Left,
-                    "right" => TextAlign::Right,
-                    "center" => TextAlign::Center,
-                    "justify" => TextAlign::Justify,
-                    "justify-all" => TextAlign::JustifyAll,
-                    "match-parent" => TextAlign::MatchParent,
-                    keyword => return CascadeError::invalid_keyword(keyword),
-                }
-            }
+            //
+            // Element + Layout
+            //
             (PropertyKey::Border, [width, _style, color]) => {
-                element.borders.top.width = dimension_length(width, self)?;
-                element.borders.top.color = resolve_color(color, self)?;
-                element.borders.right = element.borders.top;
-                element.borders.bottom = element.borders.top;
-                element.borders.left = element.borders.top;
+                self.apply(PropertyKey::BorderTopWidth, width, layout, element)?;
+                self.apply(PropertyKey::BorderTopColor, color, layout, element)?;
+                self.apply(PropertyKey::BorderRightWidth, width, layout, element)?;
+                self.apply(PropertyKey::BorderRightColor, color, layout, element)?;
+                self.apply(PropertyKey::BorderBottomWidth, width, layout, element)?;
+                self.apply(PropertyKey::BorderBottomColor, color, layout, element)?;
+                self.apply(PropertyKey::BorderLeftWidth, width, layout, element)?;
+                self.apply(PropertyKey::BorderLeftColor, color, layout, element)?;
             }
             (PropertyKey::BorderTop, [width, _style, color]) => {
-                element.borders.top.width = dimension_length(width, self)?;
-                element.borders.top.color = resolve_color(color, self)?;
+                self.apply(PropertyKey::BorderTopWidth, width, layout, element)?;
+                self.apply(PropertyKey::BorderTopColor, color, layout, element)?;
             }
             (PropertyKey::BorderRight, [width, _style, color]) => {
-                element.borders.right.width = dimension_length(width, self)?;
-                element.borders.right.color = resolve_color(color, self)?;
+                self.apply(PropertyKey::BorderRightWidth, width, layout, element)?;
+                self.apply(PropertyKey::BorderRightColor, color, layout, element)?;
             }
             (PropertyKey::BorderBottom, [width, _style, color]) => {
-                element.borders.bottom.width = dimension_length(width, self)?;
-                element.borders.bottom.color = resolve_color(color, self)?;
+                self.apply(PropertyKey::BorderBottomWidth, width, layout, element)?;
+                self.apply(PropertyKey::BorderBottomColor, color, layout, element)?;
             }
             (PropertyKey::BorderLeft, [width, _style, color]) => {
-                element.borders.left.width = dimension_length(width, self)?;
-                element.borders.left.color = resolve_color(color, self)?;
+                self.apply(PropertyKey::BorderLeftWidth, width, layout, element)?;
+                self.apply(PropertyKey::BorderLeftColor, color, layout, element)?;
             }
             (PropertyKey::BorderWidth, [top, right, bottom, left]) => {
-                element.borders.top.width = dimension_length(top, self)?;
-                element.borders.right.width = dimension_length(right, self)?;
-                element.borders.bottom.width = dimension_length(bottom, self)?;
-                element.borders.left.width = dimension_length(left, self)?;
+                self.apply(PropertyKey::BorderTopWidth, top, layout, element)?;
+                self.apply(PropertyKey::BorderRightWidth, right, layout, element)?;
+                self.apply(PropertyKey::BorderBottomWidth, bottom, layout, element)?;
+                self.apply(PropertyKey::BorderLeftWidth, left, layout, element)?;
             }
             (PropertyKey::BorderWidth, [top, h, bottom]) => {
-                element.borders.top.width = dimension_length(top, self)?;
-                element.borders.right.width = dimension_length(h, self)?;
-                element.borders.bottom.width = dimension_length(bottom, self)?;
-                element.borders.left.width = dimension_length(h, self)?;
+                self.apply(PropertyKey::BorderTopWidth, top, layout, element)?;
+                self.apply(PropertyKey::BorderRightWidth, h, layout, element)?;
+                self.apply(PropertyKey::BorderBottomWidth, bottom, layout, element)?;
+                self.apply(PropertyKey::BorderLeftWidth, h, layout, element)?;
             }
             (PropertyKey::BorderWidth, [v, h]) => {
-                element.borders.top.width = dimension_length(v, self)?;
-                element.borders.right.width = dimension_length(h, self)?;
-                element.borders.bottom.width = dimension_length(v, self)?;
-                element.borders.left.width = dimension_length(h, self)?;
+                self.apply(PropertyKey::BorderTopWidth, v, layout, element)?;
+                self.apply(PropertyKey::BorderRightWidth, h, layout, element)?;
+                self.apply(PropertyKey::BorderBottomWidth, v, layout, element)?;
+                self.apply(PropertyKey::BorderLeftWidth, h, layout, element)?;
             }
             (PropertyKey::BorderWidth, [value]) => {
-                element.borders.top.width = dimension_length(value, self)?;
-                element.borders.right.width = element.borders.top.width;
-                element.borders.bottom.width = element.borders.top.width;
-                element.borders.left.width = element.borders.top.width;
-            }
-            (PropertyKey::BorderTopWidth, [value]) => {
-                element.borders.top.width = dimension_length(value, self)?;
-            }
-            (PropertyKey::BorderRightWidth, [value]) => {
-                element.borders.right.width = dimension_length(value, self)?;
-            }
-            (PropertyKey::BorderBottomWidth, [value]) => {
-                element.borders.bottom.width = dimension_length(value, self)?;
-            }
-            (PropertyKey::BorderLeftWidth, [value]) => {
-                element.borders.left.width = dimension_length(value, self)?;
+                self.apply(PropertyKey::BorderTopWidth, value, layout, element)?;
+                self.apply(PropertyKey::BorderRightWidth, value, layout, element)?;
+                self.apply(PropertyKey::BorderBottomWidth, value, layout, element)?;
+                self.apply(PropertyKey::BorderLeftWidth, value, layout, element)?;
             }
             (PropertyKey::BorderColor, [top, right, bottom, left]) => {
-                element.borders.top.color = resolve_color(top, self)?;
-                element.borders.right.color = resolve_color(right, self)?;
-                element.borders.bottom.color = resolve_color(bottom, self)?;
-                element.borders.left.color = resolve_color(left, self)?;
+                self.apply(PropertyKey::BorderTopColor, top, layout, element)?;
+                self.apply(PropertyKey::BorderRightColor, right, layout, element)?;
+                self.apply(PropertyKey::BorderBottomColor, bottom, layout, element)?;
+                self.apply(PropertyKey::BorderLeftColor, left, layout, element)?;
             }
             (PropertyKey::BorderColor, [top, h, bottom]) => {
-                element.borders.top.color = resolve_color(top, self)?;
-                element.borders.right.color = resolve_color(h, self)?;
-                element.borders.bottom.color = resolve_color(bottom, self)?;
-                element.borders.left.color = resolve_color(h, self)?;
+                self.apply(PropertyKey::BorderTopColor, top, layout, element)?;
+                self.apply(PropertyKey::BorderRightColor, h, layout, element)?;
+                self.apply(PropertyKey::BorderBottomColor, bottom, layout, element)?;
+                self.apply(PropertyKey::BorderLeftColor, h, layout, element)?;
             }
             (PropertyKey::BorderColor, [v, h]) => {
-                element.borders.top.color = resolve_color(v, self)?;
-                element.borders.right.color = resolve_color(h, self)?;
-                element.borders.bottom.color = resolve_color(v, self)?;
-                element.borders.left.color = resolve_color(h, self)?;
+                self.apply(PropertyKey::BorderTopColor, v, layout, element)?;
+                self.apply(PropertyKey::BorderRightColor, h, layout, element)?;
+                self.apply(PropertyKey::BorderBottomColor, v, layout, element)?;
+                self.apply(PropertyKey::BorderLeftColor, h, layout, element)?;
             }
             (PropertyKey::BorderColor, [value]) => {
-                element.borders.top.color = resolve_color(value, self)?;
-                element.borders.right.color = element.borders.top.color;
-                element.borders.bottom.color = element.borders.top.color;
-                element.borders.left.color = element.borders.top.color;
-            }
-            (PropertyKey::BorderTopColor, [value]) => {
-                element.borders.top.color = resolve_color(value, self)?;
-            }
-            (PropertyKey::BorderRightColor, [value]) => {
-                element.borders.right.color = resolve_color(value, self)?;
-            }
-            (PropertyKey::BorderBottomColor, [value]) => {
-                element.borders.bottom.color = resolve_color(value, self)?;
-            }
-            (PropertyKey::BorderLeftColor, [value]) => {
-                element.borders.left.color = resolve_color(value, self)?;
+                self.apply(PropertyKey::BorderTopColor, value, layout, element)?;
+                self.apply(PropertyKey::BorderRightColor, value, layout, element)?;
+                self.apply(PropertyKey::BorderBottomColor, value, layout, element)?;
+                self.apply(PropertyKey::BorderLeftColor, value, layout, element)?;
             }
             (PropertyKey::BorderRadius, [a, b, c, d]) => {
-                element.borders.radius[0] = length(a, self)?;
-                element.borders.radius[1] = length(b, self)?;
-                element.borders.radius[2] = length(c, self)?;
-                element.borders.radius[3] = length(d, self)?;
+                self.apply(PropertyKey::BorderTopLeftRadius, a, layout, element)?;
+                self.apply(PropertyKey::BorderTopRightRadius, b, layout, element)?;
+                self.apply(PropertyKey::BorderBottomRightRadius, c, layout, element)?;
+                self.apply(PropertyKey::BorderBottomLeftRadius, d, layout, element)?;
             }
             (PropertyKey::BorderRadius, [a, b, c]) => {
-                element.borders.radius[0] = length(a, self)?;
-                element.borders.radius[1] = length(b, self)?;
-                element.borders.radius[2] = length(c, self)?;
-                element.borders.radius[3] = length(b, self)?;
+                self.apply(PropertyKey::BorderTopLeftRadius, a, layout, element)?;
+                self.apply(PropertyKey::BorderTopRightRadius, b, layout, element)?;
+                self.apply(PropertyKey::BorderBottomRightRadius, c, layout, element)?;
+                self.apply(PropertyKey::BorderBottomLeftRadius, b, layout, element)?;
             }
             (PropertyKey::BorderRadius, [a, b]) => {
-                element.borders.radius[0] = length(a, self)?;
-                element.borders.radius[1] = length(b, self)?;
-                element.borders.radius[2] = length(a, self)?;
-                element.borders.radius[3] = length(b, self)?;
+                self.apply(PropertyKey::BorderTopLeftRadius, a, layout, element)?;
+                self.apply(PropertyKey::BorderTopRightRadius, b, layout, element)?;
+                self.apply(PropertyKey::BorderBottomRightRadius, a, layout, element)?;
+                self.apply(PropertyKey::BorderBottomLeftRadius, b, layout, element)?;
             }
             (PropertyKey::BorderRadius, [value]) => {
-                element.borders.radius[0] = length(value, self)?;
-                element.borders.radius[1] = length(value, self)?;
-                element.borders.radius[2] = length(value, self)?;
-                element.borders.radius[3] = length(value, self)?;
+                self.apply(PropertyKey::BorderTopLeftRadius, value, layout, element)?;
+                self.apply(PropertyKey::BorderTopRightRadius, value, layout, element)?;
+                self.apply(PropertyKey::BorderBottomRightRadius, value, layout, element)?;
+                self.apply(PropertyKey::BorderBottomLeftRadius, value, layout, element)?;
             }
-            (PropertyKey::BorderTopLeftRadius, [value]) => {
-                element.borders.radius[0] = length(value, self)?;
+            //
+            // Layout
+            //
+            (PropertyKey::Overflow, [value]) => {
+                self.apply(PropertyKey::OverflowX, value, layout, element)?;
+                self.apply(PropertyKey::OverflowY, value, layout, element)?;
             }
-            (PropertyKey::BorderTopRightRadius, [value]) => {
-                element.borders.radius[1] = length(value, self)?;
+            (PropertyKey::Overflow, [x, y]) => {
+                self.apply(PropertyKey::OverflowX, x, layout, element)?;
+                self.apply(PropertyKey::OverflowY, y, layout, element)?;
             }
-            (PropertyKey::BorderBottomRightRadius, [value]) => {
-                element.borders.radius[2] = length(value, self)?;
+            (PropertyKey::Inset, [top, right, bottom, left]) => {
+                self.apply(PropertyKey::Top, top, layout, element)?;
+                self.apply(PropertyKey::Right, right, layout, element)?;
+                self.apply(PropertyKey::Bottom, bottom, layout, element)?;
+                self.apply(PropertyKey::Left, left, layout, element)?;
             }
-            (PropertyKey::BorderBottomLeftRadius, [value]) => {
-                element.borders.radius[3] = length(value, self)?;
+            (PropertyKey::Inset, [value]) => {
+                self.apply(PropertyKey::Top, value, layout, element)?;
+                self.apply(PropertyKey::Right, value, layout, element)?;
+                self.apply(PropertyKey::Bottom, value, layout, element)?;
+                self.apply(PropertyKey::Left, value, layout, element)?;
             }
-            (PropertyKey::PointerEvents, [Keyword(keyword)]) => {
-                element.pointer_events = match keyword.as_str() {
-                    "auto" => PointerEvents::Auto,
-                    "none" => PointerEvents::None,
-                    keyword => return CascadeError::invalid_keyword(keyword),
-                }
+            (PropertyKey::Gap, [column, row]) => {
+                self.apply(PropertyKey::RowGap, row, layout, element)?;
+                self.apply(PropertyKey::ColumnGap, column, layout, element)?;
+            }
+            (PropertyKey::Gap, [value]) => {
+                self.apply(PropertyKey::RowGap, value, layout, element)?;
+                self.apply(PropertyKey::ColumnGap, value, layout, element)?;
+            }
+            (PropertyKey::Padding, [top, right, bottom, left]) => {
+                self.apply(PropertyKey::PaddingTop, top, layout, element)?;
+                self.apply(PropertyKey::PaddingRight, right, layout, element)?;
+                self.apply(PropertyKey::PaddingBottom, bottom, layout, element)?;
+                self.apply(PropertyKey::PaddingLeft, left, layout, element)?;
+            }
+            (PropertyKey::Padding, [top, h, bottom]) => {
+                self.apply(PropertyKey::PaddingTop, top, layout, element)?;
+                self.apply(PropertyKey::PaddingRight, h, layout, element)?;
+                self.apply(PropertyKey::PaddingBottom, bottom, layout, element)?;
+                self.apply(PropertyKey::PaddingLeft, h, layout, element)?;
+            }
+            (PropertyKey::Padding, [v, h]) => {
+                self.apply(PropertyKey::PaddingTop, v, layout, element)?;
+                self.apply(PropertyKey::PaddingRight, h, layout, element)?;
+                self.apply(PropertyKey::PaddingBottom, v, layout, element)?;
+                self.apply(PropertyKey::PaddingLeft, h, layout, element)?;
+            }
+            (PropertyKey::Padding, [value]) => {
+                self.apply(PropertyKey::PaddingTop, value, layout, element)?;
+                self.apply(PropertyKey::PaddingRight, value, layout, element)?;
+                self.apply(PropertyKey::PaddingBottom, value, layout, element)?;
+                self.apply(PropertyKey::PaddingLeft, value, layout, element)?;
+            }
+            (PropertyKey::Margin, [top, right, bottom, left]) => {
+                self.apply(PropertyKey::MarginTop, top, layout, element)?;
+                self.apply(PropertyKey::MarginRight, right, layout, element)?;
+                self.apply(PropertyKey::MarginBottom, bottom, layout, element)?;
+                self.apply(PropertyKey::MarginLeft, left, layout, element)?;
+            }
+            (PropertyKey::Margin, [top, h, bottom]) => {
+                self.apply(PropertyKey::MarginTop, top, layout, element)?;
+                self.apply(PropertyKey::MarginRight, h, layout, element)?;
+                self.apply(PropertyKey::MarginBottom, bottom, layout, element)?;
+                self.apply(PropertyKey::MarginLeft, h, layout, element)?;
+            }
+            (PropertyKey::Margin, [v, h]) => {
+                self.apply(PropertyKey::MarginTop, v, layout, element)?;
+                self.apply(PropertyKey::MarginRight, h, layout, element)?;
+                self.apply(PropertyKey::MarginBottom, v, layout, element)?;
+                self.apply(PropertyKey::MarginLeft, h, layout, element)?;
+            }
+            (PropertyKey::Margin, [value]) => {
+                self.apply(PropertyKey::MarginTop, value, layout, element)?;
+                self.apply(PropertyKey::MarginRight, value, layout, element)?;
+                self.apply(PropertyKey::MarginBottom, value, layout, element)?;
+                self.apply(PropertyKey::MarginLeft, value, layout, element)?;
             }
             //
             // Transform
@@ -590,6 +644,7 @@ impl<'c> Cascade<'c> {
             (PropertyKey::Transform, shorthand) => {
                 element.transforms = resolve_transforms(shorthand, self)?;
             }
+            //
             // Animation
             //
             // there is no static shorthand pattern, we should set values by it type and order
@@ -615,240 +670,163 @@ impl<'c> Cascade<'c> {
                 element.animator.name = name.to_string();
                 element.animator.duration = *duration;
             }
-            (PropertyKey::AnimationName, [Keyword(name)]) => {
-                element.animator.name = name.to_string();
+            (key, [value]) => return self.apply(key, value, layout, element),
+            _ => return Err(CascadeError::PropertyNotSupported),
+        }
+        Ok(())
+    }
+
+    fn apply(
+        &mut self,
+        key: PropertyKey,
+        value: &ComputedValue,
+        layout: &mut taffy::Style,
+        element: &mut Element,
+    ) -> Result<(), CascadeError> {
+        match (key, value) {
+            //
+            // Element
+            //
+            (PropertyKey::BackgroundColor, value) => {
+                element.background.color = resolve_color(value, self)?
             }
-            (PropertyKey::AnimationDelay, [Time(delay)]) => {
-                element.animator.delay = *delay;
+            (PropertyKey::Color, value) => element.color = resolve_color(value, self)?,
+            (PropertyKey::FontSize, value) => {
+                element.font.size = resolve_length(value, self, self.sizes.parent_font_size)?;
             }
-            (PropertyKey::AnimationDirection, [Keyword(keyword)]) => {
-                element.animator.direction = match keyword.as_str() {
-                    "normal" => AnimationDirection::Normal,
-                    "reverse" => AnimationDirection::Reverse,
-                    "alternate" => AnimationDirection::Alternate,
-                    "alternate-reverse" => AnimationDirection::AlternateReverse,
+            (PropertyKey::FontWeight, value) => {
+                element.font.weight = resolve_font_weight(value, self)?
+            }
+            (PropertyKey::FontFamily, value) => element.font.family = resolve_string(value, self)?,
+            (PropertyKey::FontStyle, ComputedValue::Keyword(keyword)) => {
+                element.font.style = match keyword.as_str() {
+                    "normal" => "normal".to_string(),
+                    "italic" => "italic".to_string(),
+                    "oblique" => "oblique".to_string(),
                     keyword => return CascadeError::invalid_keyword(keyword),
                 }
             }
-            (PropertyKey::AnimationDuration, [Time(duration)]) => {
-                element.animator.duration = *duration;
-            }
-            (PropertyKey::AnimationFillMode, [Keyword(keyword)]) => {
-                element.animator.fill_mode = match keyword.as_str() {
-                    "none" => AnimationFillMode::None,
-                    "forwards" => AnimationFillMode::Forwards,
-                    "backwards" => AnimationFillMode::Backwards,
-                    "both" => AnimationFillMode::Both,
+            (PropertyKey::TextAlign, ComputedValue::Keyword(keyword)) => {
+                element.font.align = match keyword.as_str() {
+                    "start" => TextAlign::Start,
+                    "end" => TextAlign::End,
+                    "left" => TextAlign::Left,
+                    "right" => TextAlign::Right,
+                    "center" => TextAlign::Center,
+                    "justify" => TextAlign::Justify,
+                    "justify-all" => TextAlign::JustifyAll,
+                    "match-parent" => TextAlign::MatchParent,
                     keyword => return CascadeError::invalid_keyword(keyword),
                 }
             }
-            (PropertyKey::AnimationIterationCount, [iterations]) => {
-                element.animator.iterations = resolve_iterations(iterations, self)?;
-            }
-            (PropertyKey::AnimationPlayState, [Keyword(keyword)]) => {
-                element.animator.running = match keyword.as_str() {
-                    "running" => true,
-                    "paused" => false,
+            (PropertyKey::PointerEvents, ComputedValue::Keyword(keyword)) => {
+                element.pointer_events = match keyword.as_str() {
+                    "auto" => PointerEvents::Auto,
+                    "none" => PointerEvents::None,
                     keyword => return CascadeError::invalid_keyword(keyword),
                 }
             }
-            (PropertyKey::AnimationTimingFunction, [timing]) => {
-                element.animator.timing = resolve_timing(timing, self)?
+            //
+            // Element + Layout
+            //
+            (PropertyKey::BorderTopWidth, value) => {
+                element.borders.top.width = dimension_length(value, self)?;
+                layout.border.top = LengthPercentage::Length(element.borders.top.width);
+            }
+            (PropertyKey::BorderRightWidth, value) => {
+                element.borders.right.width = dimension_length(value, self)?;
+                layout.border.right = LengthPercentage::Length(element.borders.right.width);
+            }
+            (PropertyKey::BorderBottomWidth, value) => {
+                element.borders.bottom.width = dimension_length(value, self)?;
+                layout.border.bottom = LengthPercentage::Length(element.borders.bottom.width);
+            }
+            (PropertyKey::BorderLeftWidth, value) => {
+                element.borders.left.width = dimension_length(value, self)?;
+                layout.border.left = LengthPercentage::Length(element.borders.left.width);
+            }
+            (PropertyKey::BorderTopColor, value) => {
+                element.borders.top.color = resolve_color(value, self)?;
+            }
+            (PropertyKey::BorderRightColor, value) => {
+                element.borders.right.color = resolve_color(value, self)?;
+            }
+            (PropertyKey::BorderBottomColor, value) => {
+                element.borders.bottom.color = resolve_color(value, self)?;
+            }
+            (PropertyKey::BorderLeftColor, value) => {
+                element.borders.left.color = resolve_color(value, self)?;
+            }
+            (PropertyKey::BorderTopLeftRadius, value) => {
+                element.borders.radius[0] = length(value, self)?;
+            }
+            (PropertyKey::BorderTopRightRadius, value) => {
+                element.borders.radius[1] = length(value, self)?;
+            }
+            (PropertyKey::BorderBottomRightRadius, value) => {
+                element.borders.radius[2] = length(value, self)?;
+            }
+            (PropertyKey::BorderBottomLeftRadius, value) => {
+                element.borders.radius[3] = length(value, self)?;
             }
             //
             // Layout
             //
-            (PropertyKey::Display, [Keyword(keyword)]) => match keyword.as_str() {
+            (PropertyKey::MarginTop, value) => layout.margin.top = lengthp_auto(value, self)?,
+            (PropertyKey::MarginRight, value) => layout.margin.right = lengthp_auto(value, self)?,
+            (PropertyKey::MarginBottom, value) => layout.margin.bottom = lengthp_auto(value, self)?,
+            (PropertyKey::MarginLeft, value) => layout.margin.left = lengthp_auto(value, self)?,
+            (PropertyKey::PaddingTop, value) => layout.padding.top = lengthp(value, self)?,
+            (PropertyKey::PaddingRight, value) => layout.padding.right = lengthp(value, self)?,
+            (PropertyKey::PaddingBottom, value) => layout.padding.bottom = lengthp(value, self)?,
+            (PropertyKey::PaddingLeft, value) => layout.padding.left = lengthp(value, self)?,
+            (PropertyKey::Display, Keyword(keyword)) => match keyword.as_str() {
                 "flow" => layout.display = taffy::Display::Block,
                 "block" => layout.display = taffy::Display::Block,
                 "flex" => layout.display = taffy::Display::Flex,
                 "grid" => layout.display = taffy::Display::Grid,
                 keyword => return CascadeError::invalid_keyword(keyword),
             },
-            (PropertyKey::Overflow, [Keyword(value)]) => {
-                layout.overflow.x = resolve_overflow(value.as_str())?;
-                layout.overflow.y = layout.overflow.x;
-            }
-            (PropertyKey::Overflow, [Keyword(x), Keyword(y)]) => {
-                layout.overflow.x = resolve_overflow(x.as_str())?;
-                layout.overflow.y = resolve_overflow(y.as_str())?;
-            }
-            (PropertyKey::OverflowX, [Keyword(x)]) => {
+            (PropertyKey::OverflowX, Keyword(x)) => {
                 layout.overflow.x = resolve_overflow(x.as_str())?
             }
-            (PropertyKey::OverflowY, [Keyword(y)]) => {
+            (PropertyKey::OverflowY, Keyword(y)) => {
                 layout.overflow.y = resolve_overflow(y.as_str())?
             }
-            (PropertyKey::Position, [Keyword(keyword)]) => match keyword.as_str() {
+            (PropertyKey::Position, Keyword(keyword)) => match keyword.as_str() {
                 "relative" => layout.position = taffy::Position::Relative,
                 "absolute" => layout.position = taffy::Position::Absolute,
                 keyword => return CascadeError::invalid_keyword(keyword),
             },
-            (PropertyKey::Inset, [top, right, bottom, left]) => {
-                layout.inset.top = lengthp_auto(top, self)?;
-                layout.inset.right = lengthp_auto(right, self)?;
-                layout.inset.bottom = lengthp_auto(bottom, self)?;
-                layout.inset.left = lengthp_auto(left, self)?;
-            }
-            (PropertyKey::Left, [value]) => layout.inset.left = lengthp_auto(value, self)?,
-            (PropertyKey::Right, [value]) => layout.inset.right = lengthp_auto(value, self)?,
-            (PropertyKey::Top, [value]) => layout.inset.top = lengthp_auto(value, self)?,
-            (PropertyKey::Bottom, [value]) => layout.inset.bottom = lengthp_auto(value, self)?,
-            (PropertyKey::Width, [value]) => layout.size.width = dimension(value, self)?,
-            (PropertyKey::Height, [value]) => layout.size.height = dimension(value, self)?,
-            (PropertyKey::MinWidth, [value]) => layout.min_size.width = dimension(value, self)?,
-            (PropertyKey::MinHeight, [value]) => layout.min_size.height = dimension(value, self)?,
-            (PropertyKey::MaxWidth, [value]) => layout.max_size.width = dimension(value, self)?,
-            (PropertyKey::MaxHeight, [value]) => layout.max_size.height = dimension(value, self)?,
-            (PropertyKey::AspectRatio, _) => {
-                // TODO:
-                // layout.aspect_ratio = None;
-                return Err(CascadeError::PropertyNotSupported);
-            }
-            (PropertyKey::Margin, [top, right, bottom, left]) => {
-                layout.margin.top = lengthp_auto(top, self)?;
-                layout.margin.right = lengthp_auto(right, self)?;
-                layout.margin.bottom = lengthp_auto(bottom, self)?;
-                layout.margin.left = lengthp_auto(left, self)?;
-            }
-            (PropertyKey::Margin, [top, horizontal, bottom]) => {
-                layout.margin.top = lengthp_auto(top, self)?;
-                layout.margin.right = lengthp_auto(horizontal, self)?;
-                layout.margin.bottom = lengthp_auto(bottom, self)?;
-                layout.margin.left = lengthp_auto(horizontal, self)?;
-            }
-            (PropertyKey::Margin, [vertical, horizontal]) => {
-                layout.margin.top = lengthp_auto(vertical, self)?;
-                layout.margin.right = lengthp_auto(horizontal, self)?;
-                layout.margin.bottom = lengthp_auto(vertical, self)?;
-                layout.margin.left = lengthp_auto(horizontal, self)?;
-            }
-            (PropertyKey::Margin, [value]) => {
-                layout.margin.top = lengthp_auto(value, self)?;
-                layout.margin.right = lengthp_auto(value, self)?;
-                layout.margin.bottom = lengthp_auto(value, self)?;
-                layout.margin.left = lengthp_auto(value, self)?;
-            }
-            (PropertyKey::MarginTop, [value]) => {
-                layout.margin.top = lengthp_auto(value, self)?;
-            }
-            (PropertyKey::MarginRight, [value]) => {
-                layout.margin.right = lengthp_auto(value, self)?;
-            }
-            (PropertyKey::MarginBottom, [value]) => {
-                layout.margin.bottom = lengthp_auto(value, self)?;
-            }
-            (PropertyKey::MarginLeft, [value]) => {
-                layout.margin.left = lengthp_auto(value, self)?;
-            }
-
-            (PropertyKey::Padding, [top, right, bottom, left]) => {
-                layout.padding.top = lengthp(top, self)?;
-                layout.padding.right = lengthp(right, self)?;
-                layout.padding.bottom = lengthp(bottom, self)?;
-                layout.padding.left = lengthp(left, self)?;
-            }
-            (PropertyKey::Padding, [top, horizontal, bottom]) => {
-                layout.padding.top = lengthp(top, self)?;
-                layout.padding.right = lengthp(horizontal, self)?;
-                layout.padding.bottom = lengthp(bottom, self)?;
-                layout.padding.left = lengthp(horizontal, self)?;
-            }
-            (PropertyKey::Padding, [vertical, horizontal]) => {
-                layout.padding.top = lengthp(vertical, self)?;
-                layout.padding.right = lengthp(horizontal, self)?;
-                layout.padding.bottom = lengthp(vertical, self)?;
-                layout.padding.left = lengthp(horizontal, self)?;
-            }
-            (PropertyKey::Padding, [value]) => {
-                layout.padding.top = lengthp(value, self)?;
-                layout.padding.right = lengthp(value, self)?;
-                layout.padding.bottom = lengthp(value, self)?;
-                layout.padding.left = lengthp(value, self)?;
-            }
-            (PropertyKey::PaddingTop, [value]) => {
-                layout.padding.top = lengthp(value, self)?;
-            }
-            (PropertyKey::PaddingRight, [value]) => {
-                layout.padding.right = lengthp(value, self)?;
-            }
-            (PropertyKey::PaddingBottom, [value]) => {
-                layout.padding.bottom = lengthp(value, self)?;
-            }
-            (PropertyKey::PaddingLeft, [value]) => {
-                layout.padding.left = lengthp(value, self)?;
-            }
-
-            /*
-            (CssProperty::Border, [top, right, bottom, left]) => {
-                layout.border.top = lengthp(top, self)?;
-                layout.border.right = lengthp(right, self)?;
-                layout.border.bottom = lengthp(bottom, self)?;
-                layout.border.left = lengthp(left, self)?;
-            }
-            (CssProperty::Border, [top, horizontal, bottom]) => {
-                layout.border.top = lengthp(top, self)?;
-                layout.border.right = lengthp(horizontal, self)?;
-                layout.border.bottom = lengthp(bottom, self)?;
-                layout.border.left = lengthp(horizontal, self)?;
-            }
-            (CssProperty::BorderTopWidth, [value]) => {
-                layout.border.top = lengthp(value, self)?;
-            }
-            (CssProperty::BorderRightWidth, [value]) => {
-                layout.border.right = lengthp(value, self)?;
-            }
-            (CssProperty::BorderLeftWidth, [value]) => {
-                layout.border.bottom = lengthp(value, self)?;
-            }
-            (CssProperty::BorderBottomWidth, [value]) => {
-                layout.border.left = lengthp(value, self)?;
-            }
-            (CssProperty::Border, [vertical, horizontal]) => {
-                layout.border.top = lengthp(vertical, self)?;
-                layout.border.right = lengthp(horizontal, self)?;
-                layout.border.bottom = lengthp(vertical, self)?;
-                layout.border.left = lengthp(horizontal, self)?;
-            }
-            (CssProperty::Border, [value]) => {
-                layout.border.top = lengthp(value, self)?;
-                layout.border.right = lengthp(value, self)?;
-                layout.border.bottom = lengthp(value, self)?;
-                layout.border.left = lengthp(value, self)?;
-            }*/
-            (PropertyKey::AlignContent, [Keyword(keyword)]) => {
+            (PropertyKey::Left, value) => layout.inset.left = lengthp_auto(value, self)?,
+            (PropertyKey::Right, value) => layout.inset.right = lengthp_auto(value, self)?,
+            (PropertyKey::Top, value) => layout.inset.top = lengthp_auto(value, self)?,
+            (PropertyKey::Bottom, value) => layout.inset.bottom = lengthp_auto(value, self)?,
+            (PropertyKey::Width, value) => layout.size.width = dimension(value, self)?,
+            (PropertyKey::Height, value) => layout.size.height = dimension(value, self)?,
+            (PropertyKey::MinWidth, value) => layout.min_size.width = dimension(value, self)?,
+            (PropertyKey::MinHeight, value) => layout.min_size.height = dimension(value, self)?,
+            (PropertyKey::MaxWidth, value) => layout.max_size.width = dimension(value, self)?,
+            (PropertyKey::MaxHeight, value) => layout.max_size.height = dimension(value, self)?,
+            (PropertyKey::AlignContent, Keyword(keyword)) => {
                 layout.align_content = map_align_content(keyword.as_str())?
             }
-            (PropertyKey::AlignItems, [Keyword(keyword)]) => {
+            (PropertyKey::AlignItems, Keyword(keyword)) => {
                 layout.align_items = map_align_items(keyword.as_str())?
             }
-            (PropertyKey::AlignSelf, [Keyword(keyword)]) => {
+            (PropertyKey::AlignSelf, Keyword(keyword)) => {
                 layout.align_self = map_align_items(keyword.as_str())?
             }
-            (PropertyKey::JustifyContent, [Keyword(keyword)]) => {
+            (PropertyKey::JustifyContent, Keyword(keyword)) => {
                 layout.justify_content = map_align_content(keyword.as_str())?
             }
-            (PropertyKey::JustifyItems, [Keyword(keyword)]) => {
+            (PropertyKey::JustifyItems, Keyword(keyword)) => {
                 layout.justify_items = map_align_items(keyword.as_str())?
             }
-            (PropertyKey::JustifySelf, [Keyword(keyword)]) => {
+            (PropertyKey::JustifySelf, Keyword(keyword)) => {
                 layout.justify_self = map_align_items(keyword.as_str())?
             }
-            (PropertyKey::Gap, [column, row]) => {
-                layout.gap.width = lengthp(column, self)?;
-                layout.gap.height = lengthp(row, self)?;
-            }
-            (PropertyKey::Gap, [gap]) => {
-                layout.gap.width = lengthp(gap, self)?;
-                layout.gap.height = lengthp(gap, self)?;
-            }
-            (PropertyKey::ColumnGap, [column]) => {
-                layout.gap.width = lengthp(column, self)?;
-            }
-            (PropertyKey::RowGap, [row]) => {
-                layout.gap.height = lengthp(row, self)?;
-            }
-            (PropertyKey::FlexDirection, [Keyword(keyword)]) => {
+            (PropertyKey::FlexDirection, Keyword(keyword)) => {
                 layout.flex_direction = match keyword.as_str() {
                     "row" => taffy::FlexDirection::Row,
                     "row-reverse" => taffy::FlexDirection::RowReverse,
@@ -857,7 +835,7 @@ impl<'c> Cascade<'c> {
                     keyword => return CascadeError::invalid_keyword(keyword),
                 }
             }
-            (PropertyKey::FlexWrap, [Keyword(keyword)]) => {
+            (PropertyKey::FlexWrap, Keyword(keyword)) => {
                 layout.flex_wrap = match keyword.as_str() {
                     "wrap" => taffy::FlexWrap::Wrap,
                     "nowrap" => taffy::FlexWrap::NoWrap,
@@ -865,52 +843,81 @@ impl<'c> Cascade<'c> {
                     keyword => return CascadeError::invalid_keyword(keyword),
                 }
             }
-            (PropertyKey::FlexBasis, [value]) => layout.flex_basis = dimension(value, self)?,
-            (PropertyKey::FlexGrow, [Number(value)]) => layout.flex_grow = *value,
-            (PropertyKey::FlexShrink, [Number(value)]) => layout.flex_shrink = *value,
+            (PropertyKey::FlexBasis, value) => layout.flex_basis = dimension(value, self)?,
+            (PropertyKey::FlexGrow, ComputedValue::Number(value)) => layout.flex_grow = *value,
+            (PropertyKey::FlexShrink, ComputedValue::Number(value)) => layout.flex_shrink = *value,
+            (PropertyKey::ColumnGap, column) => {
+                layout.gap.width = lengthp(column, self)?;
+            }
+            (PropertyKey::RowGap, row) => {
+                layout.gap.height = lengthp(row, self)?;
+            }
+            //
+            // Animation
+            //
+            (PropertyKey::AnimationName, Keyword(name)) => {
+                element.animator.name = name.to_string();
+            }
+            (PropertyKey::AnimationDelay, Time(delay)) => {
+                element.animator.delay = *delay;
+            }
+            (PropertyKey::AnimationDirection, Keyword(keyword)) => {
+                element.animator.direction = match keyword.as_str() {
+                    "normal" => AnimationDirection::Normal,
+                    "reverse" => AnimationDirection::Reverse,
+                    "alternate" => AnimationDirection::Alternate,
+                    "alternate-reverse" => AnimationDirection::AlternateReverse,
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
+            }
+            (PropertyKey::AnimationDuration, Time(duration)) => {
+                element.animator.duration = *duration;
+            }
+            (PropertyKey::AnimationFillMode, Keyword(keyword)) => {
+                element.animator.fill_mode = match keyword.as_str() {
+                    "none" => AnimationFillMode::None,
+                    "forwards" => AnimationFillMode::Forwards,
+                    "backwards" => AnimationFillMode::Backwards,
+                    "both" => AnimationFillMode::Both,
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
+            }
+            (PropertyKey::AnimationIterationCount, iterations) => {
+                element.animator.iterations = resolve_iterations(iterations, self)?;
+            }
+            (PropertyKey::AnimationPlayState, Keyword(keyword)) => {
+                element.animator.running = match keyword.as_str() {
+                    "running" => true,
+                    "paused" => false,
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
+            }
+            (PropertyKey::AnimationTimingFunction, timing) => {
+                element.animator.timing = resolve_timing(timing, self)?
+            }
             _ => return Err(CascadeError::PropertyNotSupported),
         }
         Ok(())
     }
-
-    // fn apply_property(
-    //     &mut self,
-    //     property: &Property,
-    //     layout: &mut LayoutStyle,
-    //     element: &mut Element,
-    // ) -> Result<(), CascadeError> {
-    //     let css = &self.css.source;
-    //     let ctx = self.sizes;
-    //     self.apply_shorthand(
-    //         property.key,
-    //         self.css.as_shorthand(&property.values),
-    //         layout,
-    //         element,
-    //     )
-    // }
 }
 
-fn resolve_font_weight(value: &Value, cascade: &Cascade) -> Result<u16, CascadeError> {
+fn resolve_font_weight(value: &ComputedValue, cascade: &Cascade) -> Result<u16, CascadeError> {
     let value = match value {
-        Value::Number(value) if *value >= 1.0 && *value <= 1000.0 => *value as u16,
-        Value::Keyword(keyword) => match keyword.as_str() {
+        ComputedValue::Number(value) if *value >= 1.0 && *value <= 1000.0 => *value as u16,
+        ComputedValue::Keyword(keyword) => match keyword.as_str() {
             "normal" => 400,
             "bold" => 700,
             keyword => return Err(CascadeError::InvalidKeyword(keyword.to_string())),
         },
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return resolve_font_weight(value, cascade);
-        }
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)
 }
 
-fn resolve_color(value: &Value, cascade: &Cascade) -> Result<[u8; 4], CascadeError> {
+fn resolve_color(value: &ComputedValue, _cascade: &Cascade) -> Result<[u8; 4], CascadeError> {
     let value = match value {
-        Value::Color(color) => *color,
-        Value::Keyword(keyword) => match keyword.as_str() {
+        ComputedValue::Color(color) => *color,
+        ComputedValue::Keyword(keyword) => match keyword.as_str() {
             "black" => [0, 0, 0, 255],
             "white" => [255, 255, 255, 255],
             "red" => [255, 0, 0, 255],
@@ -919,18 +926,17 @@ fn resolve_color(value: &Value, cascade: &Cascade) -> Result<[u8; 4], CascadeErr
             "transparent" => [0, 0, 0, 0],
             keyword => return Err(CascadeError::InvalidKeyword(keyword.to_string())),
         },
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return resolve_color(value, cascade);
-        }
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)
 }
 
-fn resolve_timing(value: &Value, cascade: &Cascade) -> Result<TimingFunction, CascadeError> {
+fn resolve_timing(
+    value: &ComputedValue,
+    cascade: &Cascade,
+) -> Result<TimingFunction, CascadeError> {
     let value = match value {
-        Keyword(keyword) => match keyword.as_str() {
+        ComputedValue::Keyword(keyword) => match keyword.as_str() {
             "ease" => TimingFunction::Ease,
             "ease-in" => TimingFunction::EaseIn,
             "ease-out" => TimingFunction::EaseOut,
@@ -940,122 +946,107 @@ fn resolve_timing(value: &Value, cascade: &Cascade) -> Result<TimingFunction, Ca
             "step-end" => TimingFunction::StepEnd,
             _ => return Err(CascadeError::ValueNotSupported),
         },
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return resolve_timing(value, cascade);
-        }
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)
 }
 
 fn resolve_transforms(
-    values: &[Value],
+    values: &[ComputedValue],
     cascade: &Cascade,
 ) -> Result<Vec<TransformFunction>, CascadeError> {
-    let mut transforms = vec![];
-    for value in values.iter() {
-        match value {
-            Value::Function(function) => match function.describe() {
-                ("translate", [x]) => {
-                    let x = length(x, cascade)?;
-                    let y = Length::zero();
-                    let z = 0.0;
-                    transforms.push(TransformFunction::translate(x, y, z))
-                }
-                ("translate", [x, y]) => {
-                    let x = length(x, cascade)?;
-                    let y = length(y, cascade)?;
-                    let _z = 0.0;
-                    transforms.push(TransformFunction::translate(x, y, 0.0))
-                }
-                ("translate3d", [x, y, z]) => {
-                    let x = length(x, cascade)?;
-                    let y = length(y, cascade)?;
-                    let z = dimension_length(z, cascade)?;
-                    transforms.push(TransformFunction::translate(x, y, z))
-                }
-                ("translateX", [x]) => {
-                    let x = length(x, cascade)?;
-                    let y = Length::zero();
-                    let z = 0.0;
-                    transforms.push(TransformFunction::translate(x, y, z))
-                }
-                ("translateY", [y]) => {
-                    let x = Length::zero();
-                    let y = length(y, cascade)?;
-                    let z = 0.0;
-                    transforms.push(TransformFunction::translate(x, y, z))
-                }
-                ("translateZ", [z]) => {
-                    let x = Length::zero();
-                    let y = Length::zero();
-                    let z = dimension_length(z, cascade)?;
-                    transforms.push(TransformFunction::translate(x, y, z))
-                }
-                _ => return Err(CascadeError::TransformFunctionNotSupported),
-            },
-            _ => return Err(CascadeError::ValueNotSupported),
-        }
-    }
-    Ok(transforms)
+    unimplemented!()
+    // let mut transforms = vec![];
+    // for value in values.iter() {
+    //     match value {
+    //         ComputedValue::Function(function) => match function.describe() {
+    //             ("translate", [x]) => {
+    //                 let x = length(x, cascade)?;
+    //                 let y = Length::zero();
+    //                 let z = 0.0;
+    //                 transforms.push(TransformFunction::translate(x, y, z))
+    //             }
+    //             ("translate", [x, y]) => {
+    //                 let x = length(x, cascade)?;
+    //                 let y = length(y, cascade)?;
+    //                 let _z = 0.0;
+    //                 transforms.push(TransformFunction::translate(x, y, 0.0))
+    //             }
+    //             ("translate3d", [x, y, z]) => {
+    //                 let x = length(x, cascade)?;
+    //                 let y = length(y, cascade)?;
+    //                 let z = dimension_length(z, cascade)?;
+    //                 transforms.push(TransformFunction::translate(x, y, z))
+    //             }
+    //             ("translateX", [x]) => {
+    //                 let x = length(x, cascade)?;
+    //                 let y = Length::zero();
+    //                 let z = 0.0;
+    //                 transforms.push(TransformFunction::translate(x, y, z))
+    //             }
+    //             ("translateY", [y]) => {
+    //                 let x = Length::zero();
+    //                 let y = length(y, cascade)?;
+    //                 let z = 0.0;
+    //                 transforms.push(TransformFunction::translate(x, y, z))
+    //             }
+    //             ("translateZ", [z]) => {
+    //                 let x = Length::zero();
+    //                 let y = Length::zero();
+    //                 let z = dimension_length(z, cascade)?;
+    //                 transforms.push(TransformFunction::translate(x, y, z))
+    //             }
+    //             _ => return Err(CascadeError::TransformFunctionNotSupported),
+    //         },
+    //         _ => return Err(CascadeError::ValueNotSupported),
+    //     }
+    // }
+    // Ok(transforms)
 }
 
 fn resolve_iterations(
-    value: &Value,
+    value: &ComputedValue,
     cascade: &Cascade,
 ) -> Result<AnimationIterations, CascadeError> {
     let value = match value {
-        Keyword(keyword) => match keyword.as_str() {
+        ComputedValue::Keyword(keyword) => match keyword.as_str() {
             "infinite" => AnimationIterations::Infinite,
             _ => return Err(CascadeError::ValueNotSupported),
         },
-        Number(number) => AnimationIterations::Number(*number),
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return resolve_iterations(value, cascade);
-        }
+        ComputedValue::Number(number) => AnimationIterations::Number(*number),
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)
 }
 
-fn resolve_string(value: &Value, cascade: &Cascade) -> Result<String, CascadeError> {
+fn resolve_string(value: &ComputedValue, cascade: &Cascade) -> Result<String, CascadeError> {
     let value = match value {
-        Value::String(value) => value.clone(),
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return resolve_string(value, cascade);
-        }
+        ComputedValue::String(value) => value.clone(),
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)
 }
 
-fn resolve_length(value: &Value, cascade: &Cascade, base: f32) -> Result<f32, CascadeError> {
+fn resolve_length(
+    value: &ComputedValue,
+    cascade: &Cascade,
+    base: f32,
+) -> Result<f32, CascadeError> {
     let value = match value {
-        Value::Zero => 0.0,
-        Value::Dimension(dimension) => parse_dimension_length(dimension, cascade)?,
-        Value::Percentage(percent) => percent * base,
-        Number(value) => *value,
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return resolve_length(value, cascade, base);
-        }
+        ComputedValue::Zero => 0.0,
+        ComputedValue::Dimension(dimension) => parse_dimension_length(dimension, cascade)?,
+        ComputedValue::Percentage(percent) => percent * base,
+        ComputedValue::Number(value) => *value,
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)
 }
 
-fn dimension_length(value: &Value, cascade: &Cascade) -> Result<f32, CascadeError> {
+fn dimension_length(value: &ComputedValue, cascade: &Cascade) -> Result<f32, CascadeError> {
     let value = match value {
-        Value::Zero => 0.0,
-        Value::Dimension(dimension) => parse_dimension_length(dimension, cascade)?,
-        Number(value) => *value,
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return dimension_length(value, cascade);
-        }
+        ComputedValue::Zero => 0.0,
+        ComputedValue::Dimension(dimension) => parse_dimension_length(dimension, cascade)?,
+        ComputedValue::Number(value) => *value,
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)
@@ -1076,68 +1067,55 @@ fn parse_dimension_length(dimension: &Dim, cascade: &Cascade) -> Result<f32, Cas
     Ok(value)
 }
 
-fn dimension(value: &Value, cascade: &Cascade) -> Result<Dimension, CascadeError> {
+fn dimension(value: &ComputedValue, cascade: &Cascade) -> Result<Dimension, CascadeError> {
     let value = match value {
-        Value::Dimension(dimension) => {
+        ComputedValue::Dimension(dimension) => {
             let length = parse_dimension_length(dimension, cascade)?;
             Dimension::Length(length)
         }
-        Value::Percentage(value) => Dimension::Percent(*value),
-        Keyword(keyword) if keyword.as_str() == "auto" => Dimension::Auto,
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return dimension(value, cascade);
-        }
+        ComputedValue::Percentage(value) => Dimension::Percent(*value),
+        ComputedValue::Keyword(keyword) if keyword.as_str() == "auto" => Dimension::Auto,
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)
 }
 
-fn length(value: &Value, cascade: &Cascade) -> Result<Length, CascadeError> {
+fn length(value: &ComputedValue, cascade: &Cascade) -> Result<Length, CascadeError> {
     let value = match value {
-        Value::Dimension(dimension) => {
+        ComputedValue::Dimension(dimension) => {
             let length = parse_dimension_length(dimension, cascade)?;
             Length::Number(length)
         }
-        Value::Percentage(value) => Length::Percent(*value),
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return length(value, cascade);
-        }
+        ComputedValue::Percentage(value) => Length::Percent(*value),
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)
 }
 
-fn lengthp(value: &Value, cascade: &Cascade) -> Result<LengthPercentage, CascadeError> {
+fn lengthp(value: &ComputedValue, cascade: &Cascade) -> Result<LengthPercentage, CascadeError> {
     let value = match value {
-        Value::Dimension(dimension) => {
+        ComputedValue::Dimension(dimension) => {
             let length = parse_dimension_length(dimension, cascade)?;
             LengthPercentage::Length(length)
         }
-        Value::Percentage(value) => LengthPercentage::Percent(*value),
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return lengthp(value, cascade);
-        }
+        ComputedValue::Percentage(value) => LengthPercentage::Percent(*value),
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)
 }
 
-fn lengthp_auto(value: &Value, cascade: &Cascade) -> Result<LengthPercentageAuto, CascadeError> {
+fn lengthp_auto(
+    value: &ComputedValue,
+    cascade: &Cascade,
+) -> Result<LengthPercentageAuto, CascadeError> {
     let value = match value {
-        Value::Zero => LengthPercentageAuto::Length(0.0),
-        Value::Dimension(dimension) => {
+        ComputedValue::Zero => LengthPercentageAuto::Length(0.0),
+        ComputedValue::Dimension(dimension) => {
             let length = parse_dimension_length(dimension, cascade)?;
             LengthPercentageAuto::Length(length)
         }
-        Value::Percentage(value) => LengthPercentageAuto::Percent(*value),
-        Keyword(keyword) if keyword.as_str() == "auto" => LengthPercentageAuto::Auto,
-        Value::Var(variable) => {
-            let value = cascade.get_variable_value(variable)?;
-            return lengthp_auto(value, cascade);
-        }
+        ComputedValue::Percentage(value) => LengthPercentageAuto::Percent(*value),
+        ComputedValue::Keyword(keyword) if keyword.as_str() == "auto" => LengthPercentageAuto::Auto,
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)

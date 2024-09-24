@@ -7,7 +7,7 @@ pub struct Output {
 }
 
 impl Output {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             calls: vec![],
             is_cursor_over_view: false,

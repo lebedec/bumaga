@@ -1,6 +1,7 @@
-use crate::css::model::{PropertyKey, Shorthand, Value, Var};
+use crate::css::model::{ComputedValue, PropertyKey, Shorthand, Var};
 use crate::css::{
-    Animation, Complex, Css, Dim, Function, Keyframe, Matcher, Property, Simple, Style, Units,
+    Animation, Complex, Css, Declaration, Definition, Dim, Function, Keyframe, Matcher, Property,
+    Simple, Style, Units, Variable,
 };
 use log::error;
 use pest::error::Error;
@@ -53,14 +54,22 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                         },
                         _ => unreachable!(),
                     };
-                    let declaration = read_declaration(iter.next().unwrap());
-                    for property in declaration {
-                        let keyframe = keyframes.entry(property.key).or_insert_with(|| Keyframe {
-                            key: property.key,
-                            frames: BTreeMap::new(),
-                        });
-                        // TODO: support multiple value, eliminate clone?
-                        keyframe.frames.insert(step, property.get_first_shorthand());
+                    let declarations = read_declaration(iter.next().unwrap());
+                    for declaration in declarations {
+                        match declaration {
+                            Declaration::Variable(_) => {
+                                error!("variable declarations are not supported in keyframes");
+                            }
+                            Declaration::Property(property) => {
+                                let keyframe =
+                                    keyframes.entry(property.key).or_insert_with(|| Keyframe {
+                                        key: property.key,
+                                        frames: BTreeMap::new(),
+                                    });
+                                // TODO: support multiple value, eliminate clone?
+                                keyframe.frames.insert(step, property.values);
+                            }
+                        }
                     }
                 }
                 animations.insert(
@@ -158,70 +167,84 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
     })
 }
 
-fn read_declaration(pair: Pair<Rule>) -> Vec<Property> {
-    let mut declaration = vec![];
+fn read_declaration(pair: Pair<Rule>) -> Vec<Declaration> {
+    let mut declarations = vec![];
     for property in pair.into_inner() {
         let mut iter = property.into_inner();
         let name = iter.next().unwrap();
         let shorthands = iter.next().unwrap();
-
         // println!("PROP {} {values:?}", name.as_str());
         let id = name.as_span().start();
-        let name = name.as_str();
-        let key = match PropertyKey::parse(name) {
-            Some(key) => key,
-            None => {
-                error!("unable to read property {name}, not supported");
-                continue;
-            }
+        let key = name.as_str();
+        let declaration = if key.starts_with("--") {
+            let values = shorthands
+                .into_inner()
+                .map(|value| read_shorthand(value))
+                .collect();
+            Declaration::Variable(Variable {
+                id,
+                key: key.to_string(),
+                values,
+            })
+        } else {
+            let key = match PropertyKey::parse(key) {
+                Some(key) => key,
+                None => {
+                    error!("unable to read property {key}, not supported");
+                    continue;
+                }
+            };
+            let values = shorthands
+                .into_inner()
+                .map(|value| read_shorthand(value))
+                .collect();
+            Declaration::Property(Property { id, key, values })
         };
-        let values = shorthands
-            .into_inner()
-            .map(|value| read_shorthand(value))
-            .collect();
-        declaration.push(Property { id, key, values })
+        declarations.push(declaration)
     }
-    declaration
+    declarations
 }
 
 fn read_shorthand(pair: Pair<Rule>) -> Shorthand {
-    pair.into_inner().map(read_value).collect()
+    pair.into_inner().map(read_value_def).collect()
 }
 
-fn read_value(pair: Pair<Rule>) -> Value {
+fn read_value_def(pair: Pair<Rule>) -> Definition {
+    println!("read_value_def {pair:?}");
     match pair.as_rule() {
-        Rule::Keyword => Value::Keyword(pair.as_str().to_string()),
-        Rule::Rgba => Value::Color(read_color(pair)),
-        Rule::Rgb => Value::Color(read_color(pair)),
-        Rule::Color => Value::Color(read_color(pair)),
-        Rule::Zero => Value::Zero,
-        Rule::Time => Value::Time(read_seconds(pair)),
-        Rule::Percentage => Value::Percentage(read_percentage(pair)),
-        Rule::Dimension => Value::Dimension(read_dimension(pair)),
-        Rule::Number => Value::Number(read_number(pair)),
-        Rule::Var => Value::Var(read_variable(pair)),
-        Rule::Calc => Value::Unparsed(pair.as_str().to_string()),
-        Rule::String => Value::String(pair.into_inner().next().unwrap().as_str().to_string()),
+        Rule::Var => {
+            let mut iter = pair.into_inner();
+            let name = iter.next().unwrap().as_str().to_string();
+            Definition::Var(name)
+        }
         Rule::Function => {
             let mut iter = pair.into_inner();
             let name = iter.next().unwrap().as_str().to_string();
-            let args = iter.next().unwrap();
-            let mut iter = args.into_inner();
             let mut arguments = vec![];
             while let Some(arg) = iter.next() {
-                arguments.push(read_value(arg));
+                arguments.push(read_value_def(arg));
             }
-            Value::Function(Function { name, arguments })
+            Definition::Function(Function { name, arguments })
         }
-        Rule::Raw => match pair.as_str() {
-            "inherit" => Value::Inherit,
-            "initial" => Value::Initial,
-            "unset" => Value::Unset,
-            _ => {
-                // println!("RAW {}", pair.as_str());
-                Value::Unparsed(pair.as_str().to_string())
-            }
-        },
+        Rule::Explicit => {
+            Definition::Explicit(read_explicit_value(pair.into_inner().next().unwrap()))
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn read_explicit_value(pair: Pair<Rule>) -> ComputedValue {
+    match pair.as_rule() {
+        Rule::Keyword => ComputedValue::Keyword(pair.as_str().to_string()),
+        Rule::Color => ComputedValue::Color(read_color(pair)),
+        Rule::Zero => ComputedValue::Zero,
+        Rule::Time => ComputedValue::Time(read_seconds(pair)),
+        Rule::Percentage => ComputedValue::Percentage(read_percentage(pair)),
+        Rule::Dimension => ComputedValue::Dimension(read_dimension(pair)),
+        Rule::Number => ComputedValue::Number(read_number(pair)),
+        Rule::String => {
+            ComputedValue::String(pair.into_inner().next().unwrap().as_str().to_string())
+        }
         _ => unreachable!(),
     }
 }
@@ -230,13 +253,12 @@ fn read_dimension(pair: Pair<Rule>) -> Dim {
     let mut iter = pair.into_inner();
     let number = iter.next().unwrap();
     let unit = iter.next().unwrap().as_str();
-    Dim {
-        value: read_number(number),
-        unit: Units::parse(unit).unwrap_or_else(|| {
-            error!("unable to read dimension unit {unit}, not supported");
-            Units::Px
-        }),
-    }
+    let value = read_number(number);
+    let unit = Units::parse(unit).unwrap_or_else(|| {
+        error!("unable to read dimension unit {unit}, not supported");
+        Units::Px
+    });
+    Dim::new(value, unit)
 }
 
 fn read_percentage(pair: Pair<Rule>) -> f32 {
@@ -315,52 +337,118 @@ fn read_color(pair: Pair<Rule>) -> [u8; 4] {
 mod tests {
     use super::*;
 
-    fn style_values<const N: usize>(css: &Css) -> [Value; N] {
-        let mut values = [const { Value::Unset }; N];
-        for i in 0..N {
-            values[i] = css.styles[0].declaration[i].values[0][0].clone()
-        }
-        values
+    #[test]
+    pub fn test_component_value_var() {
+        let css = css("div { background-color: var(--main-bg-color); }");
+        assert_eq!(css.first_short(), [var("--main-bg-color")]);
     }
 
-    fn style_selectors(css: &Css) -> Vec<&Simple> {
-        css.styles[0].selectors[0].selectors.iter().collect()
+    #[test]
+    pub fn test_component_value_shorthand() {
+        let css = css("div { padding: 40px 30px; }");
+        assert_eq!(css.first_short(), [px(40), px(30)]);
+    }
+
+    #[test]
+    pub fn test_component_value_shorthand_var() {
+        let css = css("div { padding: 40px var(--padding); }");
+        assert_eq!(css.first_short(), [px(40), var("--padding")]);
+    }
+
+    #[test]
+    pub fn test_component_value_list() {
+        let css = css("div { font-family: monospaced, sans-serif; }");
+        assert_eq!(css.first_short(), [kw("monospaced")]);
+    }
+
+    #[test]
+    pub fn test_component_value_list_with_var() {
+        let css = css("div { font-family: var(--default-font), sans-serif; }");
+        assert_eq!(css.first_short(), [var("--default-font")]);
+    }
+
+    #[test]
+    pub fn test_component_value_list_with_shorthands() {
+        let css = css("div { box-shadow: -1em 0 0.4em olive, 3px 3px red; }");
+        assert_eq!(css.first_short(), [em(-1.0), zero(), em(0.4), kw("olive")]);
+    }
+
+    #[test]
+    pub fn test_component_value_list_with_shorthands_with_var() {
+        let css = css("div { box-shadow:  -1em 0 0.4em var(--color), 3px 3px red; }");
+        assert_eq!(
+            css.first_short(),
+            [em(-1.0), zero(), em(0.4), var("--color")]
+        );
+    }
+
+    #[test]
+    pub fn test_component_value_function_url_string() {
+        let css = css(r#"div { mask-image: url("masks.svg#mask1"); }"#);
+        assert_eq!(css.first_short(), &[func("url", &[s("masks.svg#mask1")])]);
+    }
+
+    #[test]
+    pub fn test_component_value_function_single_value() {
+        let css = css("div { transform: translateX(20px); }");
+        assert_eq!(css.first_short(), &[func("translateX", &[px(20)])]);
+    }
+
+    #[test]
+    pub fn test_component_value_function_single_value_var() {
+        let css = css("div { transform: translateX(var(--offset)); }");
+        assert_eq!(css.first_short(), &[func("translateX", &[var("--offset")])]);
+    }
+
+    #[test]
+    pub fn test_component_value_function_multiple_values() {
+        let css = css("div { transform: translate(20px, 40px); }");
+        assert_eq!(css.first_short(), &[func("translate", &[px(20), px(40)])]);
+    }
+
+    #[test]
+    pub fn test_component_value_function_multiple_values_var() {
+        let css = css("div { transform: translate(var(--offset), 40px); }");
+        assert_eq!(
+            css.first_short(),
+            &[func("translate", &[var("--offset"), px(40)])]
+        );
+    }
+
+    #[test]
+    pub fn test_component_value_rgba() {
+        let css = css("div { background-color: rgba(133, 155, 155, 0.5); }");
+        let expected = &[func("rgba", &[n(133), n(155), n(155), f(0.5)])];
+        assert_eq!(css.first_short(), expected);
     }
 
     #[test]
     pub fn test_zero_value() {
-        let css = "div { left: 0; width: 0; }";
-        let css = read_css(css).expect("valid css");
-        let [left, width] = style_values(&css);
-        assert_eq!(left, Value::Zero, "left");
-        assert_eq!(width, Value::Zero, "width");
+        let css = css("div { padding: 0; }");
+        assert_eq!(css.first_short(), &[zero()]);
+    }
+
+    #[test]
+    pub fn test_zero_percent_value() {
+        let css = css("div { border-radius: 0%;}");
+        assert_eq!(css.first_short(), &[perc(0.0)]);
     }
 
     #[test]
     pub fn test_percent_value() {
-        let css = "div { width: 0%; border-radius: 50%;}";
-        let css = read_css(css).expect("valid css");
-        let [width, radius] = style_values(&css);
-        assert_eq!(width, Value::Percentage(0.0), "width");
-        assert_eq!(radius, Value::Percentage(0.5), "radius");
+        let css = css("div { border-radius: 50%;}");
+        assert_eq!(css.first_short(), &[perc(0.5)]);
     }
 
     #[test]
     pub fn test_string_value() {
-        let css = r#"div { content: "abc"; }"#;
-        let css = read_css(css).expect("valid css");
-        let [content] = style_values(&css);
-        if let Value::String(value) = content {
-            assert_eq!(value, "abc", "string literal");
-        } else {
-            assert!(false, "value type")
-        }
+        let css = css(r#"div { content: "abc"; }"#);
+        assert_eq!(css.first_short(), &[s("abc")]);
     }
 
     #[test]
     pub fn test_string_matcher() {
-        let css = r#"[data-something="abc"] {}"#;
-        let css = read_css(css).expect("valid css");
+        let css = css(r#"[data-something="abc"] {}"#);
         let selectors = style_selectors(&css);
         if let Simple::Attribute(key, matcher, value) = selectors[0] {
             assert_eq!(key, "data-something", "key");
@@ -373,8 +461,7 @@ mod tests {
 
     #[test]
     pub fn test_ident_matcher() {
-        let css = r#"[data-something=abc] {}"#;
-        let css = read_css(css).expect("valid css");
+        let css = css(r#"[data-something=abc] {}"#);
         let selectors = style_selectors(&css);
         if let Simple::Attribute(key, matcher, value) = selectors[0] {
             assert_eq!(key, "data-something", "key");
@@ -387,17 +474,14 @@ mod tests {
 
     #[test]
     pub fn test_animation_shorthand() {
-        let css = "div { animation: 1s linear HeightAnimation; }";
-        let css = read_css(css).expect("valid css");
-
-        let animation = &css.styles[0].declaration[0].values[0];
-
-        assert_eq!(animation.len(), 3);
+        let css = css("div { animation: 1s linear HeightAnimation; }");
+        let expected = &[ts(1.0), kw("linear"), kw("HeightAnimation")];
+        assert_eq!(css.first_short(), expected);
     }
 
     #[test]
-    pub fn test_simple_keyframes() {
-        let css = r#"
+    pub fn test_animation_simple_keyframes() {
+        let css = css(r#"
             @keyframes HeightAnimation {
                 0% {
                     line-height: 1.0;
@@ -409,16 +493,15 @@ mod tests {
                     line-height: 3.0;
                 }
             }
-        "#;
-        let css = read_css(css).expect("valid css");
+        "#);
 
         let animation = Animation {
             keyframes: vec![Keyframe {
                 key: PropertyKey::LineHeight,
                 frames: BTreeMap::from([
-                    (0, vec![Value::Number(1.0)]),
-                    (50, vec![Value::Number(2.0)]),
-                    (100, vec![Value::Number(3.0)]),
+                    (0, vec![vec![f(1.0)]]),
+                    (50, vec![vec![f(2.0)]]),
+                    (100, vec![vec![f(3.0)]]),
                 ]),
             }],
         };
@@ -427,128 +510,78 @@ mod tests {
         assert_eq!(css.animations, animations);
     }
 
-    // #[test]
-    // pub fn test_root_selector() {
-    //     let css = r#"
-    //
-    //     [dir=rtl] .next {
-    //         float: left;
-    //         right: unset;
-    //         left: var(--page-padding);
-    //     }
-    //
-    //     /* Use the correct buttons for RTL layouts*/
-    //     [dir=rtl] .previous i.fa-angle-left:before {
-    //         content: "\f105";
-    //     }
-    //
-    //
-    //     :root {
-    //         right: calc(var(--sidebar-resize-indicator-width) * -1);
-    //         transform: rotate(20deg) translate(30px, 20px) rotate(var(--my-var));
-    //         content: "\f105";
-    //         transform: rotate(var(--my-var));
-    //         height: calc(10px - 10px);
-    //         background: rgba(0, 0, 0, 0);
-    //
-    //     }"#;
-    //     let present = read_css(css).expect("must be valid");
-    // }
-    //
-    // #[test]
-    // pub fn test_simple_rule() {
-    //     let css = r#"
-    //     .myClass {
-    //
-    //         top: 0 !important;
-    //         background-color: rgba(0, 0, 0, 0);
-    //         background: red solid;
-    //         /*
-    //         margin: auto calc(0px - var(--page-padding));
-    //         right: calc(var(--sidebar-resize-indicator-width) * -1);
-    //         width: calc(var(--sidebar-resize-indicator-width) - var(--sidebar-resize-indicator-space))
-    //         */
-    //         position: -webkit-sticky;
-    //         transition: color 0.5s;
-    //         margin-block-end: -1px;
-    //
-    //     }
-    //     #myId {
-    //         background: red;
-    //     }
-    //     div {
-    //         background: red;
-    //     }
-    //     #myContainer > div > span {
-    //         background: red;
-    //     }
-    //     .myA.myB {
-    //         background: red;
-    //     }
-    //     .myA .myB {
-    //         background: red;
-    //     }
-    //     input:focus {
-    //         background: red;
-    //     }
-    //     dd:last-of-type {
-    //         background: red;
-    //     }
-    //     di:last-child {
-    //         background: red;
-    //     }
-    //     .todo[data-done="true"]:hover {
-    //         background: red;
-    //     }
-    //     .todo:nth-child(even) {
-    //         background: red;
-    //     }
-    //
-    //     @keyframes HeightAnimation {
-    //         0% {
-    //             height: 3rem;
-    //             background-color: #394651;
-    //         }
-    //         50% {
-    //             height: 4rem;
-    //             background-color: green;
-    //         }
-    //         100% {
-    //             height: 3rem;
-    //             background-color: #394651;
-    //         }
-    //     }
-    //
-    //     "#;
-    //
-    //     println!("CssShorthand {}", std::mem::size_of::<Shorthand>());
-    //     println!("CssValue {}", std::mem::size_of::<Value>());
-    //
-    //     let present = read_css(css).expect("must be valid");
-    //
-    //     println!("{:?}", present.styles);
-    //     assert_eq!(11, present.styles.len());
-    //     assert_eq!(1, present.animations.len())
-    // }
-    //
-    // #[test]
-    // pub fn test_giga_css() {
-    //     let css = include_str!("giga.css");
-    //
-    //     // let t = Instant::now();
-    //     // let presentation = parse_presentation(css);
-    //     // println!("lightning CSS: {:?}", t.elapsed()); // ~ 6ms
-    //     // assert_eq!(90, presentation.rules.len());
-    //
-    //     let t = Instant::now();
-    //     let preset = read_css(css).expect("must be valid");
-    //     println!("pest CSS (wip): {:?}", t.elapsed()); // ~ 5ms
-    //     assert_eq!(90, preset.styles.len());
-    //
-    //     for rul in preset.styles {
-    //         for pr in rul.declaration {
-    //             // println!("{:?}: {:?}", pr.name, pr.values.as_single())
-    //         }
-    //     }
-    // }
+    fn style_selectors(css: &Css) -> Vec<&Simple> {
+        css.styles[0].selectors[0].selectors.iter().collect()
+    }
+
+    trait TestCss {
+        fn first_property(&self) -> (PropertyKey, &[Definition]);
+        fn first_short(&self) -> &[Definition];
+    }
+
+    impl TestCss for Css {
+        fn first_property(&self) -> (PropertyKey, &[Definition]) {
+            match &self.styles[0].declaration[0] {
+                Declaration::Variable(_) => {
+                    panic!("first declaration not property");
+                }
+                Declaration::Property(property) => (property.key, &property.values[0]),
+            }
+        }
+
+        fn first_short(&self) -> &[Definition] {
+            self.first_property().1
+        }
+    }
+
+    fn css(css: &str) -> Css {
+        read_css(css).expect("CSS valid and parsing complete")
+    }
+
+    fn px(value: i32) -> Definition {
+        Definition::Explicit(ComputedValue::Dimension(Dim::new(value as f32, Units::Px)))
+    }
+
+    fn em(value: f32) -> Definition {
+        Definition::Explicit(ComputedValue::Dimension(Dim::new(value, Units::Em)))
+    }
+
+    fn var(value: &str) -> Definition {
+        Definition::Var(value.to_string())
+    }
+
+    fn kw(value: &str) -> Definition {
+        Definition::Explicit(ComputedValue::Keyword(value.to_string()))
+    }
+
+    fn f(value: f32) -> Definition {
+        Definition::Explicit(ComputedValue::Number(value))
+    }
+
+    fn n(value: i32) -> Definition {
+        Definition::Explicit(ComputedValue::Number(value as f32))
+    }
+
+    fn zero() -> Definition {
+        Definition::Explicit(ComputedValue::Zero)
+    }
+
+    fn perc(value: f32) -> Definition {
+        Definition::Explicit(ComputedValue::Percentage(value))
+    }
+
+    fn func(name: &str, arguments: &[Definition]) -> Definition {
+        Definition::Function(Function {
+            name: name.to_string(),
+            arguments: arguments.to_vec(),
+        })
+    }
+
+    fn s(value: &str) -> Definition {
+        Definition::Explicit(ComputedValue::String(value.to_string()))
+    }
+
+    fn ts(value: f32) -> Definition {
+        Definition::Explicit(ComputedValue::Time(value))
+    }
 }
