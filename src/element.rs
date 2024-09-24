@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use taffy::{Layout, NodeId};
 
 use crate::animation::{Animator, Transition};
-use crate::css::PropertyKey;
+use crate::css::{Property, PropertyKey};
 use crate::styles::Scrolling;
 use crate::{Handler, ViewError};
 
@@ -35,6 +35,7 @@ pub struct Element {
     pub(crate) transitions: HashMap<PropertyKey, Transition>,
     pub(crate) state: ElementState,
     pub pointer_events: PointerEvents,
+    pub style: Vec<Property>,
 }
 
 impl Element {

@@ -260,10 +260,67 @@ fn parse_element_bindings(pair: Pair<Rule>) -> Vec<ElementBinding> {
 
 #[cfg(test)]
 mod tests {
-    use crate::html::{read_html, ElementBinding};
-    use crate::Binder;
+    use super::*;
 
-    fn callback(event: &str, handler: &str, path: &str) -> ElementBinding {
+    #[test]
+    pub fn test_binding_text_one_span() {
+        let html = html(r#"<div>Hello, {name}</div>"#);
+        assert_eq!(html.children[0].text, text(&[t("Hello, "), b("name")]))
+    }
+
+    #[test]
+    pub fn test_binding_text_multiple_spans() {
+        let html = html(r#"<div>Hello, {first} {last}</div>"#);
+        let expected = text(&[t("Hello, "), b("first"), b("last")]);
+        assert_eq!(html.children[0].text, expected)
+    }
+
+    #[test]
+    pub fn test_binding_control_if() {
+        let html = html(r#"<input ?={visible} />"#);
+        assert_eq!(html.bindings, [if_("visible")])
+    }
+
+    #[test]
+    pub fn test_binding_control_else() {
+        let html = html(r#"<input !={visible} />"#);
+        assert_eq!(html.bindings, [else_("visible")])
+    }
+
+    #[test]
+    pub fn test_binding_attribute() {
+        let html = html(r#"<input [value]={name} />"#);
+        assert_eq!(html.bindings, [attr("value", "name")])
+    }
+
+    #[test]
+    pub fn test_binding_attribute_style() {
+        let html = html(r#"<input [style]="top: {pivot.x}px" />"#);
+        assert_eq!(html.bindings, [attr("value", "name")])
+    }
+
+    #[test]
+    pub fn test_binding_repeat() {
+        let html = html(r#"<option {option}*10={options}></option>"#);
+        assert_eq!(html.bindings, [repeat("option", 10, "options")])
+    }
+
+    #[test]
+    pub fn test_binding_callback() {
+        let html = html(r#"<input [onchange]~change={this} />"#);
+        assert_eq!(html.bindings, vec![cb("onchange", "change", "this")])
+    }
+
+    #[test]
+    pub fn test_binding_callback_name_with_underscore() {
+        let html = html(r#"<input [onchange]~change_something={this} />"#);
+        assert_eq!(
+            html.bindings,
+            vec![cb("onchange", "change_something", "this")]
+        )
+    }
+
+    fn cb(event: &str, handler: &str, path: &str) -> ElementBinding {
         ElementBinding::Callback(
             event.to_string(),
             handler.to_string(),
@@ -274,20 +331,65 @@ mod tests {
         )
     }
 
-    #[test]
-    pub fn test_callback() {
-        let html = r#"<input [onchange]~change={this} />"#;
-        let html = read_html(html).expect("valid html");
-        assert_eq!(html.bindings, vec![callback("onchange", "change", "this")])
+    fn repeat(name: &str, count: usize, path: &str) -> ElementBinding {
+        ElementBinding::Repeat(
+            name.to_string(),
+            count,
+            Binder {
+                path: vec![path.to_string()],
+                pipe: vec![],
+            },
+        )
     }
 
-    #[test]
-    pub fn test_callback_name_with_underscore() {
-        let html = r#"<input [onchange]~change_something={this} />"#;
-        let html = read_html(html).expect("valid html");
-        assert_eq!(
-            html.bindings,
-            vec![callback("onchange", "change_something", "this")]
+    fn attr(key: &str, path: &str) -> ElementBinding {
+        ElementBinding::Attribute(
+            key.to_string(),
+            Binder {
+                path: vec![path.to_string()],
+                pipe: vec![],
+            },
         )
+    }
+
+    fn if_(path: &str) -> ElementBinding {
+        ElementBinding::Visibility(
+            true,
+            Binder {
+                path: vec![path.to_string()],
+                pipe: vec![],
+            },
+        )
+    }
+
+    fn else_(path: &str) -> ElementBinding {
+        ElementBinding::Visibility(
+            false,
+            Binder {
+                path: vec![path.to_string()],
+                pipe: vec![],
+            },
+        )
+    }
+
+    fn text(spans: &[TextSpan]) -> Option<TextBinding> {
+        Some(TextBinding {
+            spans: spans.to_vec(),
+        })
+    }
+
+    fn t(text: &str) -> TextSpan {
+        TextSpan::String(text.to_string())
+    }
+
+    fn b(path: &str) -> TextSpan {
+        TextSpan::Binder(Binder {
+            path: vec![path.to_string()],
+            pipe: vec![],
+        })
+    }
+
+    fn html(html: &str) -> Html {
+        read_html(html).expect("HTML valid and parsing complete")
     }
 }

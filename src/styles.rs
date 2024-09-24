@@ -12,8 +12,8 @@ use crate::animation::{
     TimingFunction, Transition,
 };
 use crate::css::{
-    match_style, ComputedValue, Css, Declaration, Definition, Dim, PropertyKey, PseudoClassMatcher,
-    Shorthand, Style, Units, Var, Variable,
+    match_style, ComputedValue, Css, Declaration, Definition, Dim, Property, PropertyKey,
+    PseudoClassMatcher, Shorthand, Style, Units, Var, Variable,
 };
 
 use crate::css::ComputedValue::{Keyword, Time};
@@ -97,6 +97,7 @@ pub fn create_element(node: NodeId) -> Element {
         transitions: HashMap::default(),
         state: Default::default(),
         pointer_events: Default::default(),
+        style: vec![],
     }
 }
 
@@ -318,6 +319,12 @@ impl<'c> Cascade<'c> {
         //         }
         //     }
         // }
+        // 4: element style
+        // TODO: remove clone
+        let style = element.style.clone();
+        for property in &style {
+            self.apply_property(property, layout, element);
+        }
     }
 
     fn apply_style(
@@ -390,18 +397,7 @@ impl<'c> Cascade<'c> {
         for declaration in &style.declaration {
             match declaration {
                 Declaration::Variable(variable) => self.set_variable(variable),
-                Declaration::Property(property) => {
-                    // TODO: properties with multiple values
-                    let mut shorthand = vec![];
-                    self.compute_shorthand(&property.values[0], &mut shorthand);
-                    let result = self.apply_shorthand(property.key, &shorthand, layout, element);
-                    if let Err(error) = result {
-                        error!(
-                            "unable to apply property {:?} shorthand, {:?}",
-                            property.key, error
-                        );
-                    }
-                }
+                Declaration::Property(property) => self.apply_property(property, layout, element),
             }
         }
     }
@@ -442,6 +438,25 @@ impl<'c> Cascade<'c> {
 
     fn get_variable(&self, name: &str) -> Option<&Shorthand> {
         unimplemented!()
+    }
+
+    fn apply_property(
+        &mut self,
+        property: &Property,
+        layout: &mut taffy::Style,
+        element: &mut Element,
+    ) {
+        // TODO: properties with multiple values
+        let mut shorthand = vec![];
+        self.compute_shorthand(&property.values[0], &mut shorthand);
+        let result = self.apply_shorthand(property.key, &shorthand, layout, element);
+
+        if let Err(error) = result {
+            error!(
+                "unable to apply property {:?} shorthand, {:?}",
+                property.key, error
+            );
+        }
     }
 
     fn apply_shorthand(

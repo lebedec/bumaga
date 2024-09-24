@@ -210,7 +210,6 @@ fn read_shorthand(pair: Pair<Rule>) -> Shorthand {
 }
 
 fn read_value_def(pair: Pair<Rule>) -> Definition {
-    println!("read_value_def {pair:?}");
     match pair.as_rule() {
         Rule::Var => {
             let mut iter = pair.into_inner();
