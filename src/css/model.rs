@@ -6,40 +6,6 @@ pub struct Css {
     pub source: String,
     pub styles: Vec<Style>,
     pub animations: HashMap<String, Animation>,
-    pub values: Vec<Value>,
-}
-
-impl Css {
-
-    #[inline(always)]
-    pub fn as_shorthand(&self, values: &Values) -> &[Value] {
-        match values {
-            Values::One(shorthand) => self.get_shorthand(*shorthand),
-            Values::Multiple(shorthands) => {
-                warn!("takes multiple css values as one");
-                self.get_shorthand(shorthands[0])
-            }
-        }
-    }
-
-    #[inline(always)]
-    pub fn as_value(&self, values: &Values) -> &Value {
-        match values {
-            Values::One(shorthand) => &self.values[shorthand.ptr],
-            Values::Multiple(shorthands) => &self.values[shorthands[0].ptr],
-        }
-    }
-
-    #[inline(always)]
-    pub fn get_shorthand(&self, shorthand: Shorthand) -> &[Value] {
-        &self.values[shorthand.ptr..(shorthand.ptr + shorthand.len)]
-    }
-
-    pub fn as_function<'a>(&self, function: &'a Function) -> (&'a str, &'a [Value]) {
-        let name = function.name.as_str();
-        let arguments = &function.arguments;
-        (name, arguments)
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -116,46 +82,18 @@ pub struct Style {
 /// defines one aspect of how the application should display the element.
 #[derive(Debug, Clone)]
 pub struct Property {
+    pub id: usize,
     pub key: PropertyKey,
-    pub values: Values,
+    pub values: Vec<Shorthand>,
 }
 
-#[derive(Debug, Clone)]
-pub enum Values {
-    One(Shorthand),
-    Multiple(Vec<Shorthand>),
-}
-
-impl Values {
-    #[inline(always)]
-    pub fn id(&self) -> usize {
-        match self {
-            Values::One(shorthand) => shorthand.ptr,
-            Values::Multiple(shorthands) => shorthands[0].ptr,
-        }
-    }
-
-    pub fn as_shorthand(&self) -> Shorthand {
-        match self {
-            Values::One(shorthand) => *shorthand,
-            Values::Multiple(shorthands) => shorthands[0],
-        }
-    }
-
-    #[inline(always)]
-    pub fn to_vec(&self) -> Vec<Shorthand> {
-        match self {
-            Values::One(shorthand) => vec![*shorthand],
-            Values::Multiple(shorthands) => shorthands.clone(),
-        }
+impl Property {
+    pub fn get_first_shorthand(&self) -> Shorthand {
+        self.values[0].clone()
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct Shorthand {
-    pub(crate) ptr: usize,
-    pub(crate) len: usize,
-}
+pub type Shorthand = Vec<Value>;
 
 // Used to optimize frequently used or complex values.
 // At same time provides ease parsing.
@@ -214,6 +152,15 @@ impl Units {
 pub struct Function {
     pub name: String,
     pub arguments: Vec<Value>,
+}
+
+impl Function {
+    #[inline(always)]
+    pub fn describe(&self) -> (&str, &[Value]) {
+        let name = self.name.as_str();
+        let arguments = &self.arguments;
+        (name, arguments)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1413,7 +1360,7 @@ impl PropertyKey {
             "writing-mode" => Self::WritingMode,
             "z-index" => Self::ZIndex,
             "zoom" => Self::Zoom,
-            _ => return None
+            _ => return None,
         };
         Some(key)
     }

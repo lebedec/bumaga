@@ -31,8 +31,8 @@ impl Transition {
         result
     }
 
-    pub fn set(&mut self, target_id: usize, target: &[Value]) {
-        self.setter = Some((target_id, target.to_vec()));
+    pub fn set(&mut self, target_id: usize, target: Vec<Value>) {
+        self.setter = Some((target_id, target));
     }
 
     fn update_keyframe(&mut self, target_id: usize, target: Vec<Value>) {

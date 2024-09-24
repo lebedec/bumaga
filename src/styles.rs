@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-
 use log::error;
 
 use taffy::{
-    Dimension, Layout, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect, TaffyTree,
+    Dimension, Layout, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect,
+    TaffyTree,
 };
 
 use crate::animation::{
@@ -12,11 +12,13 @@ use crate::animation::{
     TimingFunction, Transition,
 };
 use crate::css::Value::{Keyword, Number, Time};
-use crate::css::{match_style, Css, Dim, PropertyKey, PseudoClassMatcher, Style, Units, Value, Values, Var};
+use crate::css::{
+    match_style, Css, Dim, PropertyKey, PseudoClassMatcher, Shorthand, Style, Units, Value, Var,
+};
 
 use crate::{
-    Background, Borders, Element, FontFace, Input, Length, ObjectFit, PointerEvents,
-    TextAlign, TransformFunction,
+    Background, Borders, Element, FontFace, Input, Length, ObjectFit, PointerEvents, TextAlign,
+    TransformFunction,
 };
 
 impl FontFace {
@@ -228,7 +230,7 @@ pub fn inherit(parent: &Element, element: &mut Element) {
 /// property values originating from different sources.
 pub struct Cascade<'c> {
     css: &'c Css,
-    variables: HashMap<&'c str, &'c Values>,
+    variables: HashMap<&'c str, &'c Vec<Shorthand>>,
     sizes: Sizes,
     resources: &'c str,
 }
@@ -259,7 +261,7 @@ impl<'c> Cascade<'c> {
         }
     }
 
-    pub fn push_variable(&mut self, name: &'c str, values: &'c Values) {
+    pub fn push_variable(&mut self, name: &'c str, values: &'c Vec<Shorthand>) {
         self.variables.insert(name, values);
     }
 
@@ -267,7 +269,7 @@ impl<'c> Cascade<'c> {
         let name = variable.name.as_str();
         self.variables
             .get(name)
-            .map(|values| self.css.as_value(values))
+            .map(|values| &values[0][0])
             .ok_or(CascadeError::VariableNotFound)
     }
 
@@ -337,14 +339,13 @@ impl<'c> Cascade<'c> {
             // }
             if PropertyKey::Transition == property.key {
                 for shorthand in property.values.to_vec() {
-                    let shorthand = self.css.get_shorthand(shorthand);
                     let key = match &shorthand[0] {
                         Keyword(name) => {
                             let key = match PropertyKey::parse(name) {
                                 Some(key) => key,
                                 None => {
                                     error!("unable to make transition of {name}, not supported");
-                                    continue
+                                    continue;
                                 }
                             };
                             key
@@ -380,16 +381,14 @@ impl<'c> Cascade<'c> {
                 continue;
             }
             if let Some(transition) = element.transitions.get_mut(&property.key) {
-                let shorthand = self.css.as_shorthand(&property.values);
-                transition.set(property.values.id(), shorthand);
+                let shorthand = property.get_first_shorthand();
+                // ID ?
+                transition.set(property.id, shorthand);
                 continue;
             }
-            if let Err(error) = self.apply_shorthand(
-                property.key,
-                self.css.as_shorthand(&property.values),
-                layout,
-                element,
-            ) {
+            if let Err(error) =
+                self.apply_shorthand(property.key, &property.values[0], layout, element)
+            {
                 error!("unable to apply property {property:?}, {error:?}")
             }
         }
@@ -957,7 +956,7 @@ fn resolve_transforms(
     let mut transforms = vec![];
     for value in values.iter() {
         match value {
-            Value::Function(function) => match cascade.css.as_function(function) {
+            Value::Function(function) => match function.describe() {
                 ("translate", [x]) => {
                     let x = length(x, cascade)?;
                     let y = Length::zero();
@@ -1072,7 +1071,7 @@ fn parse_dimension_length(dimension: &Dim, cascade: &Cascade) -> Result<f32, Cas
         Units::Vw => sizes.viewport_width * value / 100.0,
         Units::Vh => sizes.viewport_height * value / 100.0,
         Units::Vmax => sizes.viewport_width.max(sizes.viewport_height) * value / 100.0,
-        Units::Vmin => sizes.viewport_width.min(sizes.viewport_height) * value / 100.0
+        Units::Vmin => sizes.viewport_width.min(sizes.viewport_height) * value / 100.0,
     };
     Ok(value)
 }
@@ -1134,9 +1133,7 @@ fn lengthp_auto(value: &Value, cascade: &Cascade) -> Result<LengthPercentageAuto
             LengthPercentageAuto::Length(length)
         }
         Value::Percentage(value) => LengthPercentageAuto::Percent(*value),
-        Keyword(keyword) if keyword.as_str() == "auto" => {
-            LengthPercentageAuto::Auto
-        }
+        Keyword(keyword) if keyword.as_str() == "auto" => LengthPercentageAuto::Auto,
         Value::Var(variable) => {
             let value = cascade.get_variable_value(variable)?;
             return lengthp_auto(value, cascade);

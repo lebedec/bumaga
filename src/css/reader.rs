@@ -1,5 +1,7 @@
-use crate::css::model::{PropertyKey, Shorthand,  Value, Values, Var};
-use crate::css::{Animation, Complex, Css, Dim, Function, Keyframe, Matcher, Property, Simple, Style, Units};
+use crate::css::model::{PropertyKey, Shorthand, Value, Var};
+use crate::css::{
+    Animation, Complex, Css, Dim, Function, Keyframe, Matcher, Property, Simple, Style, Units,
+};
 use log::error;
 use pest::error::Error;
 use pest::iterators::Pair;
@@ -30,9 +32,6 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
         .ok_or(ReaderError::EmptyStyleSheet)?;
     let mut styles = vec![];
     let mut animations = HashMap::new();
-    // 20 bytes per line, 1 CSS value per line
-    let estimated_values = css.len() / 20;
-    let mut values = Vec::with_capacity(estimated_values);
     for rule in stylesheet.into_inner() {
         match rule.as_rule() {
             Rule::Animation => {
@@ -54,18 +53,14 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                         },
                         _ => unreachable!(),
                     };
-                    let declaration =
-                        read_declaration(iter.next().unwrap(), &mut values);
+                    let declaration = read_declaration(iter.next().unwrap());
                     for property in declaration {
                         let keyframe = keyframes.entry(property.key).or_insert_with(|| Keyframe {
                             key: property.key,
                             frames: BTreeMap::new(),
                         });
-                        // TODO: support multiple value, eliminate clone
-                        let shorthand = property.values.as_shorthand();
-                        let values =
-                            values[shorthand.ptr..(shorthand.ptr + shorthand.len)].to_vec();
-                        keyframe.frames.insert(step, values);
+                        // TODO: support multiple value, eliminate clone?
+                        keyframe.frames.insert(step, property.get_first_shorthand());
                     }
                 }
                 animations.insert(
@@ -121,7 +116,8 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                                                         .into_inner()
                                                         .next()
                                                         .unwrap()
-                                                        .as_str().to_string(),
+                                                        .as_str()
+                                                        .to_string(),
                                                     Rule::Ident => pair.as_str().to_string(),
                                                     _ => unreachable!(),
                                                 })
@@ -146,8 +142,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                         selectors: components,
                     })
                 }
-                let declaration =
-                    read_declaration(iter.next().unwrap(), &mut values);
+                let declaration = read_declaration(iter.next().unwrap());
                 styles.push(Style {
                     selectors,
                     declaration,
@@ -160,14 +155,10 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
         source: css.to_string(),
         styles,
         animations,
-        values,
     })
 }
 
-fn read_declaration(
-    pair: Pair<Rule>,
-    values: &mut Vec<Value>,
-) -> Vec<Property> {
+fn read_declaration(pair: Pair<Rule>) -> Vec<Property> {
     let mut declaration = vec![];
     for property in pair.into_inner() {
         let mut iter = property.into_inner();
@@ -175,42 +166,26 @@ fn read_declaration(
         let shorthands = iter.next().unwrap();
 
         // println!("PROP {} {values:?}", name.as_str());
+        let id = name.as_span().start();
         let name = name.as_str();
         let key = match PropertyKey::parse(name) {
             Some(key) => key,
             None => {
                 error!("unable to read property {name}, not supported");
-                continue
+                continue;
             }
         };
-        let mut shorthands: Vec<Shorthand> = shorthands
+        let values = shorthands
             .into_inner()
-            .map(|value| read_shorthand(value, values))
+            .map(|value| read_shorthand(value))
             .collect();
-        let values = if shorthands.len() == 1 {
-            Values::One(shorthands.remove(0))
-        } else {
-            Values::Multiple(shorthands)
-        };
-
-        declaration.push(Property { key, values })
+        declaration.push(Property { id, key, values })
     }
     declaration
 }
 
-fn read_shorthand(
-    pair: Pair<Rule>,
-    values: &mut Vec<Value>,
-) -> Shorthand {
-    let ptr = values.len();
-    for value in pair.into_inner() {
-        let value = read_value(value);
-        values.push(value);
-    }
-    Shorthand {
-        ptr,
-        len: values.len() - ptr,
-    }
+fn read_shorthand(pair: Pair<Rule>) -> Shorthand {
+    pair.into_inner().map(read_value).collect()
 }
 
 fn read_value(pair: Pair<Rule>) -> Value {
@@ -236,10 +211,7 @@ fn read_value(pair: Pair<Rule>) -> Value {
             while let Some(arg) = iter.next() {
                 arguments.push(read_value(arg));
             }
-            Value::Function(Function {
-                name,
-                arguments,
-            })
+            Value::Function(Function { name, arguments })
         }
         Rule::Raw => match pair.as_str() {
             "inherit" => Value::Inherit,
@@ -263,7 +235,7 @@ fn read_dimension(pair: Pair<Rule>) -> Dim {
         unit: Units::parse(unit).unwrap_or_else(|| {
             error!("unable to read dimension unit {unit}, not supported");
             Units::Px
-        })
+        }),
     }
 }
 
@@ -341,15 +313,12 @@ fn read_color(pair: Pair<Rule>) -> [u8; 4] {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashMap};
-    use crate::css::model::Value;
-    use crate::css::reader::read_css;
-    use crate::css::{Animation, Css, Keyframe, Matcher, PropertyKey, Shorthand, Simple};
+    use super::*;
 
     fn style_values<const N: usize>(css: &Css) -> [Value; N] {
         let mut values = [const { Value::Unset }; N];
         for i in 0..N {
-            values[i] = css.as_value(&css.styles[0].declaration[i].values).clone()
+            values[i] = css.styles[0].declaration[i].values[0][0].clone()
         }
         values
     }
@@ -421,7 +390,7 @@ mod tests {
         let css = "div { animation: 1s linear HeightAnimation; }";
         let css = read_css(css).expect("valid css");
 
-        let animation = css.get_shorthand(css.styles[0].declaration[0].values.as_shorthand());
+        let animation = &css.styles[0].declaration[0].values[0];
 
         assert_eq!(animation.len(), 3);
     }
@@ -444,16 +413,14 @@ mod tests {
         let css = read_css(css).expect("valid css");
 
         let animation = Animation {
-            keyframes: vec![
-                Keyframe {
-                    key: PropertyKey::LineHeight,
-                    frames: BTreeMap::from([
-                        (0, vec![Value::Number(1.0)]),
-                        (50, vec![Value::Number(2.0)]),
-                        (100, vec![Value::Number(3.0)]),
-                    ])
-                }
-            ],
+            keyframes: vec![Keyframe {
+                key: PropertyKey::LineHeight,
+                frames: BTreeMap::from([
+                    (0, vec![Value::Number(1.0)]),
+                    (50, vec![Value::Number(2.0)]),
+                    (100, vec![Value::Number(3.0)]),
+                ]),
+            }],
         };
         let animations = HashMap::from([("HeightAnimation".to_string(), animation)]);
 
