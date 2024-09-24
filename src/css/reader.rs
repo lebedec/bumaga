@@ -1,8 +1,5 @@
-use crate::css::model::{PropertyKey, Shorthand, Str, Value, Values, Var};
-use crate::css::{
-    Animation, Arguments, Complex, Css, Dim, Function, Keyframe, Matcher, Property, Simple, Style,
-    Unit,
-};
+use crate::css::model::{PropertyKey, Shorthand,  Value, Values, Var};
+use crate::css::{Animation, Complex, Css, Dim, Function, Keyframe, Matcher, Property, Simple, Style, Units};
 use log::error;
 use pest::error::Error;
 use pest::iterators::Pair;
@@ -33,7 +30,6 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
         .ok_or(ReaderError::EmptyStyleSheet)?;
     let mut styles = vec![];
     let mut animations = HashMap::new();
-    let mut arguments = vec![];
     // 20 bytes per line, 1 CSS value per line
     let estimated_values = css.len() / 20;
     let mut values = Vec::with_capacity(estimated_values);
@@ -59,7 +55,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                         _ => unreachable!(),
                     };
                     let declaration =
-                        read_declaration(iter.next().unwrap(), &mut values, &mut arguments);
+                        read_declaration(iter.next().unwrap(), &mut values);
                     for property in declaration {
                         let keyframe = keyframes.entry(property.key).or_insert_with(|| Keyframe {
                             key: property.key,
@@ -98,8 +94,8 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                                     let mut iter = simple.into_inner();
                                     let ident = iter
                                         .next()
-                                        .map(|pair| pair.as_span().into())
-                                        .unwrap_or(Str::empty());
+                                        .map(|pair| pair.as_str().to_string())
+                                        .unwrap_or(String::new());
                                     let component = match simple_rule {
                                         Rule::All => Simple::All,
                                         Rule::Id => Simple::Id(ident),
@@ -125,12 +121,11 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                                                         .into_inner()
                                                         .next()
                                                         .unwrap()
-                                                        .as_span()
-                                                        .into(),
-                                                    Rule::Ident => pair.as_span().into(),
+                                                        .as_str().to_string(),
+                                                    Rule::Ident => pair.as_str().to_string(),
                                                     _ => unreachable!(),
                                                 })
-                                                .unwrap_or(Str::empty());
+                                                .unwrap_or(String::new());
                                             Simple::Attribute(ident, matcher, search)
                                         }
                                         Rule::PseudoClass => Simple::PseudoClass(ident),
@@ -152,7 +147,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                     })
                 }
                 let declaration =
-                    read_declaration(iter.next().unwrap(), &mut values, &mut arguments);
+                    read_declaration(iter.next().unwrap(), &mut values);
                 styles.push(Style {
                     selectors,
                     declaration,
@@ -166,14 +161,12 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
         styles,
         animations,
         values,
-        arguments,
     })
 }
 
 fn read_declaration(
     pair: Pair<Rule>,
     values: &mut Vec<Value>,
-    arguments: &mut Vec<Value>,
 ) -> Vec<Property> {
     let mut declaration = vec![];
     for property in pair.into_inner() {
@@ -182,11 +175,17 @@ fn read_declaration(
         let shorthands = iter.next().unwrap();
 
         // println!("PROP {} {values:?}", name.as_str());
-
-        let name = PropertyKey::from(name.as_span());
+        let name = name.as_str();
+        let key = match PropertyKey::parse(name) {
+            Some(key) => key,
+            None => {
+                error!("unable to read property {name}, not supported");
+                continue
+            }
+        };
         let mut shorthands: Vec<Shorthand> = shorthands
             .into_inner()
-            .map(|value| read_shorthand(value, values, arguments))
+            .map(|value| read_shorthand(value, values))
             .collect();
         let values = if shorthands.len() == 1 {
             Values::One(shorthands.remove(0))
@@ -194,7 +193,7 @@ fn read_declaration(
             Values::Multiple(shorthands)
         };
 
-        declaration.push(Property { key: name, values })
+        declaration.push(Property { key, values })
     }
     declaration
 }
@@ -202,11 +201,10 @@ fn read_declaration(
 fn read_shorthand(
     pair: Pair<Rule>,
     values: &mut Vec<Value>,
-    arguments: &mut Vec<Value>,
 ) -> Shorthand {
     let ptr = values.len();
     for value in pair.into_inner() {
-        let value = read_value(value, arguments);
+        let value = read_value(value);
         values.push(value);
     }
     Shorthand {
@@ -215,9 +213,9 @@ fn read_shorthand(
     }
 }
 
-fn read_value(pair: Pair<Rule>, arguments: &mut Vec<Value>) -> Value {
+fn read_value(pair: Pair<Rule>) -> Value {
     match pair.as_rule() {
-        Rule::Keyword => Value::Keyword(pair.as_span().into()),
+        Rule::Keyword => Value::Keyword(pair.as_str().to_string()),
         Rule::Rgba => Value::Color(read_color(pair)),
         Rule::Rgb => Value::Color(read_color(pair)),
         Rule::Color => Value::Color(read_color(pair)),
@@ -227,24 +225,20 @@ fn read_value(pair: Pair<Rule>, arguments: &mut Vec<Value>) -> Value {
         Rule::Dimension => Value::Dimension(read_dimension(pair)),
         Rule::Number => Value::Number(read_number(pair)),
         Rule::Var => Value::Var(read_variable(pair)),
-        Rule::Calc => Value::Raw(pair.as_span().into()),
-        Rule::String => Value::String(pair.into_inner().next().unwrap().as_span().into()),
+        Rule::Calc => Value::Unparsed(pair.as_str().to_string()),
+        Rule::String => Value::String(pair.into_inner().next().unwrap().as_str().to_string()),
         Rule::Function => {
             let mut iter = pair.into_inner();
-            let name = iter.next().unwrap().as_span().into();
+            let name = iter.next().unwrap().as_str().to_string();
             let args = iter.next().unwrap();
             let mut iter = args.into_inner();
-            let ptr = arguments.len();
+            let mut arguments = vec![];
             while let Some(arg) = iter.next() {
-                // TODO: nested functions ?
-                arguments.push(read_value(arg, &mut vec![]));
+                arguments.push(read_value(arg));
             }
             Value::Function(Function {
                 name,
-                arguments: Arguments {
-                    ptr,
-                    len: arguments.len() - ptr,
-                },
+                arguments,
             })
         }
         Rule::Raw => match pair.as_str() {
@@ -253,7 +247,7 @@ fn read_value(pair: Pair<Rule>, arguments: &mut Vec<Value>) -> Value {
             "unset" => Value::Unset,
             _ => {
                 // println!("RAW {}", pair.as_str());
-                Value::Raw(pair.as_span().into())
+                Value::Unparsed(pair.as_str().to_string())
             }
         },
         _ => unreachable!(),
@@ -266,7 +260,10 @@ fn read_dimension(pair: Pair<Rule>) -> Dim {
     let unit = iter.next().unwrap().as_str();
     Dim {
         value: read_number(number),
-        unit: Unit::create(unit),
+        unit: Units::parse(unit).unwrap_or_else(|| {
+            error!("unable to read dimension unit {unit}, not supported");
+            Units::Px
+        })
     }
 }
 
@@ -292,8 +289,8 @@ fn read_variable(pair: Pair<Rule>) -> Var {
     let name = iter.next().unwrap();
     let fallback = iter.next();
     Var {
-        name: name.as_span().into(),
-        fallback: fallback.map(|pair| pair.as_span().into()),
+        name: name.as_str().to_string(),
+        fallback: fallback.map(|pair| pair.as_str().to_string()),
     }
 }
 
@@ -342,21 +339,6 @@ fn read_color(pair: Pair<Rule>) -> [u8; 4] {
     }
 }
 
-impl From<Span<'_>> for PropertyKey {
-    fn from(span: Span) -> Self {
-        Self::parse(span.into(), span.get_input())
-    }
-}
-
-impl From<Span<'_>> for Str {
-    fn from(span: Span) -> Self {
-        Self {
-            start: span.start(),
-            end: span.end(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, HashMap};
@@ -365,7 +347,7 @@ mod tests {
     use crate::css::{Animation, Css, Keyframe, Matcher, PropertyKey, Shorthand, Simple};
 
     fn style_values<const N: usize>(css: &Css) -> [Value; N] {
-        let mut values = [Value::Unset; N];
+        let mut values = [const { Value::Unset }; N];
         for i in 0..N {
             values[i] = css.as_value(&css.styles[0].declaration[i].values).clone()
         }
@@ -400,7 +382,7 @@ mod tests {
         let css = read_css(css).expect("valid css");
         let [content] = style_values(&css);
         if let Value::String(value) = content {
-            assert_eq!(css.as_str(value), "abc", "string literal");
+            assert_eq!(value, "abc", "string literal");
         } else {
             assert!(false, "value type")
         }
@@ -412,9 +394,9 @@ mod tests {
         let css = read_css(css).expect("valid css");
         let selectors = style_selectors(&css);
         if let Simple::Attribute(key, matcher, value) = selectors[0] {
-            assert_eq!(css.as_str(*key), "data-something", "key");
+            assert_eq!(key, "data-something", "key");
             assert_eq!(*matcher, Matcher::Equal, "matcher");
-            assert_eq!(css.as_str(*value), "abc", "value");
+            assert_eq!(value, "abc", "value");
         } else {
             assert!(false, "selector type")
         }
@@ -426,9 +408,9 @@ mod tests {
         let css = read_css(css).expect("valid css");
         let selectors = style_selectors(&css);
         if let Simple::Attribute(key, matcher, value) = selectors[0] {
-            assert_eq!(css.as_str(*key), "data-something", "key");
+            assert_eq!(key, "data-something", "key");
             assert_eq!(*matcher, Matcher::Equal, "matcher");
-            assert_eq!(css.as_str(*value), "abc", "value");
+            assert_eq!(value, "abc", "value");
         } else {
             assert!(false, "selector type")
         }

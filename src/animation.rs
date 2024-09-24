@@ -1,7 +1,7 @@
 use std::mem::take;
 
 use crate::css::Value::{Color, Dimension, Number};
-use crate::css::{Animation, Css, Dim, Keyframe, PropertyKey, Str, Value};
+use crate::css::{Animation, Css, Dim, Keyframe, PropertyKey, Value};
 use crate::Rgba;
 
 #[derive(Clone)]
@@ -85,7 +85,7 @@ impl Transition {
 
 #[derive(Clone)]
 pub struct Animator {
-    pub(crate) name: Str,
+    pub(crate) name: String,
     ///  Specifies the amount of time in seconds to wait from applying the animation
     /// to an element before beginning to perform the animation
     pub(crate) delay: f32,
@@ -102,7 +102,7 @@ pub struct Animator {
 impl Default for Animator {
     fn default() -> Self {
         Self {
-            name: Str::empty(),
+            name: String::new(),
             delay: 0.0,
             direction: AnimationDirection::Normal,
             duration: 0.0,

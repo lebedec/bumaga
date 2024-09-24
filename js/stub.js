@@ -6,7 +6,8 @@ let repeat_pattern = /\{(\w+)\}\*(\d+)/g;
 let attribute_pattern = /\[([\w-_]+)\]/g;
 let if_pattern = /\?/g;
 let else_pattern = /\!/g;
-let pipe_pattern = /\{([\w._]+)\}/g;
+let pipe_pattern = /\{([\w._]+)\}/;
+let pipe_pattern_global = /\{([\w._]+)\}/g;
 let callback_pattern = /\[([\w-_]+)\]~([\w-_]+)/;
 
 function getValue(value, path) {
@@ -24,7 +25,7 @@ function getValueRecursive(value, path) {
 
 function traverse(node, value) {
     if (node.nodeType !== 1) {
-        node.textContent = node.textContent.replaceAll(pipe_pattern, (substring, key) => {
+        node.textContent = node.textContent.replaceAll(pipe_pattern_global, (substring, key) => {
             return getValue(value, key)
         });
         return;
@@ -101,7 +102,6 @@ function traverse(node, value) {
 }
 
 window.onload = () => {
-    console.log('BEGIN', VALUE);
     traverse(document.body, VALUE)
 }
 

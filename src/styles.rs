@@ -12,10 +12,7 @@ use crate::animation::{
     TimingFunction, Transition,
 };
 use crate::css::Value::{Keyword, Number, Time};
-use crate::css::{
-    match_style, Css, Dim, PropertyKey, PseudoClassMatcher, Str, Style, Value, Values,
-    Var,
-};
+use crate::css::{match_style, Css, Dim, PropertyKey, PseudoClassMatcher, Style, Units, Value, Values, Var};
 
 use crate::{
     Background, Borders, Element, FontFace, Input, Length, ObjectFit, PointerEvents,
@@ -262,12 +259,12 @@ impl<'c> Cascade<'c> {
         }
     }
 
-    pub fn push_variable(&mut self, name: Str, values: &'c Values) {
-        self.variables.insert(name.as_str(&self.css.source), values);
+    pub fn push_variable(&mut self, name: &'c str, values: &'c Values) {
+        self.variables.insert(name, values);
     }
 
     pub fn get_variable_value(&self, variable: &Var) -> Result<&Value, CascadeError> {
-        let name = variable.name.as_str(&self.css.source);
+        let name = variable.name.as_str();
         self.variables
             .get(name)
             .map(|values| self.css.as_value(values))
@@ -288,10 +285,9 @@ impl<'c> Cascade<'c> {
         initial(element);
         // 0: inheritance
         inherit(parent, element);
-        let css = &self.css.source;
         // 1: css rules
         for style in &self.css.styles {
-            if match_style(css, &style, node, tree, matcher) {
+            if match_style(&style, node, tree, matcher) {
                 self.apply_style(style, parent, layout, element);
             }
         }
@@ -313,8 +309,7 @@ impl<'c> Cascade<'c> {
         }
         // 3: animations
         if !element.animator.name.is_empty() {
-            let key = element.animator.name.as_str(css);
-            if let Some(animation) = self.css.animations.get(key) {
+            if let Some(animation) = self.css.animations.get(&element.animator.name) {
                 for play in element.animator.play(self.css, animation, time) {
                     let result = self.apply_shorthand(play.key, &play.shorthand, layout, element);
                     if let Err(error) = result {
@@ -336,22 +331,23 @@ impl<'c> Cascade<'c> {
         element: &mut Element,
     ) {
         for property in &style.declaration {
-            if let PropertyKey::Variable(name) = property.key {
-                self.push_variable(name, &property.values);
-                continue;
-            }
+            // if let PropertyKey::Variable(name) = property.key {
+            //     self.push_variable(name, &property.values);
+            //     continue;
+            // }
             if PropertyKey::Transition == property.key {
                 for shorthand in property.values.to_vec() {
                     let shorthand = self.css.get_shorthand(shorthand);
-                    let key = match shorthand[0] {
+                    let key = match &shorthand[0] {
                         Keyword(name) => {
-                            let key = PropertyKey::parse(name, &self.css.source);
-                            if key.is_css_property() {
-                                key
-                            } else {
-                                error!("invalid transition property value");
-                                continue;
-                            }
+                            let key = match PropertyKey::parse(name) {
+                                Some(key) => key,
+                                None => {
+                                    error!("unable to make transition of {name}, not supported");
+                                    continue
+                                }
+                            };
+                            key
                         }
                         _ => {
                             error!("invalid transition property value");
@@ -431,7 +427,7 @@ impl<'c> Cascade<'c> {
                 element.font.family = resolve_string(value, self)?;
             }
             (PropertyKey::FontStyle, [Keyword(keyword)]) => {
-                element.font.style = match keyword.as_str(css) {
+                element.font.style = match keyword.as_str() {
                     "normal" => "normal".to_string(),
                     "italic" => "italic".to_string(),
                     "oblique" => "oblique".to_string(),
@@ -439,7 +435,7 @@ impl<'c> Cascade<'c> {
                 }
             }
             (PropertyKey::TextAlign, [Keyword(keyword)]) => {
-                element.font.align = match keyword.as_str(css) {
+                element.font.align = match keyword.as_str() {
                     "start" => TextAlign::Start,
                     "end" => TextAlign::End,
                     "left" => TextAlign::Left,
@@ -583,7 +579,7 @@ impl<'c> Cascade<'c> {
                 element.borders.radius[3] = length(value, self)?;
             }
             (PropertyKey::PointerEvents, [Keyword(keyword)]) => {
-                element.pointer_events = match keyword.as_str(css) {
+                element.pointer_events = match keyword.as_str() {
                     "auto" => PointerEvents::Auto,
                     "none" => PointerEvents::None,
                     keyword => return CascadeError::invalid_keyword(keyword),
@@ -600,34 +596,34 @@ impl<'c> Cascade<'c> {
             // there is no static shorthand pattern, we should set values by it type and order
             // TODO: special animation shorthand parser
             (PropertyKey::Animation, [Time(duration), timing, Time(delay), Keyword(name)]) => {
-                element.animator.name = *name;
+                element.animator.name = name.to_string();
                 element.animator.delay = *delay;
                 element.animator.duration = *duration;
                 element.animator.timing = resolve_timing(timing, self)?;
             }
             (PropertyKey::Animation, [Time(duration), timing, iterations, Keyword(name)]) => {
-                element.animator.name = *name;
+                element.animator.name = name.to_string();
                 element.animator.duration = *duration;
                 element.animator.iterations = resolve_iterations(iterations, self)?;
                 element.animator.timing = resolve_timing(timing, self)?;
             }
             (PropertyKey::Animation, [Time(duration), timing, Keyword(name)]) => {
-                element.animator.name = *name;
+                element.animator.name = name.to_string();
                 element.animator.duration = *duration;
                 element.animator.timing = resolve_timing(timing, self)?;
             }
             (PropertyKey::Animation, [Time(duration), Keyword(name)]) => {
-                element.animator.name = *name;
+                element.animator.name = name.to_string();
                 element.animator.duration = *duration;
             }
             (PropertyKey::AnimationName, [Keyword(name)]) => {
-                element.animator.name = *name;
+                element.animator.name = name.to_string();
             }
             (PropertyKey::AnimationDelay, [Time(delay)]) => {
                 element.animator.delay = *delay;
             }
             (PropertyKey::AnimationDirection, [Keyword(keyword)]) => {
-                element.animator.direction = match keyword.as_str(css) {
+                element.animator.direction = match keyword.as_str() {
                     "normal" => AnimationDirection::Normal,
                     "reverse" => AnimationDirection::Reverse,
                     "alternate" => AnimationDirection::Alternate,
@@ -639,7 +635,7 @@ impl<'c> Cascade<'c> {
                 element.animator.duration = *duration;
             }
             (PropertyKey::AnimationFillMode, [Keyword(keyword)]) => {
-                element.animator.fill_mode = match keyword.as_str(css) {
+                element.animator.fill_mode = match keyword.as_str() {
                     "none" => AnimationFillMode::None,
                     "forwards" => AnimationFillMode::Forwards,
                     "backwards" => AnimationFillMode::Backwards,
@@ -651,7 +647,7 @@ impl<'c> Cascade<'c> {
                 element.animator.iterations = resolve_iterations(iterations, self)?;
             }
             (PropertyKey::AnimationPlayState, [Keyword(keyword)]) => {
-                element.animator.running = match keyword.as_str(css) {
+                element.animator.running = match keyword.as_str() {
                     "running" => true,
                     "paused" => false,
                     keyword => return CascadeError::invalid_keyword(keyword),
@@ -663,7 +659,7 @@ impl<'c> Cascade<'c> {
             //
             // Layout
             //
-            (PropertyKey::Display, [Keyword(keyword)]) => match keyword.as_str(css) {
+            (PropertyKey::Display, [Keyword(keyword)]) => match keyword.as_str() {
                 "flow" => layout.display = taffy::Display::Block,
                 "block" => layout.display = taffy::Display::Block,
                 "flex" => layout.display = taffy::Display::Flex,
@@ -671,20 +667,20 @@ impl<'c> Cascade<'c> {
                 keyword => return CascadeError::invalid_keyword(keyword),
             },
             (PropertyKey::Overflow, [Keyword(value)]) => {
-                layout.overflow.x = resolve_overflow(value.as_str(css))?;
+                layout.overflow.x = resolve_overflow(value.as_str())?;
                 layout.overflow.y = layout.overflow.x;
             }
             (PropertyKey::Overflow, [Keyword(x), Keyword(y)]) => {
-                layout.overflow.x = resolve_overflow(x.as_str(css))?;
-                layout.overflow.y = resolve_overflow(y.as_str(css))?;
+                layout.overflow.x = resolve_overflow(x.as_str())?;
+                layout.overflow.y = resolve_overflow(y.as_str())?;
             }
             (PropertyKey::OverflowX, [Keyword(x)]) => {
-                layout.overflow.x = resolve_overflow(x.as_str(css))?
+                layout.overflow.x = resolve_overflow(x.as_str())?
             }
             (PropertyKey::OverflowY, [Keyword(y)]) => {
-                layout.overflow.y = resolve_overflow(y.as_str(css))?
+                layout.overflow.y = resolve_overflow(y.as_str())?
             }
-            (PropertyKey::Position, [Keyword(keyword)]) => match keyword.as_str(css) {
+            (PropertyKey::Position, [Keyword(keyword)]) => match keyword.as_str() {
                 "relative" => layout.position = taffy::Position::Relative,
                 "absolute" => layout.position = taffy::Position::Absolute,
                 keyword => return CascadeError::invalid_keyword(keyword),
@@ -822,22 +818,22 @@ impl<'c> Cascade<'c> {
                 layout.border.left = lengthp(value, self)?;
             }*/
             (PropertyKey::AlignContent, [Keyword(keyword)]) => {
-                layout.align_content = map_align_content(keyword.as_str(css))?
+                layout.align_content = map_align_content(keyword.as_str())?
             }
             (PropertyKey::AlignItems, [Keyword(keyword)]) => {
-                layout.align_items = map_align_items(keyword.as_str(css))?
+                layout.align_items = map_align_items(keyword.as_str())?
             }
             (PropertyKey::AlignSelf, [Keyword(keyword)]) => {
-                layout.align_self = map_align_items(keyword.as_str(css))?
+                layout.align_self = map_align_items(keyword.as_str())?
             }
             (PropertyKey::JustifyContent, [Keyword(keyword)]) => {
-                layout.justify_content = map_align_content(keyword.as_str(css))?
+                layout.justify_content = map_align_content(keyword.as_str())?
             }
             (PropertyKey::JustifyItems, [Keyword(keyword)]) => {
-                layout.justify_items = map_align_items(keyword.as_str(css))?
+                layout.justify_items = map_align_items(keyword.as_str())?
             }
             (PropertyKey::JustifySelf, [Keyword(keyword)]) => {
-                layout.justify_self = map_align_items(keyword.as_str(css))?
+                layout.justify_self = map_align_items(keyword.as_str())?
             }
             (PropertyKey::Gap, [column, row]) => {
                 layout.gap.width = lengthp(column, self)?;
@@ -854,7 +850,7 @@ impl<'c> Cascade<'c> {
                 layout.gap.height = lengthp(row, self)?;
             }
             (PropertyKey::FlexDirection, [Keyword(keyword)]) => {
-                layout.flex_direction = match keyword.as_str(css) {
+                layout.flex_direction = match keyword.as_str() {
                     "row" => taffy::FlexDirection::Row,
                     "row-reverse" => taffy::FlexDirection::RowReverse,
                     "column" => taffy::FlexDirection::Column,
@@ -863,7 +859,7 @@ impl<'c> Cascade<'c> {
                 }
             }
             (PropertyKey::FlexWrap, [Keyword(keyword)]) => {
-                layout.flex_wrap = match keyword.as_str(css) {
+                layout.flex_wrap = match keyword.as_str() {
                     "wrap" => taffy::FlexWrap::Wrap,
                     "nowrap" => taffy::FlexWrap::NoWrap,
                     "wrap-reverse" => taffy::FlexWrap::WrapReverse,
@@ -898,7 +894,7 @@ impl<'c> Cascade<'c> {
 fn resolve_font_weight(value: &Value, cascade: &Cascade) -> Result<u16, CascadeError> {
     let value = match value {
         Value::Number(value) if *value >= 1.0 && *value <= 1000.0 => *value as u16,
-        Value::Keyword(keyword) => match keyword.as_str(&cascade.css.source) {
+        Value::Keyword(keyword) => match keyword.as_str() {
             "normal" => 400,
             "bold" => 700,
             keyword => return Err(CascadeError::InvalidKeyword(keyword.to_string())),
@@ -915,7 +911,7 @@ fn resolve_font_weight(value: &Value, cascade: &Cascade) -> Result<u16, CascadeE
 fn resolve_color(value: &Value, cascade: &Cascade) -> Result<[u8; 4], CascadeError> {
     let value = match value {
         Value::Color(color) => *color,
-        Value::Keyword(keyword) => match keyword.as_str(&cascade.css.source) {
+        Value::Keyword(keyword) => match keyword.as_str() {
             "black" => [0, 0, 0, 255],
             "white" => [255, 255, 255, 255],
             "red" => [255, 0, 0, 255],
@@ -935,7 +931,7 @@ fn resolve_color(value: &Value, cascade: &Cascade) -> Result<[u8; 4], CascadeErr
 
 fn resolve_timing(value: &Value, cascade: &Cascade) -> Result<TimingFunction, CascadeError> {
     let value = match value {
-        Keyword(keyword) => match keyword.as_str(&cascade.css.source) {
+        Keyword(keyword) => match keyword.as_str() {
             "ease" => TimingFunction::Ease,
             "ease-in" => TimingFunction::EaseIn,
             "ease-out" => TimingFunction::EaseOut,
@@ -1011,7 +1007,7 @@ fn resolve_iterations(
     cascade: &Cascade,
 ) -> Result<AnimationIterations, CascadeError> {
     let value = match value {
-        Keyword(keyword) => match cascade.css.as_str(*keyword) {
+        Keyword(keyword) => match keyword.as_str() {
             "infinite" => AnimationIterations::Infinite,
             _ => return Err(CascadeError::ValueNotSupported),
         },
@@ -1027,7 +1023,7 @@ fn resolve_iterations(
 
 fn resolve_string(value: &Value, cascade: &Cascade) -> Result<String, CascadeError> {
     let value = match value {
-        Value::String(value) => value.as_str(&cascade.css.source).to_string(),
+        Value::String(value) => value.clone(),
         Value::Var(variable) => {
             let value = cascade.get_variable_value(variable)?;
             return resolve_string(value, cascade);
@@ -1069,15 +1065,14 @@ fn dimension_length(value: &Value, cascade: &Cascade) -> Result<f32, CascadeErro
 fn parse_dimension_length(dimension: &Dim, cascade: &Cascade) -> Result<f32, CascadeError> {
     let value = dimension.value;
     let sizes = cascade.sizes;
-    let value = match dimension.unit.as_str() {
-        "px" => value,
-        "em" => sizes.parent_font_size * value,
-        "rem" => sizes.root_font_size * value,
-        "vw" => sizes.viewport_width * value / 100.0,
-        "vh" => sizes.viewport_height * value / 100.0,
-        _ => {
-            return Err(CascadeError::DimensionUnitsNotSupported);
-        }
+    let value = match dimension.unit {
+        Units::Px => value,
+        Units::Em => sizes.parent_font_size * value,
+        Units::Rem => sizes.root_font_size * value,
+        Units::Vw => sizes.viewport_width * value / 100.0,
+        Units::Vh => sizes.viewport_height * value / 100.0,
+        Units::Vmax => sizes.viewport_width.max(sizes.viewport_height) * value / 100.0,
+        Units::Vmin => sizes.viewport_width.min(sizes.viewport_height) * value / 100.0
     };
     Ok(value)
 }
@@ -1089,7 +1084,7 @@ fn dimension(value: &Value, cascade: &Cascade) -> Result<Dimension, CascadeError
             Dimension::Length(length)
         }
         Value::Percentage(value) => Dimension::Percent(*value),
-        Keyword(keyword) if keyword.as_str(&cascade.css.source) == "auto" => Dimension::Auto,
+        Keyword(keyword) if keyword.as_str() == "auto" => Dimension::Auto,
         Value::Var(variable) => {
             let value = cascade.get_variable_value(variable)?;
             return dimension(value, cascade);
@@ -1139,7 +1134,7 @@ fn lengthp_auto(value: &Value, cascade: &Cascade) -> Result<LengthPercentageAuto
             LengthPercentageAuto::Length(length)
         }
         Value::Percentage(value) => LengthPercentageAuto::Percent(*value),
-        Keyword(keyword) if keyword.as_str(&cascade.css.source) == "auto" => {
+        Keyword(keyword) if keyword.as_str() == "auto" => {
             LengthPercentageAuto::Auto
         }
         Value::Var(variable) => {

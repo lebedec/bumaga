@@ -5,7 +5,6 @@ use log::error;
 use taffy::{NodeId, TaffyTree};
 
 pub fn match_style(
-    css: &str,
     style: &Style,
     node: NodeId,
     tree: &TaffyTree<Element>,
@@ -14,11 +13,10 @@ pub fn match_style(
     style
         .selectors
         .iter()
-        .any(|selector| match_complex_selector(css, selector, node, tree, matcher))
+        .any(|selector| match_complex_selector(selector, node, tree, matcher))
 }
 
 fn match_complex_selector(
-    css: &str,
     selector: &Complex,
     node: NodeId,
     tree: &TaffyTree<Element>,
@@ -29,7 +27,7 @@ fn match_complex_selector(
     for component in selector.selectors.iter().rev() {
         match component.as_combinator() {
             None => {
-                if !match_simple_selector(css, component, element, matcher) {
+                if !match_simple_selector(component, element, matcher) {
                     return false;
                 }
             }
@@ -74,29 +72,28 @@ fn find_next_target(combinator: char, target: &mut NodeId, tree: &TaffyTree<Elem
 }
 
 fn match_simple_selector(
-    css: &str,
     component: &Simple,
     element: &Element,
     matcher: &impl PseudoClassMatcher,
 ) -> bool {
     match component {
         Simple::All => true,
-        Simple::Type(name) => element.tag.as_str() == name.as_str(css),
+        Simple::Type(name) => element.tag.as_str() == name.as_str(),
         Simple::Id(ident) => element
             .attrs
             .get("id")
-            .map(|id| id.as_str() == ident.as_str(css))
+            .map(|id| id.as_str() == ident.as_str())
             .unwrap_or(false),
         Simple::Class(ident) => element
             .attrs
             .get("class")
-            .map(|classes| match_class(classes, ident.as_str(css)))
+            .map(|classes| match_class(classes, ident.as_str()))
             .unwrap_or(false),
         Simple::Attribute(name, operator, value) => {
-            let value = value.as_str(css);
+            let value = value.as_str();
             element
                 .attrs
-                .get(name.as_str(css))
+                .get(name.as_str())
                 .map(|attr| match operator {
                     Matcher::Exist => true,
                     Matcher::Equal => attr == value,
@@ -109,7 +106,7 @@ fn match_simple_selector(
                 .unwrap_or(false)
         }
         Simple::Root => element.tag == ":root",
-        Simple::PseudoClass(name) => matcher.has_pseudo_class(element, name.as_str(css)),
+        Simple::PseudoClass(name) => matcher.has_pseudo_class(element, name.as_str()),
         _ => {
             error!("selector {component:?} not supported");
             false

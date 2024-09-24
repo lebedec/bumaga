@@ -7,13 +7,9 @@ pub struct Css {
     pub styles: Vec<Style>,
     pub animations: HashMap<String, Animation>,
     pub values: Vec<Value>,
-    pub arguments: Vec<Value>,
 }
 
 impl Css {
-    pub fn as_str(&self, span: Str) -> &str {
-        span.as_str(&self.source)
-    }
 
     #[inline(always)]
     pub fn as_shorthand(&self, values: &Values) -> &[Value] {
@@ -39,11 +35,9 @@ impl Css {
         &self.values[shorthand.ptr..(shorthand.ptr + shorthand.len)]
     }
 
-    pub fn as_function(&self, function: &Function) -> (&str, &[Value]) {
-        let name = self.as_str(function.name);
-        let start = function.arguments.ptr;
-        let end = start + function.arguments.len;
-        let arguments = &self.arguments[start..end];
+    pub fn as_function<'a>(&self, function: &'a Function) -> (&'a str, &'a [Value]) {
+        let name = function.name.as_str();
+        let arguments = &function.arguments;
         (name, arguments)
     }
 }
@@ -72,13 +66,13 @@ pub struct Complex {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Simple {
     All,
-    Id(Str),
-    Class(Str),
-    Type(Str),
-    Attribute(Str, Matcher, Str),
+    Id(String),
+    Class(String),
+    Type(String),
+    Attribute(String, Matcher, String),
     Root,
-    PseudoClass(Str),
-    PseudoElement(Str),
+    PseudoClass(String),
+    PseudoElement(String),
     Combinator(char),
 }
 
@@ -165,12 +159,12 @@ pub struct Shorthand {
 
 // Used to optimize frequently used or complex values.
 // At same time provides ease parsing.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Inherit,
     Initial,
     Unset,
-    Keyword(Str),
+    Keyword(String),
     Zero,
     Percentage(f32),
     Time(f32),
@@ -179,78 +173,53 @@ pub enum Value {
     Color([u8; 4]),
     Var(Var),
     Function(Function),
-    String(Str),
-    Raw(Str),
+    String(String),
+    Unparsed(String),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Dim {
     pub value: f32,
-    pub unit: Unit,
+    pub unit: Units,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Unit([u8; 8]);
-
-impl Unit {
-    pub fn create(mut value: &str) -> Unit {
-        if value.as_bytes().len() > 7 {
-            error!("truncate unit name {value} to 7 symbols");
-            value = &value[..8];
-        }
-        let value = value.as_bytes();
-        let mut data = [0; 8];
-        let len = value.len();
-        data[0] = len as u8;
-        data[1..(1 + len)].copy_from_slice(value);
-        Self(data)
-    }
-
-    #[inline(always)]
-    pub fn as_str(&self) -> &str {
-        unsafe { std::str::from_utf8_unchecked(&self.0[1..(1 + self.0[0]) as usize]) }
-    }
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Units {
+    Vh,
+    Vw,
+    Vmax,
+    Vmin,
+    Px,
+    Em,
+    Rem,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Str {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
-}
-
-impl Str {
-    #[inline(always)]
-    pub fn as_str(self, data: &str) -> &str {
-        &data[self.start..self.end]
-    }
-
-    #[inline(always)]
-    pub fn empty() -> Self {
-        Self { start: 0, end: 0 }
-    }
-
-    #[inline(always)]
-    pub fn is_empty(&self) -> bool {
-        self.start == 0 && self.end == 0
+impl Units {
+    pub fn parse(name: &str) -> Option<Units> {
+        let units = match name {
+            "vh" => Units::Vh,
+            "vw" => Units::Vw,
+            "vmax" => Units::Vmax,
+            "vmin" => Units::Vmin,
+            "px" => Units::Px,
+            "em" => Units::Em,
+            "rem" => Units::Rem,
+            _ => return None,
+        };
+        Some(units)
     }
 }
 
-#[derive(Clone, Debug, Copy, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Function {
-    pub name: Str,
-    pub arguments: Arguments,
+    pub name: String,
+    pub arguments: Vec<Value>,
 }
 
-#[derive(Clone, Debug, Copy, PartialEq)]
-pub struct Arguments {
-    pub ptr: usize,
-    pub len: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Var {
-    pub name: Str,
-    pub fallback: Option<Str>,
+    pub name: String,
+    pub fallback: Option<String>,
 }
 
 /// based on https://www.w3.org/Style/CSS/all-properties.en.html
@@ -848,21 +817,11 @@ pub enum PropertyKey {
     WritingMode,
     ZIndex,
     Zoom,
-    Variable(Str),
-    Unknown(Str),
 }
 
 impl PropertyKey {
-    pub fn is_css_property(&self) -> bool {
-        match self {
-            Self::Unknown(_) => false,
-            Self::Variable(_) => false,
-            _ => true,
-        }
-    }
-
-    pub fn parse(raw: Str, data: &str) -> Self {
-        match raw.as_str(data) {
+    pub fn parse(name: &str) -> Option<Self> {
+        let key = match name {
             "accent-color" => Self::AccentColor,
             "align-content" => Self::AlignContent,
             "align-items" => Self::AlignItems,
@@ -1454,8 +1413,8 @@ impl PropertyKey {
             "writing-mode" => Self::WritingMode,
             "z-index" => Self::ZIndex,
             "zoom" => Self::Zoom,
-            name if name.starts_with("--") => Self::Variable(raw),
-            _ => Self::Unknown(raw),
-        }
+            _ => return None
+        };
+        Some(key)
     }
 }
