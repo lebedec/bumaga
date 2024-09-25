@@ -91,7 +91,7 @@ Visible = { "?" | "!" }
 
 RepeatBinding = { "*" ~ Key ~ "=" ~ "\"" ~ Count ~ Binder ~ "\"" }
 
-Count = { ASCII_DIGIT+ }
+Count = { ASCII_DIGIT* }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
 DoubleQuoted = { Name ~ "=" ~ "\"" ~ Value ~ "\"" }

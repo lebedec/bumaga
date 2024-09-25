@@ -8,7 +8,7 @@ pub use view::*;
 pub use view_model::*;
 
 mod animation;
-mod browser;
+mod controls;
 mod css;
 mod element;
 mod error;
@@ -19,6 +19,7 @@ mod output;
 mod rendering;
 mod styles;
 mod system;
+mod tree;
 mod value;
 mod view;
 mod view_model;

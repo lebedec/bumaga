@@ -1,3 +1,3 @@
 mod img;
-pub mod input;
+mod input;
 mod select;

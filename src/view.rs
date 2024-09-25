@@ -5,6 +5,7 @@ use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
 use crate::rendering::Renderer;
 use crate::styles::{inherit, Cascade, Scrolling, Sizes};
+use crate::tree::ViewTreeExtensions;
 use crate::view_model::{Reaction, ViewModel};
 use crate::{
     Element, Fonts, Input, Output, PointerEvents, Transformer, ValueExtensions, ViewError,
@@ -13,7 +14,7 @@ use log::{error, info};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
-use std::ops::{Add, Deref};
+use std::ops::{Add, Deref, DerefMut};
 use std::path::PathBuf;
 use std::time::SystemTime;
 use taffy::prelude::length;
@@ -281,6 +282,7 @@ impl View {
                 end,
             } => {
                 let children = self
+                    .tree
                     .get_element_mut(parent)
                     .map(|parent| parent.children.clone())?;
                 let visible = self.tree.children(parent)?;
@@ -298,11 +300,22 @@ impl View {
                 }
             }
             Reaction::Tag { node, key, tag } => {
-                let element = self.get_element_mut(node)?;
+                let element = self.tree.get_element_mut(node)?;
                 if tag {
-                    element.attrs.insert(key.clone(), key);
+                    element.attrs.insert(key.clone(), key.clone());
                 } else {
                     element.attrs.remove(&key);
+                };
+                match (element.tag.as_ref(), key.as_ref()) {
+                    ("option", "selected") => {
+                        self.model
+                            .update_option_selected(node, tag, &mut self.tree)?
+                    }
+                    ("input", "disabled") => {
+                        self.model
+                            .update_input_disabled(node, tag, &mut self.tree)?
+                    }
+                    _ => {}
                 }
             }
             Reaction::Bind {
@@ -311,15 +324,16 @@ impl View {
                 span,
                 text,
             } => {
-                let element = self.get_element_mut(node)?;
+                let element = self.tree.get_element_mut(node)?;
                 let attribute = element
                     .attrs_bindings
                     .get_mut(&key)
                     .ok_or(ViewError::AttributeBindingNotFound(key.clone()))?;
                 attribute.spans[span] = text;
-                element.attrs.insert(key.clone(), attribute.to_string());
+                let value = attribute.to_string();
+                element.attrs.insert(key.clone(), value.clone());
                 if key == "style" {
-                    match read_declaration_block(&format!("{{ {} }}", attribute.to_string())) {
+                    match read_declaration_block(&format!("{{ {} }}", value)) {
                         Ok(style) => {
                             element.style = style;
                         }
@@ -328,23 +342,13 @@ impl View {
                         }
                     }
                 }
-                let node = element.node;
-                unimplemented!("element state value")
-                // match element.tag.as_str() {
-                //     "select" => match key.as_str() {
-                //         "value" => self.update_select_view(node, value)?,
-                //         _ => {}
-                //     },
-                //     "img" => match key.as_str() {
-                //         "src" => self.update_img_view(node, value.eval_string())?,
-                //         _ => {}
-                //     },
-                //     "input" => match key.as_str() {
-                //         "value" => self.update_input_view(node, value.eval_string())?,
-                //         _ => {}
-                //     },
-                //     _ => {}
-                // }
+                match (element.tag.as_str(), key.as_str()) {
+                    ("img", "src") => self.model.update_img_src(node, value, &mut self.tree)?,
+                    ("input", "value") => {
+                        self.model.update_input_value(node, value, &mut self.tree)?
+                    }
+                    _ => {}
+                }
             }
         }
         Ok(())
@@ -361,13 +365,13 @@ impl View {
                 .tree
                 .parent(node)
                 .and_then(|parent| self.tree.get_node_context(parent))
-                .ok_or(ViewError::ParentNotFound)? as *const Element;
+                .ok_or(ViewError::ParentNotFound(node))? as *const Element;
             // TODO:
             &*ptr
         };
         let mut layout = self.tree.style(node)?.clone();
         let element = unsafe {
-            let ptr = self.get_element_mut(node)? as *mut Element;
+            let ptr = self.tree.get_element_mut(node)? as *mut Element;
             &mut *ptr
         };
 
@@ -454,13 +458,6 @@ impl View {
             element,
             tree: &self.tree,
         }
-    }
-
-    #[inline(always)]
-    pub(crate) fn get_element_mut(&mut self, node: NodeId) -> Result<&mut Element, ViewError> {
-        self.tree
-            .get_node_context_mut(node)
-            .ok_or(ViewError::ElementNotFound)
     }
 }
 

@@ -175,11 +175,6 @@ impl Renderer {
         let mut children = vec![];
 
         match element.tag.as_str() {
-            "select" => self.render_select(&mut element)?,
-            _ => {}
-        };
-
-        match element.tag.as_str() {
             // void elements
             "img" => {
                 children.extend(self.render_img(&mut element)?);

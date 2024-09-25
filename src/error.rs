@@ -1,6 +1,6 @@
 use std::io;
 
-use taffy::TaffyError;
+use taffy::{NodeId, TaffyError};
 
 use crate::css;
 use crate::html;
@@ -8,9 +8,9 @@ use crate::html;
 #[derive(Debug)]
 pub enum ViewError {
     Layout(TaffyError),
-    ElementNotFound,
+    ElementNotFound(NodeId),
     ElementTextContentNotFound,
-    ParentNotFound,
+    ParentNotFound(NodeId),
     Html(html::ReaderError),
     Css(css::ReaderError),
     Io(io::Error),

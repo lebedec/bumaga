@@ -229,7 +229,7 @@ fn parse_element_bindings(pair: Pair<Rule>) -> Vec<ElementBinding> {
             Rule::RepeatBinding => {
                 let count = iter.next().unwrap().as_str();
                 let count = count.parse::<usize>().unwrap_or_else(|error| {
-                    error!("unable to parse repeat count {count}, {error}");
+                    error!("unable to parse repeat count '{count}', {error}");
                     0
                 });
                 let binder = parse_binder(iter.next().unwrap());
@@ -369,6 +369,12 @@ mod tests {
     pub fn test_binding_repeat() {
         let html = html(r#"<option *option="10 {options}"></option>"#);
         assert_eq!(html.bindings, [repeat("option", 10, "options")])
+    }
+
+    #[test]
+    pub fn test_binding_repeat_single_number_count() {
+        let html = html(r#"<div *effect="8 {effects}"> {effect} </div>"#);
+        assert_eq!(html.bindings, [repeat("effect", 8, "effects")])
     }
 
     #[test]

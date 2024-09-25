@@ -1,6 +1,6 @@
 use crate::rendering::Renderer;
-use crate::{Element, View, ViewError};
-use taffy::NodeId;
+use crate::{Element, ViewError, ViewModel};
+use taffy::{NodeId, TaffyTree};
 
 const BACKGROUND: usize = 0;
 
@@ -13,16 +13,20 @@ impl Renderer {
     }
 }
 
-impl View {
-    pub(crate) fn update_img_view(&mut self, img: NodeId, src: String) -> Result<(), ViewError> {
-        let background = self.tree.child_at_index(img, BACKGROUND)?;
-        let background = self
-            .tree
+impl ViewModel {
+    pub(crate) fn update_img_src(
+        &mut self,
+        img: NodeId,
+        src: String,
+        tree: &mut TaffyTree<Element>,
+    ) -> Result<(), ViewError> {
+        let background = tree.child_at_index(img, BACKGROUND)?;
+        let background = tree
             .get_node_context_mut(background)
             .expect("img background has element");
         background.background.image = Some(src);
         let node = background.node;
-        self.tree.mark_dirty(node)?;
+        tree.mark_dirty(node)?;
         Ok(())
     }
 }
