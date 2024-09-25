@@ -4,6 +4,7 @@ use crate::{
 };
 use log::error;
 
+use crate::html::ArgumentBinding;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::format;
@@ -211,7 +212,12 @@ impl ViewModel {
         Ok(output)
     }
 
-    fn capture_hovers(&mut self, body: NodeId, output: &mut Output, tree: &mut TaffyTree<Element>) -> Result<(), ViewError> {
+    fn capture_hovers(
+        &mut self,
+        body: NodeId,
+        output: &mut Output,
+        tree: &mut TaffyTree<Element>,
+    ) -> Result<(), ViewError> {
         for node in self.mouse_hovers.clone() {
             let element = tree.get_node_context_mut(node).unwrap();
             let hover = hovers(self.mouse, element);
@@ -350,23 +356,29 @@ impl ViewModel {
 
     pub(crate) fn fire(&self, element: &Element, event: &str, this: Value, output: &mut Output) {
         if let Some(handler) = element.listeners.get(event) {
-            let mut value = if handler.argument == Schema::THIS {
-                this
-            } else {
-                self.model
-                    .pointer(&handler.argument)
-                    .cloned()
-                    .unwrap_or(Value::Null)
-            };
-            for name in &handler.pipe {
-                match self.transformers.get(name) {
-                    Some(transform) => value = transform(value),
-                    None => error!("unable to bind value, transformer {name} not found"),
+            let mut arguments = vec![];
+            for argument in &handler.arguments {
+                match argument {
+                    CallbackArgument::This => {
+                        arguments.push(this.clone());
+                    }
+                    CallbackArgument::Binder(path, pipe) => {
+                        let mut value = self.model.pointer(path).cloned().unwrap_or(Value::Null);
+                        for name in pipe {
+                            match self.transformers.get(name) {
+                                Some(transform) => value = transform(value),
+                                None => {
+                                    error!("unable to transform argument, transformer {name} not found")
+                                }
+                            }
+                        }
+                        arguments.push(value);
+                    }
                 }
             }
             output.calls.push(Call {
                 function: handler.function.clone(),
-                arguments: vec![value],
+                arguments,
             })
         }
     }
@@ -414,7 +426,8 @@ pub struct Binding {
 pub enum BindingParams {
     Text(NodeId, usize),
     Visibility(NodeId, NodeId, bool),
-    Attribute(NodeId, String),
+    Attribute(NodeId, String, usize),
+    Tag(NodeId, String),
     Repeat(NodeId, usize, usize),
 }
 
@@ -429,10 +442,16 @@ impl Binding {
                     visible,
                 }
             }
-            BindingParams::Attribute(node, key) => Reaction::Bind {
+            BindingParams::Tag(node, key) => Reaction::Tag {
                 node,
                 key,
-                value: value.clone(),
+                tag: value.as_boolean(),
+            },
+            BindingParams::Attribute(node, key, span) => Reaction::Bind {
+                node,
+                key,
+                span,
+                text: value.eval_string(),
             },
             BindingParams::Text(node, span) => {
                 let text = value.eval_string();
@@ -485,10 +504,16 @@ pub enum Reaction {
         cursor: usize,
         end: usize,
     },
+    Tag {
+        node: NodeId,
+        key: String,
+        tag: bool,
+    },
     Bind {
         node: NodeId,
         key: String,
-        value: Value,
+        span: usize,
+        text: String,
     },
 }
 
@@ -563,13 +588,6 @@ pub struct Call {
     pub arguments: Vec<Value>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Handler {
-    pub function: String,
-    pub argument: String,
-    pub pipe: Vec<String>,
-}
-
 impl Call {
     pub fn signature(&self) -> (&str, &[Value]) {
         let name = self.function.as_str();
@@ -580,6 +598,18 @@ impl Call {
     pub fn get_str(&self, index: usize) -> Option<&str> {
         self.arguments.get(index).and_then(Value::as_str)
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Handler {
+    pub function: String,
+    pub arguments: Vec<CallbackArgument>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CallbackArgument {
+    This,
+    Binder(String, Vec<String>),
 }
 
 fn default_transformers() -> HashMap<String, Transformer> {
@@ -600,7 +630,6 @@ fn default_transformers() -> HashMap<String, Transformer> {
 
 #[cfg(test)]
 mod tests {
-    use crate::styles::create_element;
     use super::*;
 
     fn node(id: u64) -> NodeId {
@@ -621,9 +650,9 @@ mod tests {
         }
     }
 
-    fn attr(node: u64, attr: &str) -> Binding {
+    fn attr(node: u64, attr: &str, span: usize) -> Binding {
         Binding {
-            params: BindingParams::Attribute(NodeId::new(node), attr.to_string()),
+            params: BindingParams::Attribute(NodeId::new(node), attr.to_string(), span),
             pipe: vec![],
         }
     }
@@ -652,7 +681,7 @@ mod tests {
                 start: 0,
                 cursor: 1,
                 end: 3,
-            }, ]
+            },]
         );
     }
 
@@ -743,11 +772,11 @@ mod tests {
         let bindings = BTreeMap::from([
             ("/items".to_string(), vec![repeat(items, 3)]),
             ("/items/0/name".to_string(), vec![text(items_0)]),
-            ("/items/0/id".to_string(), vec![attr(items_0, "id")]),
+            ("/items/0/id".to_string(), vec![attr(items_0, "id", 0)]),
             ("/items/1/name".to_string(), vec![text(items_1)]),
-            ("/items/1/id".to_string(), vec![attr(items_1, "id")]),
+            ("/items/1/id".to_string(), vec![attr(items_1, "id", 0)]),
             ("/items/2/name".to_string(), vec![text(items_2)]),
-            ("/items/2/id".to_string(), vec![attr(items_2, "id")]),
+            ("/items/2/id".to_string(), vec![attr(items_2, "id", 0)]),
         ]);
         let mut view_model = ViewModel::create(bindings, model);
         view_model.bind(&json!({
@@ -787,11 +816,11 @@ mod tests {
         let bindings = BTreeMap::from([
             ("/items".to_string(), vec![repeat(items, 3)]),
             ("/items/0/name".to_string(), vec![text(items_0)]),
-            ("/items/0/id".to_string(), vec![attr(items_0, "id")]),
+            ("/items/0/id".to_string(), vec![attr(items_0, "id", 0)]),
             ("/items/1/name".to_string(), vec![text(items_1)]),
-            ("/items/1/id".to_string(), vec![attr(items_1, "id")]),
+            ("/items/1/id".to_string(), vec![attr(items_1, "id", 0)]),
             ("/items/2/name".to_string(), vec![text(items_2)]),
-            ("/items/2/id".to_string(), vec![attr(items_2, "id")]),
+            ("/items/2/id".to_string(), vec![attr(items_2, "id", 0)]),
         ]);
         let mut view_model = ViewModel::create(bindings, model);
         view_model.bind(&json!({
@@ -819,7 +848,8 @@ mod tests {
                 Reaction::Bind {
                     node: items_0.into(),
                     key: "id".to_string(),
-                    value: json!(1),
+                    span: 0,
+                    text: "1".to_string(),
                 },
                 Reaction::Type {
                     node: items_0.into(),
@@ -829,7 +859,8 @@ mod tests {
                 Reaction::Bind {
                     node: items_1.into(),
                     key: "id".to_string(),
-                    value: json!(2),
+                    span: 0,
+                    text: "2".to_string(),
                 },
                 Reaction::Type {
                     node: items_1.into(),

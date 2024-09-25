@@ -1,11 +1,11 @@
+use log::warn;
 use std::collections::{BTreeMap, HashMap};
-
 use taffy::{Dimension, NodeId, Size, TaffyTree};
 
-use crate::html::{ElementBinding, Html, TextBinding, TextSpan};
+use crate::html::{ArgumentBinding, ElementBinding, Html, TextBinding, TextSpan};
 use crate::styles::{create_element, default_layout};
 use crate::view_model::{Binding, Bindings, Schema};
-use crate::{BindingParams, Element, Handler, TextContent, ViewError};
+use crate::{BindingParams, CallbackArgument, Element, Handler, TextContent, ViewError};
 
 pub struct Renderer {
     pub tree: TaffyTree<Element>,
@@ -66,8 +66,9 @@ impl Renderer {
                 }
             })
             .collect();
+        let text = TextContent { spans };
         let mut element = create_element(node);
-        element.text = Some(TextContent { spans });
+        element.text = Some(text);
         self.tree.set_node_context(node, Some(element))?;
         Ok(node)
     }
@@ -118,24 +119,54 @@ impl Renderer {
                 ElementBinding::None(key, value) => {
                     element.attrs.insert(key, value);
                 }
-                ElementBinding::Attribute(key, binder) => {
-                    let path = self.schema.field(&binder, &self.locals);
-                    let params = BindingParams::Attribute(node, key.clone());
-                    let binding = Binding {
-                        params,
-                        pipe: binder.pipe.clone(),
-                    };
-                    self.bindings.entry(path).or_default().push(binding);
-                    element.attrs.insert(key, binder.to_string());
+                ElementBinding::Attribute(key, text) => {
+                    if let Some(value) = text.as_simple_text() {
+                        warn!(
+                            "element {} attribute {} has no bindings, you can just use HTML tag",
+                            element.tag, key
+                        );
+                        element.attrs.insert(key, value);
+                        continue;
+                    }
+                    let spans = text
+                        .spans
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, span)| match span {
+                            TextSpan::String(span) => span.to_string(),
+                            TextSpan::Binder(binder) => {
+                                let path = self.schema.field(&binder, &mut self.locals);
+                                let params = BindingParams::Attribute(node, key.clone(), index);
+                                let binding = Binding {
+                                    params,
+                                    pipe: binder.pipe.clone(),
+                                };
+                                self.bindings.entry(path).or_default().push(binding);
+                                binder.to_string()
+                            }
+                        })
+                        .collect();
+                    let attribute = TextContent { spans };
+                    element.attrs.insert(key.clone(), attribute.to_string());
+                    element.attrs_bindings.insert(key, attribute);
                 }
-                ElementBinding::Callback(event, function, argument) => {
-                    let pipe = argument.pipe.clone();
-                    let argument = self.schema.field(&argument, &self.locals);
-                    let handler = Handler {
+                ElementBinding::Callback(event, function, arguments) => {
+                    let mut handler = Handler {
                         function,
-                        argument,
-                        pipe,
+                        arguments: vec![],
                     };
+                    for argument in arguments {
+                        match &argument {
+                            ArgumentBinding::This => {
+                                handler.arguments.push(CallbackArgument::This);
+                            }
+                            ArgumentBinding::Binder(binder) => {
+                                let path = self.schema.field(binder, &self.locals);
+                                let pipe = binder.pipe.clone();
+                                handler.arguments.push(CallbackArgument::Binder(path, pipe));
+                            }
+                        }
+                    }
                     element.listeners.insert(event.clone(), handler);
                 }
                 _ => {}

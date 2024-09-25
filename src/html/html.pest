@@ -60,6 +60,7 @@ Attributes = { Attribute* }
 Attribute = _{
     RepeatBinding
     | AliasBinding
+    | TagBinding
     | AttributeBinding
     | CallbackBinding
     | VisibilityBinding
@@ -68,17 +69,27 @@ Attribute = _{
     | Empty
     }
 
-AliasBinding = { "{" ~ Name ~ "}" ~ "=" ~ Binder }
+AliasBinding = { "+" ~ Key ~ "=" ~ "\"" ~ Binder ~ "\"" }
 
-AttributeBinding = { "[" ~ Key ~ "]" ~ "=" ~ Binder }
+TagBinding = { "#" ~ Key ~ "=" ~ "\"" ~ Binder ~ "\"" }
 
-CallbackBinding = { "[" ~ Key ~ "]" ~ "~" ~ Key ~ "=" ~ Binder }
+AttributeBinding = { "@" ~ Key ~ "=" ~ "\"" ~ (Binder | DoubleQuotedAttributeString)+ ~ "\"" }
 
-VisibilityBinding = { Visible ~ "=" ~ Binder }
+DoubleQuotedAttributeString = @{ DoubleQuotedAttributeChar+ }
+
+DoubleQuotedAttributeChar = {
+    !("<" | ">" | "{" | "\"") ~ ANY
+}
+
+CallbackBinding = { "^" ~ Key ~ "=" ~ "\"" ~ Key ~ (Binder | This)* ~ "\"" }
+
+This = { "this" }
+
+VisibilityBinding = { Visible ~ "=" ~ "\"" ~ Binder ~ "\"" }
 
 Visible = { "?" | "!" }
 
-RepeatBinding = { "{" ~ Key ~ "}" ~ "*" ~ Count ~ "=" ~ Binder }
+RepeatBinding = { "*" ~ Key ~ "=" ~ "\"" ~ Count ~ Binder ~ "\"" }
 
 Count = { ASCII_DIGIT+ }
 
@@ -96,7 +107,8 @@ Name = @{ NChar+ }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-attributes
 NChar = @{
-    !("\"" | "\\" | "'" | ">" | "/" | "=" | "\u{0000}" | WHITESPACE) ~ ANY
+    !("\"" | "\\" | "'" | ">" | "/" | "=" | "\u{0000}" | WHITESPACE
+    | "@" | "?" | "!" | "*" | "+" | "^" | "#") ~ ANY
 }
 
 Binder = { "{" ~ Getter ~ ("|" ~ Transformer)* ~ "}" }

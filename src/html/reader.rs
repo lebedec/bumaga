@@ -68,10 +68,17 @@ impl Html {
 pub enum ElementBinding {
     None(String, String),
     Alias(String, Binder),
-    Attribute(String, Binder),
+    Tag(String, Binder),
+    Attribute(String, TextBinding),
     Repeat(String, usize, Binder),
-    Callback(String, String, Binder),
+    Callback(String, String, Vec<ArgumentBinding>),
     Visibility(bool, Binder),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArgumentBinding {
+    This,
+    Binder(Binder),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -83,6 +90,14 @@ impl TextBinding {
     pub fn string(value: &str) -> Self {
         Self {
             spans: vec![TextSpan::String(value.to_string())],
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_simple_text(&self) -> Option<String> {
+        match self.spans.as_slice() {
+            [TextSpan::String(text)] => Some(text.to_string()),
+            _ => None,
         }
     }
 }
@@ -224,14 +239,36 @@ fn parse_element_bindings(pair: Pair<Rule>) -> Vec<ElementBinding> {
                 let binder = parse_binder(iter.next().unwrap());
                 ElementBinding::Alias(name, binder)
             }
-            Rule::AttributeBinding => {
+            Rule::TagBinding => {
                 let binder = parse_binder(iter.next().unwrap());
-                ElementBinding::Attribute(name, binder)
+                ElementBinding::Tag(name, binder)
+            }
+            Rule::AttributeBinding => {
+                let mut spans = vec![];
+                for span in iter {
+                    match span.as_rule() {
+                        Rule::DoubleQuotedAttributeString => {
+                            spans.push(TextSpan::String(span.as_str().to_string()))
+                        }
+                        Rule::Binder => spans.push(TextSpan::Binder(parse_binder(span))),
+                        _ => unreachable!(),
+                    }
+                }
+                let text = TextBinding { spans };
+                ElementBinding::Attribute(name, text)
             }
             Rule::CallbackBinding => {
                 let function = iter.next().unwrap().as_str().to_string();
-                let binder = parse_binder(iter.next().unwrap());
-                ElementBinding::Callback(name, function, binder)
+                let mut arguments = vec![];
+                for pair in iter {
+                    let argument = match pair.as_rule() {
+                        Rule::Binder => ArgumentBinding::Binder(parse_binder(pair)),
+                        Rule::This => ArgumentBinding::This,
+                        _ => unreachable!(),
+                    };
+                    arguments.push(argument);
+                }
+                ElementBinding::Callback(name, function, arguments)
             }
             Rule::VisibilityBinding => {
                 let visible = name == "?";
@@ -276,100 +313,139 @@ mod tests {
     }
 
     #[test]
+    pub fn test_binding_alias() {
+        let html = html(r#"<input +option="{context.config.option}" />"#);
+        assert_eq!(html.bindings, [al("option", "context.config.option")])
+    }
+
+    #[test]
+    pub fn test_binding_tag() {
+        let html = html(r#"<input #disabled="{disabled}" />"#);
+        assert_eq!(html.bindings, [tag("disabled", "disabled")])
+    }
+
+    #[test]
     pub fn test_binding_control_if() {
-        let html = html(r#"<input ?={visible} />"#);
+        let html = html(r#"<input ?="{visible}" />"#);
         assert_eq!(html.bindings, [if_("visible")])
     }
 
     #[test]
     pub fn test_binding_control_else() {
-        let html = html(r#"<input !={visible} />"#);
+        let html = html(r#"<input !="{visible}" />"#);
         assert_eq!(html.bindings, [else_("visible")])
     }
 
     #[test]
     pub fn test_binding_attribute() {
-        let html = html(r#"<input [value]={name} />"#);
-        assert_eq!(html.bindings, [attr("value", "name")])
+        let html = html(r#"<input @value="{name}" />"#);
+        assert_eq!(html.bindings, [attr("value", &[b("name")])])
     }
 
     #[test]
     pub fn test_binding_attribute_style() {
-        let html = html(r#"<input [style]="top: {pivot.x}px" />"#);
-        assert_eq!(html.bindings, [attr("value", "name")])
+        let html = html(r#"<input @style="top: {pivot.x}px;" />"#);
+        let expected = [attr("style", &[t("top: "), b("pivot.x"), t("px;")])];
+        assert_eq!(html.bindings, expected)
+    }
+
+    #[test]
+    pub fn test_binding_attribute_style_multiple_properties() {
+        let html = html(r#"<input @style="width: {width}px; height: {height}px;" />"#);
+        let expected = [attr(
+            "style",
+            &[
+                t("width: "),
+                b("width"),
+                t("px; height: "),
+                b("height"),
+                t("px;"),
+            ],
+        )];
+        assert_eq!(html.bindings, expected)
     }
 
     #[test]
     pub fn test_binding_repeat() {
-        let html = html(r#"<option {option}*10={options}></option>"#);
+        let html = html(r#"<option *option="10 {options}"></option>"#);
         assert_eq!(html.bindings, [repeat("option", 10, "options")])
     }
 
     #[test]
-    pub fn test_binding_callback() {
-        let html = html(r#"<input [onchange]~change={this} />"#);
-        assert_eq!(html.bindings, vec![cb("onchange", "change", "this")])
+    pub fn test_binding_repeat_with_shorthand() {
+        let html = html(r#"<option *_="10 {options}"></option>"#);
+        assert_eq!(html.bindings, [repeat("_", 10, "options")])
     }
 
     #[test]
-    pub fn test_binding_callback_name_with_underscore() {
-        let html = html(r#"<input [onchange]~change_something={this} />"#);
+    pub fn test_binding_callback_this_argument() {
+        let html = html(r#"<input ^onchange="change this" />"#);
+        assert_eq!(html.bindings, vec![cb("onchange", "change", &[this()])])
+    }
+
+    #[test]
+    pub fn test_binding_callback_no_arguments() {
+        let html = html(r#"<button ^onclick="do_something"></button>"#);
+        assert_eq!(html.bindings, vec![cb("onclick", "do_something", &[])])
+    }
+
+    #[test]
+    pub fn test_binding_callback_binding_argument() {
+        let html = html(r#"<button ^onclick="do_something {my_data}"></button>"#);
         assert_eq!(
             html.bindings,
-            vec![cb("onchange", "change_something", "this")]
+            vec![cb("onclick", "do_something", &[arg("my_data")])]
         )
     }
 
-    fn cb(event: &str, handler: &str, path: &str) -> ElementBinding {
-        ElementBinding::Callback(
-            event.to_string(),
-            handler.to_string(),
-            Binder {
-                path: vec![path.to_string()],
-                pipe: vec![],
-            },
+    #[test]
+    pub fn test_binding_callback_binding_this_and_binding_arguments() {
+        let html = html(r#"<button ^onclick="do_something this {my_data}"></button>"#);
+        assert_eq!(
+            html.bindings,
+            vec![cb("onclick", "do_something", &[this(), arg("my_data")])]
         )
+    }
+
+    fn cb(event: &str, handler: &str, args: &[ArgumentBinding]) -> ElementBinding {
+        ElementBinding::Callback(event.to_string(), handler.to_string(), args.to_vec())
+    }
+
+    fn this() -> ArgumentBinding {
+        ArgumentBinding::This
+    }
+
+    fn arg(path: &str) -> ArgumentBinding {
+        ArgumentBinding::Binder(binder(path))
     }
 
     fn repeat(name: &str, count: usize, path: &str) -> ElementBinding {
-        ElementBinding::Repeat(
-            name.to_string(),
-            count,
-            Binder {
-                path: vec![path.to_string()],
-                pipe: vec![],
+        ElementBinding::Repeat(name.to_string(), count, binder(path))
+    }
+
+    fn attr(key: &str, spans: &[TextSpan]) -> ElementBinding {
+        ElementBinding::Attribute(
+            key.to_string(),
+            TextBinding {
+                spans: spans.to_vec(),
             },
         )
     }
 
-    fn attr(key: &str, path: &str) -> ElementBinding {
-        ElementBinding::Attribute(
-            key.to_string(),
-            Binder {
-                path: vec![path.to_string()],
-                pipe: vec![],
-            },
-        )
+    fn al(name: &str, path: &str) -> ElementBinding {
+        ElementBinding::Alias(name.to_string(), binder(path))
+    }
+
+    fn tag(name: &str, path: &str) -> ElementBinding {
+        ElementBinding::Tag(name.to_string(), binder(path))
     }
 
     fn if_(path: &str) -> ElementBinding {
-        ElementBinding::Visibility(
-            true,
-            Binder {
-                path: vec![path.to_string()],
-                pipe: vec![],
-            },
-        )
+        ElementBinding::Visibility(true, binder(path))
     }
 
     fn else_(path: &str) -> ElementBinding {
-        ElementBinding::Visibility(
-            false,
-            Binder {
-                path: vec![path.to_string()],
-                pipe: vec![],
-            },
-        )
+        ElementBinding::Visibility(false, binder(path))
     }
 
     fn text(spans: &[TextSpan]) -> Option<TextBinding> {
@@ -383,10 +459,14 @@ mod tests {
     }
 
     fn b(path: &str) -> TextSpan {
-        TextSpan::Binder(Binder {
-            path: vec![path.to_string()],
+        TextSpan::Binder(binder(path))
+    }
+
+    fn binder(path: &str) -> Binder {
+        Binder {
+            path: path.split(".").map(ToString::to_string).collect(),
             pipe: vec![],
-        })
+        }
     }
 
     fn html(html: &str) -> Html {

@@ -1,4 +1,6 @@
-use crate::css::{read_css, Css, PseudoClassMatcher};
+use crate::css::{
+    read_css, read_declaration_block, Css, Declaration, PseudoClassMatcher, ReaderError,
+};
 use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
 use crate::rendering::Renderer;
@@ -7,7 +9,7 @@ use crate::view_model::{Reaction, ViewModel};
 use crate::{
     Element, Fonts, Input, Output, PointerEvents, Transformer, ValueExtensions, ViewError,
 };
-use log::error;
+use log::{error, info};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -295,25 +297,54 @@ impl View {
                     }
                 }
             }
-            Reaction::Bind { node, key, value } => {
+            Reaction::Tag { node, key, tag } => {
                 let element = self.get_element_mut(node)?;
-                element.attrs.insert(key.clone(), value.eval_string());
-                let node = element.node;
-                match element.tag.as_str() {
-                    "select" => match key.as_str() {
-                        "value" => self.update_select_view(node, value)?,
-                        _ => {}
-                    },
-                    "img" => match key.as_str() {
-                        "src" => self.update_img_view(node, value.eval_string())?,
-                        _ => {}
-                    },
-                    "input" => match key.as_str() {
-                        "value" => self.update_input_view(node, value.eval_string())?,
-                        _ => {}
-                    },
-                    _ => {}
+                if tag {
+                    element.attrs.insert(key.clone(), key);
+                } else {
+                    element.attrs.remove(&key);
                 }
+            }
+            Reaction::Bind {
+                node,
+                key,
+                span,
+                text,
+            } => {
+                let element = self.get_element_mut(node)?;
+                let attribute = element
+                    .attrs_bindings
+                    .get_mut(&key)
+                    .ok_or(ViewError::AttributeBindingNotFound(key.clone()))?;
+                attribute.spans[span] = text;
+                element.attrs.insert(key.clone(), attribute.to_string());
+                if key == "style" {
+                    match read_declaration_block(&format!("{{ {} }}", attribute.to_string())) {
+                        Ok(style) => {
+                            element.style = style;
+                        }
+                        Err(error) => {
+                            error!("unable to parse style of {}, {error:?}", element.tag);
+                        }
+                    }
+                }
+                let node = element.node;
+                unimplemented!("element state value")
+                // match element.tag.as_str() {
+                //     "select" => match key.as_str() {
+                //         "value" => self.update_select_view(node, value)?,
+                //         _ => {}
+                //     },
+                //     "img" => match key.as_str() {
+                //         "src" => self.update_img_view(node, value.eval_string())?,
+                //         _ => {}
+                //     },
+                //     "input" => match key.as_str() {
+                //         "value" => self.update_input_view(node, value.eval_string())?,
+                //         _ => {}
+                //     },
+                //     _ => {}
+                // }
             }
         }
         Ok(())
@@ -616,11 +647,11 @@ impl Source {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use super::*;
+    use crate::{Call, InputEvent};
     use serde::Serialize;
     use serde_json::json;
-    use crate::{Call, InputEvent};
-    use super::*;
+    use std::time::Duration;
 
     fn call<T: Serialize>(function: &str, value: T) -> Call {
         Call {
@@ -642,8 +673,8 @@ mod tests {
             }
         "#;
         let html = r#"<html>
-        <body [onmouseenter]~enter={body} [onmouseleave]~leave={body}>
-            <div [onmouseenter]~enter={a} [onmouseleave]~leave={a}></div>
+        <body ^onmouseenter="enter {body}" ^onmouseleave="leave {body}">
+            <div ^onmouseenter="enter {a}" ^onmouseleave="leave {a}"></div>
         </body>
         </html>"#;
         let value = json!({
@@ -658,7 +689,9 @@ mod tests {
         ];
         let mut output = Output::new();
         for event in user_input {
-            output = view.update(Input::new().event(event), value.clone()).expect("valid update");
+            output = view
+                .update(Input::new().event(event), value.clone())
+                .expect("valid update");
         }
 
         assert_eq!(output.is_cursor_over_view, false, "cursor over view");
@@ -675,8 +708,8 @@ mod tests {
         "#;
         let html = r#"<html>
         <body>
-            <div [onmouseenter]~enter={a} [onmouseleave]~leave={a}></div>
-            <div [onmouseenter]~enter={b} [onmouseleave]~leave={b}></div>
+            <div ^onmouseenter="enter {a}" ^onmouseleave="leave {a}"></div>
+            <div ^onmouseenter="enter {b}" ^onmouseleave="leave {b}"></div>
         </body>
         </html>"#;
         let value = json!({
@@ -691,7 +724,9 @@ mod tests {
         ];
         let mut output = Output::new();
         for event in user_input {
-            output = view.update(Input::new().event(event), value.clone()).expect("valid update");
+            output = view
+                .update(Input::new().event(event), value.clone())
+                .expect("valid update");
         }
 
         assert_eq!(output.is_cursor_over_view, true, "cursor over view");
@@ -708,8 +743,8 @@ mod tests {
         "#;
         let html = r#"<html>
         <body>
-            <div [onmouseenter]~enter={a} [onmouseleave]~leave={a}></div>
-            <div [onmouseenter]~enter={b} [onmouseleave]~leave={b}></div>
+            <div ^onmouseenter="enter {a}" ^onmouseleave="leave {a}"></div>
+            <div ^onmouseenter="enter {b}" ^onmouseleave="leave {b}"></div>
         </body>
         </html>"#;
         let value = json!({
@@ -724,7 +759,9 @@ mod tests {
         ];
         let mut output = Output::new();
         for event in user_input {
-            output = view.update(Input::new().event(event), value.clone()).expect("valid update");
+            output = view
+                .update(Input::new().event(event), value.clone())
+                .expect("valid update");
         }
         assert_eq!(output.is_cursor_over_view, true, "cursor over view");
         assert_eq!(output.calls, vec![call("leave", "B"), call("enter", "A")]);
@@ -752,7 +789,7 @@ mod tests {
         "#;
         let html = r#"<html>
         <body>
-            <div [onmouseenter]~enter={a} [onmouseleave]~leave={a}></div>
+            <div ^onmouseenter="enter {a}" ^onmouseleave="leave {a}"></div>
         </body>
         </html>"#;
         let value = json!({
@@ -760,15 +797,17 @@ mod tests {
         });
         let mut view = View::compile(html, css, "").expect("view valid");
         let initial_mouse_input = Input::new().event(InputEvent::MouseMove([20.0, 40.0]));
-        view.update(initial_mouse_input, value.clone()).expect("valid update");
+        view.update(initial_mouse_input, value.clone())
+            .expect("valid update");
 
         let mut output = Output::new();
         for time in [0.0, 0.5, 1.0].map(Duration::from_secs_f32) {
-            output = view.update(Input::new().time(time), value.clone()).expect("valid update");
+            output = view
+                .update(Input::new().time(time), value.clone())
+                .expect("valid update");
         }
 
         assert_eq!(output.is_cursor_over_view, false, "cursor over view");
         assert_eq!(output.calls, vec![call("leave", "A")]);
-
     }
 }

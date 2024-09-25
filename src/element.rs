@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use taffy::{Layout, NodeId};
 
 use crate::animation::{Animator, Transition};
-use crate::css::{Property, PropertyKey};
+use crate::css::{Declaration, Property, PropertyKey};
 use crate::styles::Scrolling;
 use crate::{Handler, ViewError};
 
@@ -16,6 +16,7 @@ pub struct Element {
     pub tag: String,
     pub text: Option<TextContent>,
     pub attrs: HashMap<String, String>,
+    pub attrs_bindings: HashMap<String, TextContent>,
     pub position: [f32; 2],
     pub size: [f32; 2],
     pub content_size: [f32; 2],
@@ -35,7 +36,7 @@ pub struct Element {
     pub(crate) transitions: HashMap<PropertyKey, Transition>,
     pub(crate) state: ElementState,
     pub pointer_events: PointerEvents,
-    pub style: Vec<Property>,
+    pub style: Vec<Declaration>,
 }
 
 impl Element {

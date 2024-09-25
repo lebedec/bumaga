@@ -27,6 +27,13 @@ impl From<Error<Rule>> for ReaderError {
     }
 }
 
+pub fn read_declaration_block(block: &str) -> Result<Vec<Declaration>, ReaderError> {
+    let block = CssParser::parse(Rule::DeclarationBlock, block)?
+        .next()
+        .ok_or(ReaderError::EmptyStyleSheet)?;
+    Ok(read_declarations(block))
+}
+
 pub fn read_css(css: &str) -> Result<Css, ReaderError> {
     let stylesheet = CssParser::parse(Rule::StyleSheet, css)?
         .next()
@@ -54,7 +61,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                         },
                         _ => unreachable!(),
                     };
-                    let declarations = read_declaration(iter.next().unwrap());
+                    let declarations = read_declarations(iter.next().unwrap());
                     for declaration in declarations {
                         match declaration {
                             Declaration::Variable(_) => {
@@ -151,7 +158,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                         selectors: components,
                     })
                 }
-                let declaration = read_declaration(iter.next().unwrap());
+                let declaration = read_declarations(iter.next().unwrap());
                 styles.push(Style {
                     selectors,
                     declaration,
@@ -167,7 +174,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
     })
 }
 
-fn read_declaration(pair: Pair<Rule>) -> Vec<Declaration> {
+fn read_declarations(pair: Pair<Rule>) -> Vec<Declaration> {
     let mut declarations = vec![];
     for property in pair.into_inner() {
         let mut iter = property.into_inner();

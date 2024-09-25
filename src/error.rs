@@ -16,6 +16,7 @@ pub enum ViewError {
     Io(io::Error),
     BodyNotFound,
     ElementInvalidBehaviour,
+    AttributeBindingNotFound(String),
 }
 
 impl From<TaffyError> for ViewError {

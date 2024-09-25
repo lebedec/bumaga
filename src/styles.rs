@@ -62,6 +62,7 @@ pub fn create_element(node: NodeId) -> Element {
         tag: "".to_string(),
         text: None,
         attrs: Default::default(),
+        attrs_bindings: Default::default(),
         position: [0.0; 2],
         size: [0.0; 2],
         content_size: [0.0; 2],
@@ -280,7 +281,7 @@ impl<'c> Cascade<'c> {
         // 1: css rules
         for style in &self.css.styles {
             if match_style(&style, node, tree, matcher) {
-                self.apply_style(style, parent, layout, element);
+                self.apply_declarations(&style.declaration, layout, element);
             }
         }
         // 2: transitions
@@ -320,17 +321,16 @@ impl<'c> Cascade<'c> {
         //     }
         // }
         // 4: element style
-        // TODO: remove clone
-        let style = element.style.clone();
-        for property in &style {
-            self.apply_property(property, layout, element);
+        if !element.style.is_empty() {
+            // TODO: remove clone
+            let declarations = &element.style.clone();
+            self.apply_declarations(declarations, layout, element);
         }
     }
 
-    fn apply_style(
+    fn apply_declarations(
         &mut self,
-        style: &'c Style,
-        _parent: &Element,
+        declarations: &Vec<Declaration>,
         layout: &mut taffy::Style,
         element: &mut Element,
     ) {
@@ -394,7 +394,7 @@ impl<'c> Cascade<'c> {
         //         error!("unable to apply property {property:?}, {error:?}")
         //     }
         // }
-        for declaration in &style.declaration {
+        for declaration in declarations {
             match declaration {
                 Declaration::Variable(variable) => self.set_variable(variable),
                 Declaration::Property(property) => self.apply_property(property, layout, element),
