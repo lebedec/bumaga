@@ -2,7 +2,7 @@
  Implements simple Bumaga engine for development and prototyping of HTML view in browser.
  */
 
-function traverse(node, value) {
+function traverse(node, value, templates) {
     if (node.nodeType !== 1) {
         node.textContent = node.textContent.replaceAll(REGEX_PIPE_GLOBAL, (substring, key) => {
             return getValue(value, key)
@@ -14,6 +14,24 @@ function traverse(node, value) {
     }
     let parent = node.parentNode;
     let newAttributes = [];
+
+    if (node.tagName.toLowerCase() === "template") {
+        parent.removeChild(node);
+        let id = node.getAttribute("id");
+        templates[id] = node;
+        return;
+    }
+
+    if (node.tagName.toLowerCase() in templates) {
+        let id = node.tagName.toLowerCase();
+        let template = templates[id];
+        if (template) {
+            let content = template.content.cloneNode(true);
+            node.appendChild(content);
+            // return;
+        }
+    }
+
     for (let attribute of node.attributes) {
         if (attribute.name.startsWith("*")) {
             let key = attribute.name.substring(1);
@@ -25,7 +43,7 @@ function traverse(node, value) {
             for (let item of getValue(value, binder)) {
                 value[key] = item;
                 let child = node.cloneNode(true);
-                traverse(child, value);
+                traverse(child, value, templates);
                 child.setAttribute("repeated", "")
                 parent.appendChild(child);
             }
@@ -84,7 +102,7 @@ function traverse(node, value) {
         node.setAttribute(key, value);
     }
     for (let child of node.childNodes) {
-        traverse(child, value);
+        traverse(child, value, templates);
     }
 }
 
@@ -110,5 +128,5 @@ function getValueRecursive(value, path) {
 }
 
 window.onload = () => {
-    traverse(document.body, VALUE)
+    traverse(document.body, VALUE, {})
 }

@@ -165,14 +165,13 @@ fn read_declaration_block(pair: Pair<Rule>) -> Vec<Declaration> {
         let id = name.as_span().start();
         let key = name.as_str();
         let declaration = if key.starts_with("--") {
-            let values = shorthands
+            let values: Vec<Shorthand> = shorthands
                 .into_inner()
                 .map(|value| read_shorthand(value))
                 .collect();
             Declaration::Variable(Variable {
-                id,
                 key: key.to_string(),
-                values,
+                shorthand: values[0].clone(),
             })
         } else {
             let key = match PropertyKey::parse(key) {
@@ -186,7 +185,7 @@ fn read_declaration_block(pair: Pair<Rule>) -> Vec<Declaration> {
                 .into_inner()
                 .map(|value| read_shorthand(value))
                 .collect();
-            Declaration::Property(Property { id, key, values })
+            Declaration::Property(Property { key, values })
         };
         declarations.push(declaration)
     }

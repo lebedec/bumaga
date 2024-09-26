@@ -93,16 +93,14 @@ pub enum Declaration {
 
 #[derive(Debug, Clone)]
 pub struct Variable {
-    pub id: usize,
     pub key: String,
-    pub values: Vec<Shorthand>,
+    pub shorthand: Shorthand,
 }
 
 /// A CSS property is a characteristic (like color) whose associated value
 /// defines one aspect of how the application should display the element.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Property {
-    pub id: usize,
     pub key: PropertyKey,
     // TODO: global keywords: initial, inherit, unset
     // TODO: !important declaration

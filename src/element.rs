@@ -37,7 +37,7 @@ pub struct Element {
     pub(crate) style: Vec<Declaration>,
     pub(crate) animators: Vec<Animator>,
     pub(crate) state: ElementState,
-    pub(crate) transitions: HashMap<PropertyKey, Transition>,
+    pub(crate) transitions: Vec<Transition>,
 }
 
 impl Element {
@@ -56,6 +56,13 @@ impl Element {
             self.animators.resize_with(index + 1, Animator::default);
         }
         self.animators.get_mut(index).expect("animator created")
+    }
+
+    pub fn get_transition_mut(&mut self, index: usize) -> &mut Transition {
+        if index >= self.transitions.len() {
+            self.transitions.resize_with(index + 1, Transition::default);
+        }
+        self.transitions.get_mut(index).expect("transition created")
     }
 }
 

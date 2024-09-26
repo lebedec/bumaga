@@ -1,89 +1,59 @@
-use std::collections::HashMap;
-use std::mem::take;
-
 use crate::css::ComputedValue::{Color, Dimension, Number};
 use crate::css::{
-    Animation, AnimationTrack, ComputedStyle, ComputedValue, Css, Dim, Keyframe, PropertyKey,
+    AnimationTrack, ComputedStyle, ComputedValue, Dim, PropertyDescriptor, PropertyKey,
 };
 use crate::Rgba;
 
 #[derive(Clone)]
 pub struct Transition {
-    animator: Animator,
-    keyframe: Keyframe,
-    target_id: usize,
-    current: Option<Vec<ComputedValue>>,
-    // Debounced setter of target value (only last value declaration take effect).
-    setter: Option<(usize, Vec<ComputedValue>)>,
+    pub key: Option<PropertyKey>,
+    pub animator: Animator,
+    pub range: Option<(ComputedValue, ComputedValue)>,
+}
+
+impl Default for Transition {
+    fn default() -> Self {
+        Self {
+            key: None,
+            animator: Default::default(),
+            range: None,
+        }
+    }
 }
 
 impl Transition {
-    // pub fn play(&mut self, css: &Css, time: f32) -> Vec<AnimationResult> {
-    //     if let Some((target_id, target)) = take(&mut self.setter) {
-    //         self.update_keyframe(target_id, target);
-    //     }
-    //     let mut result = vec![];
-    //     if self.animator.running {
-    //         if let Some(t) = self.animator.update(time) {
-    //             let t = (t * 100.0) as u32;
-    //             let r = self.animator.play_keyframe(css, &self.keyframe, t);
-    //             self.current = Some(r.shorthand.clone());
-    //             result.push(r);
-    //         }
-    //     }
-    //     result
-    // }
-    //
-    // pub fn set(&mut self, target_id: usize, target: Vec<ComputedValue>) {
-    //     self.setter = Some((target_id, target));
-    // }
-    //
-    // fn update_keyframe(&mut self, target_id: usize, target: Vec<ComputedValue>) {
-    //     if let Some(current) = self.current.as_ref() {
-    //         if target_id != self.target_id {
-    //             self.target_id = target_id;
-    //             self.animator.time = 0.0;
-    //             self.animator.running = true;
-    //             self.keyframe.frames.insert(0, current.clone());
-    //             self.keyframe.frames.insert(100, target);
-    //         }
-    //     } else {
-    //         self.target_id = target_id;
-    //         self.current = Some(target.clone());
-    //         self.animator.running = true;
-    //         self.keyframe.frames.insert(0, target.clone());
-    //         self.keyframe.frames.insert(100, target.clone());
-    //     }
-    // }
-    //
-    // pub fn set_timing(&mut self, timing: TimingFunction) {
-    //     self.animator.timing = timing;
-    // }
-    //
-    // pub fn set_duration(&mut self, duration: f32) {
-    //     self.animator.duration = duration;
-    // }
-    //
-    // pub fn set_delay(&mut self, delay: f32) {
-    //     self.animator.delay = delay;
-    // }
-}
-
-impl Transition {
-    // pub fn new(key: PropertyKey) -> Self {
-    //     let mut transition = Self {
-    //         animator: Animator::default(),
-    //         keyframe: Keyframe {
-    //             key,
-    //             frames: Default::default(),
-    //         },
-    //         target_id: 0,
-    //         current: None,
-    //         setter: None,
-    //     };
-    //     transition.animator.running = false;
-    //     transition
-    // }
+    pub fn play(&mut self, time: f32, style: &mut ComputedStyle) {
+        let key = match self.key {
+            Some(key) => key,
+            None => return,
+        };
+        let time = match self.animator.update(time) {
+            Some(time) => time,
+            None => return,
+        };
+        let mut index = 0;
+        loop {
+            let descriptor = PropertyDescriptor::new(key, index);
+            let value = match style.get(&descriptor) {
+                Some(value) => value,
+                None => return,
+            };
+            let (from, to) = match self.range.as_ref() {
+                Some(range) => range,
+                None => {
+                    self.range = Some((value.clone(), value.clone()));
+                    continue;
+                }
+            };
+            let current = animate(key, from, to, time);
+            if to != value {
+                self.range = Some((current.clone(), value.clone()));
+                self.animator.restart();
+            }
+            style.insert(descriptor, current);
+            index += 1;
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -119,6 +89,10 @@ impl Default for Animator {
 }
 
 impl Animator {
+    pub fn restart(&mut self) {
+        self.time = 0.0;
+    }
+
     pub fn play(&mut self, time: f32, tracks: &Vec<AnimationTrack>, style: &mut ComputedStyle) {
         if let Some(time) = self.update(time) {
             let step = (time * 100.0) as u32;
@@ -175,6 +149,12 @@ impl Animator {
 }
 
 pub fn animate(key: PropertyKey, a: &ComputedValue, b: &ComputedValue, t: f32) -> ComputedValue {
+    if t == 0.0 {
+        return a.clone();
+    }
+    if t == 1.0 {
+        return b.clone();
+    }
     match (a, b) {
         (Number(a), Number(b)) => number(a, b, t),
         (Dimension(a), Dimension(b)) => dimension(a, b, t),

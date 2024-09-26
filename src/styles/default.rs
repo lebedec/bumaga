@@ -75,7 +75,7 @@ pub fn create_element(node: NodeId) -> Element {
         animators: vec![],
         scrolling: None,
         clipping: None,
-        transitions: HashMap::default(),
+        transitions: vec![],
         state: Default::default(),
         pointer_events: Default::default(),
         style: vec![],

@@ -212,6 +212,24 @@ impl<'c> Cascade<'c> {
             //     element.transforms = resolve_transforms(shorthand, self)?;
             // }
             //
+            // Transition
+            //
+            (PropertyKey::Transition, [property, duration]) => {
+                overwrite(PropertyKey::TransitionProperty, property);
+                overwrite(PropertyKey::TransitionDuration, duration);
+            }
+            (PropertyKey::Transition, [property, duration, timing]) => {
+                overwrite(PropertyKey::TransitionProperty, property);
+                overwrite(PropertyKey::TransitionDuration, duration);
+                overwrite(PropertyKey::TransitionTimingFunction, timing);
+            }
+            (PropertyKey::Transition, [property, duration, timing, delay]) => {
+                overwrite(PropertyKey::TransitionProperty, property);
+                overwrite(PropertyKey::TransitionDuration, duration);
+                overwrite(PropertyKey::TransitionTimingFunction, timing);
+                overwrite(PropertyKey::TransitionDelay, delay);
+            }
+            //
             // Animation
             //
             // There is no static shorthand pattern, we should set values by it type and order

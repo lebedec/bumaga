@@ -5,6 +5,7 @@ use crate::css::ComputedValue::{Keyword, Time};
 use crate::css::{ComputedValue, Dim, PropertyKey, Units};
 use crate::styles::{Cascade, CascadeError};
 use crate::{Element, Length, PointerEvents, TextAlign, TransformFunction};
+use log::error;
 use taffy::{Dimension, LengthPercentage, LengthPercentageAuto, Overflow};
 
 impl<'c> Cascade<'c> {
@@ -184,6 +185,26 @@ impl<'c> Cascade<'c> {
             }
             (PropertyKey::RowGap, row) => {
                 layout.gap.height = lengthp(row, self)?;
+            }
+            //
+            // Transition
+            //
+            (PropertyKey::TransitionProperty, Keyword(name)) => {
+                let key = match PropertyKey::parse(name) {
+                    Some(key) => key,
+                    None => return CascadeError::invalid_keyword(name),
+                };
+                element.get_transition_mut(index).key = Some(key);
+            }
+            (PropertyKey::TransitionDuration, Time(duration)) => {
+                element.get_transition_mut(index).animator.duration = *duration;
+            }
+            (PropertyKey::TransitionDelay, Time(delay)) => {
+                element.get_transition_mut(index).animator.delay = *delay;
+            }
+            (PropertyKey::TransitionTimingFunction, timing) => {
+                let timing = resolve_timing(timing, self)?;
+                element.get_transition_mut(index).animator.timing = timing;
             }
             //
             // Animation

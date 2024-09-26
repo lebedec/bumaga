@@ -40,7 +40,7 @@ use crate::{
 /// property values originating from different sources.
 pub struct Cascade<'c> {
     css: &'c Css,
-    variables: HashMap<&'c str, &'c Vec<Shorthand>>,
+    variables: HashMap<String, Shorthand>,
     sizes: Sizes,
     resources: &'c str,
 }
@@ -111,7 +111,11 @@ impl<'c> Cascade<'c> {
             let tracks = self.compute_animation_tracks(animation, &computed_style);
             animator.play(time, &tracks, &mut computed_style);
         }
-        // 4: transitions ?
+        // TODO: !important
+        // 4: transitions
+        for transition in element.transitions.iter_mut() {
+            transition.play(time, &mut computed_style);
+        }
         for (property, value) in computed_style {
             if let Err(error) = self.apply(property.key, property.index, &value, layout, element) {
                 error!("unable to apply {property:?}:{value:?} because of {error:?}");
@@ -119,81 +123,7 @@ impl<'c> Cascade<'c> {
         }
     }
 
-    // fn apply_declarations(
-    //     &mut self,
-    //     declarations: &Vec<Declaration>,
-    //     layout: &mut taffy::Style,
-    //     element: &mut Element,
-    // ) {
-    //     // for property in &styles.declaration {
-    //     //     // if let PropertyKey::Variable(name) = property.key {
-    //     //     //     self.push_variable(name, &property.values);
-    //     //     //     continue;
-    //     //     // }
-    //     //     if PropertyKey::Transition == property.key {
-    //     //         for shorthand in property.values.to_vec() {
-    //     //             let key = match &shorthand[0] {
-    //     //                 Keyword(name) => {
-    //     //                     let key = match PropertyKey::parse(name) {
-    //     //                         Some(key) => key,
-    //     //                         None => {
-    //     //                             error!("unable to make transition of {name}, not supported");
-    //     //                             continue;
-    //     //                         }
-    //     //                     };
-    //     //                     key
-    //     //                 }
-    //     //                 _ => {
-    //     //                     error!("invalid transition property value");
-    //     //                     continue;
-    //     //                 }
-    //     //             };
-    //     //             let transition = element
-    //     //                 .transitions
-    //     //                 .entry(key)
-    //     //                 .or_insert_with(|| Transition::new(key));
-    //     //             match &shorthand[1..] {
-    //     //                 [Time(duration)] => {
-    //     //                     transition.set_duration(*duration);
-    //     //                 }
-    //     //                 [Time(duration), timing] => {
-    //     //                     transition.set_duration(*duration);
-    //     //                     transition.set_timing(resolve_timing(&timing, self).unwrap());
-    //     //                 }
-    //     //                 [Time(duration), timing, Time(delay)] => {
-    //     //                     transition.set_duration(*duration);
-    //     //                     transition.set_timing(resolve_timing(&timing, self).unwrap());
-    //     //                     transition.set_delay(*delay);
-    //     //                 }
-    //     //                 shorthand => {
-    //     //                     error!("transition value not supported {shorthand:?}");
-    //     //                     continue;
-    //     //                 }
-    //     //             }
-    //     //         }
-    //     //         continue;
-    //     //     }
-    //     //     if let Some(transition) = element.transitions.get_mut(&property.key) {
-    //     //         let shorthand = property.get_first_shorthand();
-    //     //         // ID ?
-    //     //         transition.set(property.id, shorthand);
-    //     //         continue;
-    //     //     }
-    //     //     if let Err(error) =
-    //     //         self.apply_shorthand(property.key, &property.values[0], layout, element)
-    //     //     {
-    //     //         error!("unable to apply property {property:?}, {error:?}")
-    //     //     }
-    //     // }
-    //     for declaration in declarations {
-    //         match declaration {
-    //             Declaration::Variable(variable) => self.set_variable(variable),
-    //             Declaration::Property(property) => self.apply_property(property, layout, element),
-    //         }
-    //     }
-    // }
-
-    fn compute_declaration_block(&self, block: &[Declaration], style: &mut ComputedStyle) {
+    fn compute_declaration_block(&mut self, block: &[Declaration], style: &mut ComputedStyle) {
         for declaration in block {
             match declaration {
                 Declaration::Variable(variable) => self.set_variable(variable),
@@ -238,12 +168,13 @@ impl<'c> Cascade<'c> {
         true
     }
 
-    fn set_variable(&self, variable: &Variable) {
-        unimplemented!()
+    fn set_variable(&mut self, variable: &Variable) {
+        self.variables
+            .insert(variable.key.clone(), variable.shorthand.clone());
     }
 
     fn get_variable(&self, name: &str) -> Option<&Shorthand> {
-        unimplemented!()
+        self.variables.get(name)
     }
 }
 
