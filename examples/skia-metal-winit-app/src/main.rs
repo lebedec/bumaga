@@ -44,7 +44,7 @@ fn main() {
     let mut todo = "Enter a todo".to_string();
 
     let mut component =
-        Component::watch_files("../shared/index.html", "../shared/style.css", "../shared/");
+        Component::watch_files("../shared/index.html", "../shared/styles.css", "../shared/");
 
     let mut mouse_position = [0.0, 0.0];
     let mut time = Instant::now();

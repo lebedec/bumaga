@@ -20,7 +20,7 @@ async fn main() {
         .await
         .unwrap();
     let mut fonts = FontSystem { font };
-    let mut view = View::watch("../shared/view.html", "../shared/style.css", "../shared/")
+    let mut view = View::watch("../shared/view.html", "../shared/styles.css", "../shared/")
         .unwrap()
         .pipe("cap", |value| value.eval_string().to_uppercase().into());
     let mut todos_done = vec![];

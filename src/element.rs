@@ -30,13 +30,14 @@ pub struct Element {
     pub listeners: HashMap<String, Handler>,
     pub opacity: f32,
     pub transforms: Vec<TransformFunction>,
-    pub animator: Animator,
     pub scrolling: Option<Scrolling>,
     pub clipping: Option<Layout>,
-    pub(crate) transitions: HashMap<PropertyKey, Transition>,
-    pub(crate) state: ElementState,
     pub pointer_events: PointerEvents,
-    pub style: Vec<Declaration>,
+
+    pub(crate) style: Vec<Declaration>,
+    pub(crate) animators: Vec<Animator>,
+    pub(crate) state: ElementState,
+    pub(crate) transitions: HashMap<PropertyKey, Transition>,
 }
 
 impl Element {
@@ -48,6 +49,13 @@ impl Element {
     #[inline(always)]
     pub fn value(&self) -> Option<&String> {
         self.attrs.get("value")
+    }
+
+    pub fn get_animator_mut(&mut self, index: usize) -> &mut Animator {
+        if index >= self.animators.len() {
+            self.animators.resize_with(index + 1, Animator::default);
+        }
+        self.animators.get_mut(index).expect("animator created")
     }
 }
 
@@ -188,7 +196,7 @@ pub struct FontFace {
     pub family: String,
     /// The font size.
     pub size: f32,
-    // The font style.
+    // The font styles.
     pub style: String,
     /// The font weight.
     pub weight: u16,

@@ -344,16 +344,16 @@ mod tests {
 
     #[test]
     pub fn test_binding_attribute_style() {
-        let html = html(r#"<input @style="top: {pivot.x}px;" />"#);
-        let expected = [attr("style", &[t("top: "), b("pivot.x"), t("px;")])];
+        let html = html(r#"<input @styles="top: {pivot.x}px;" />"#);
+        let expected = [attr("styles", &[t("top: "), b("pivot.x"), t("px;")])];
         assert_eq!(html.bindings, expected)
     }
 
     #[test]
     pub fn test_binding_attribute_style_multiple_properties() {
-        let html = html(r#"<input @style="width: {width}px; height: {height}px;" />"#);
+        let html = html(r#"<input @styles="width: {width}px; height: {height}px;" />"#);
         let expected = [attr(
-            "style",
+            "styles",
             &[
                 t("width: "),
                 b("width"),

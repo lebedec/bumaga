@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::process;
 
 use sdl2::event::Event;
-use sdl2::EventPump;
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
@@ -10,6 +9,7 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{BlendMode, Canvas, Texture, TextureCreator, WindowCanvas};
 use sdl2::ttf::{Font, Sdl2TtfContext};
+use sdl2::EventPump;
 use serde_json::json;
 
 use bumaga::{Component, Element, Fonts, Input, Keys, Rgba, TextStyle};
@@ -42,7 +42,7 @@ fn run() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
 
     let mut component =
-        Component::watch_files("../shared/index.html", "../shared/style.css", "../shared");
+        Component::watch_files("../shared/index.html", "../shared/styles.css", "../shared");
     let todos = [
         "learn bumaga documentation",
         "create UI using HTML",

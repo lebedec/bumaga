@@ -8,15 +8,22 @@ pub struct Css {
     pub animations: HashMap<String, Animation>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct Animation {
+    pub name: String,
     pub keyframes: Vec<Keyframe>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Keyframe {
-    pub key: PropertyKey,
-    pub frames: BTreeMap<u32, Vec<Shorthand>>,
+    pub step: u32,
+    pub declaration: Vec<Declaration>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnimationTrack {
+    pub descriptor: PropertyDescriptor,
+    pub frames: BTreeMap<u32, ComputedValue>,
 }
 
 /// A complex selector is a sequence of one or more simple and/or compound selectors that are
@@ -93,7 +100,7 @@ pub struct Variable {
 
 /// A CSS property is a characteristic (like color) whose associated value
 /// defines one aspect of how the application should display the element.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Property {
     pub id: usize,
     pub key: PropertyKey,
@@ -126,6 +133,21 @@ pub enum ComputedValue {
     Color([u8; 4]),
     String(String),
 }
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct PropertyDescriptor {
+    pub key: PropertyKey,
+    pub index: usize,
+}
+
+impl PropertyDescriptor {
+    #[inline(always)]
+    pub fn new(key: PropertyKey, index: usize) -> Self {
+        Self { key, index }
+    }
+}
+
+pub type ComputedStyle = HashMap<PropertyDescriptor, ComputedValue>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Dim {
@@ -225,6 +247,8 @@ pub enum PropertyKey {
     BackgroundImage,
     BackgroundOrigin,
     BackgroundPosition,
+    BackgroundPositionX,
+    BackgroundPositionY,
     BackgroundRepeat,
     BackgroundSize,
     BaselineShift,
@@ -840,19 +864,19 @@ impl PropertyKey {
             "border-block-color" => Self::BorderBlockColor,
             "border-block-end" => Self::BorderBlockEnd,
             "border-block-end-color" => Self::BorderBlockEndColor,
-            "border-block-end-style" => Self::BorderBlockEndStyle,
+            "border-block-end-styles" => Self::BorderBlockEndStyle,
             "border-block-end-width" => Self::BorderBlockEndWidth,
             "border-block-start" => Self::BorderBlockStart,
             "border-block-start-color" => Self::BorderBlockStartColor,
-            "border-block-start-style" => Self::BorderBlockStartStyle,
+            "border-block-start-styles" => Self::BorderBlockStartStyle,
             "border-block-start-width" => Self::BorderBlockStartWidth,
-            "border-block-style" => Self::BorderBlockStyle,
+            "border-block-styles" => Self::BorderBlockStyle,
             "border-block-width" => Self::BorderBlockWidth,
             "border-bottom" => Self::BorderBottom,
             "border-bottom-color" => Self::BorderBottomColor,
             "border-bottom-left-radius" => Self::BorderBottomLeftRadius,
             "border-bottom-right-radius" => Self::BorderBottomRightRadius,
-            "border-bottom-style" => Self::BorderBottomStyle,
+            "border-bottom-styles" => Self::BorderBottomStyle,
             "border-bottom-width" => Self::BorderBottomWidth,
             "border-boundary" => Self::BorderBoundary,
             "border-collapse" => Self::BorderCollapse,
@@ -869,32 +893,32 @@ impl PropertyKey {
             "border-inline-color" => Self::BorderInlineColor,
             "border-inline-end" => Self::BorderInlineEnd,
             "border-inline-end-color" => Self::BorderInlineEndColor,
-            "border-inline-end-style" => Self::BorderInlineEndStyle,
+            "border-inline-end-styles" => Self::BorderInlineEndStyle,
             "border-inline-end-width" => Self::BorderInlineEndWidth,
             "border-inline-start" => Self::BorderInlineStart,
             "border-inline-start-color" => Self::BorderInlineStartColor,
-            "border-inline-start-style" => Self::BorderInlineStartStyle,
+            "border-inline-start-styles" => Self::BorderInlineStartStyle,
             "border-inline-start-width" => Self::BorderInlineStartWidth,
-            "border-inline-style" => Self::BorderInlineStyle,
+            "border-inline-styles" => Self::BorderInlineStyle,
             "border-inline-width" => Self::BorderInlineWidth,
             "border-left" => Self::BorderLeft,
             "border-left-color" => Self::BorderLeftColor,
-            "border-left-style" => Self::BorderLeftStyle,
+            "border-left-styles" => Self::BorderLeftStyle,
             "border-left-width" => Self::BorderLeftWidth,
             "border-radius" => Self::BorderRadius,
             "border-right" => Self::BorderRight,
             "border-right-color" => Self::BorderRightColor,
-            "border-right-style" => Self::BorderRightStyle,
+            "border-right-styles" => Self::BorderRightStyle,
             "border-right-width" => Self::BorderRightWidth,
             "border-spacing" => Self::BorderSpacing,
             "border-start-end-radius" => Self::BorderStartEndRadius,
             "border-start-start-radius" => Self::BorderStartStartRadius,
-            "border-style" => Self::BorderStyle,
+            "border-styles" => Self::BorderStyle,
             "border-top" => Self::BorderTop,
             "border-top-color" => Self::BorderTopColor,
             "border-top-left-radius" => Self::BorderTopLeftRadius,
             "border-top-right-radius" => Self::BorderTopRightRadius,
-            "border-top-style" => Self::BorderTopStyle,
+            "border-top-styles" => Self::BorderTopStyle,
             "border-top-width" => Self::BorderTopWidth,
             "border-width" => Self::BorderWidth,
             "bottom" => Self::Bottom,
@@ -924,7 +948,7 @@ impl PropertyKey {
             "column-gap" => Self::ColumnGap,
             "column-rule" => Self::ColumnRule,
             "column-rule-color" => Self::ColumnRuleColor,
-            "column-rule-style" => Self::ColumnRuleStyle,
+            "column-rule-styles" => Self::ColumnRuleStyle,
             "column-rule-width" => Self::ColumnRuleWidth,
             "column-span" => Self::ColumnSpan,
             "column-width" => Self::ColumnWidth,
@@ -991,11 +1015,11 @@ impl PropertyKey {
             "font-size" => Self::FontSize,
             "font-size-adjust" => Self::FontSizeAdjust,
             "font-stretch" => Self::FontStretch,
-            "font-style" => Self::FontStyle,
+            "font-styles" => Self::FontStyle,
             "font-synthesis" => Self::FontSynthesis,
             "font-synthesis-position" => Self::FontSynthesisPosition,
             "font-synthesis-small-caps" => Self::FontSynthesisSmallCaps,
-            "font-synthesis-style" => Self::FontSynthesisStyle,
+            "font-synthesis-styles" => Self::FontSynthesisStyle,
             "font-synthesis-weight" => Self::FontSynthesisWeight,
             "font-variant" => Self::FontVariant,
             "font-variant-alternates" => Self::FontVariantAlternates,
@@ -1068,10 +1092,10 @@ impl PropertyKey {
             "line-height-step" => Self::LineHeightStep,
             "line-padding" => Self::LinePadding,
             "line-snap" => Self::LineSnap,
-            "list-style" => Self::ListStyle,
-            "list-style-image" => Self::ListStyleImage,
-            "list-style-position" => Self::ListStylePosition,
-            "list-style-type" => Self::ListStyleType,
+            "list-styles" => Self::ListStyle,
+            "list-styles-image" => Self::ListStyleImage,
+            "list-styles-position" => Self::ListStylePosition,
+            "list-styles-type" => Self::ListStyleType,
             "margin" => Self::Margin,
             "margin-block" => Self::MarginBlock,
             "margin-block-end" => Self::MarginBlockEnd,
@@ -1140,7 +1164,7 @@ impl PropertyKey {
             "outline" => Self::Outline,
             "outline-color" => Self::OutlineColor,
             "outline-offset" => Self::OutlineOffset,
-            "outline-style" => Self::OutlineStyle,
+            "outline-styles" => Self::OutlineStyle,
             "outline-width" => Self::OutlineWidth,
             "overflow" => Self::Overflow,
             "overflow-anchor" => Self::OverflowAnchor,
@@ -1306,14 +1330,14 @@ impl PropertyKey {
             "text-decoration-skip-inset" => Self::TextDecorationSkipInset,
             "text-decoration-skip-self" => Self::TextDecorationSkipSelf,
             "text-decoration-skip-spaces" => Self::TextDecorationSkipSpaces,
-            "text-decoration-style" => Self::TextDecorationStyle,
+            "text-decoration-styles" => Self::TextDecorationStyle,
             "text-decoration-thickness" => Self::TextDecorationThickness,
             "text-decoration-trim" => Self::TextDecorationTrim,
             "text-emphasis" => Self::TextEmphasis,
             "text-emphasis-color" => Self::TextEmphasisColor,
             "text-emphasis-position" => Self::TextEmphasisPosition,
             "text-emphasis-skip" => Self::TextEmphasisSkip,
-            "text-emphasis-style" => Self::TextEmphasisStyle,
+            "text-emphasis-styles" => Self::TextEmphasisStyle,
             "text-group-align" => Self::TextGroupAlign,
             "text-indent" => Self::TextIndent,
             "text-justify" => Self::TextJustify,
@@ -1327,13 +1351,13 @@ impl PropertyKey {
             "text-underline-position" => Self::TextUnderlinePosition,
             "text-wrap" => Self::TextWrap,
             "text-wrap-mode" => Self::TextWrapMode,
-            "text-wrap-style" => Self::TextWrapStyle,
+            "text-wrap-styles" => Self::TextWrapStyle,
             "timeline-scope" => Self::TimelineScope,
             "top" => Self::Top,
             "transform" => Self::Transform,
             "transform-box" => Self::TransformBox,
             "transform-origin" => Self::TransformOrigin,
-            "transform-style" => Self::TransformStyle,
+            "transform-styles" => Self::TransformStyle,
             "transition" => Self::Transition,
             "transition-behavior" => Self::TransitionBehavior,
             "transition-delay" => Self::TransitionDelay,

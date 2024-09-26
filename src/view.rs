@@ -1,6 +1,4 @@
-use crate::css::{
-    read_css, read_declaration_block, Css, Declaration, PseudoClassMatcher, ReaderError,
-};
+use crate::css::{read_css, read_inline_css, Css, Declaration, PseudoClassMatcher, ReaderError};
 use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
 use crate::rendering::Renderer;
@@ -332,13 +330,13 @@ impl View {
                 attribute.spans[span] = text;
                 let value = attribute.to_string();
                 element.attrs.insert(key.clone(), value.clone());
-                if key == "style" {
-                    match read_declaration_block(&format!("{{ {} }}", value)) {
+                if key == "styles" {
+                    match read_inline_css(&format!("{{ {} }}", value)) {
                         Ok(style) => {
                             element.style = style;
                         }
                         Err(error) => {
-                            error!("unable to parse style of {}, {error:?}", element.tag);
+                            error!("unable to parse styles of {}, {error:?}", element.tag);
                         }
                     }
                 }
@@ -408,7 +406,7 @@ impl View {
         let mut cascade = Cascade::new(&self.css, sizes, "./");
         cascade.apply_styles(input, node, &self.tree, parent, &mut layout, element, self);
 
-        // we must update style only if changes detected to support Taffy cache system
+        // we must update styles only if changes detected to support Taffy cache system
         if self.tree.style(node)? != &layout {
             self.tree.set_style(node, layout)?;
         }
@@ -798,7 +796,7 @@ mod tests {
             .expect("valid update");
 
         let mut output = Output::new();
-        for time in [0.0, 0.5, 1.0].map(Duration::from_secs_f32) {
+        for time in [0.0, 0.49, 1.0].map(Duration::from_secs_f32) {
             output = view
                 .update(Input::new().time(time), value.clone())
                 .expect("valid update");
