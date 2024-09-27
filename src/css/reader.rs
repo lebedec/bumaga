@@ -460,29 +460,42 @@ mod tests {
     }
 
     #[test]
-    pub fn test_string_matcher() {
-        let css = css(r#"[data-something="abc"] {}"#);
+    pub fn test_matcher_exist() {
+        let css = css(r#"[data-something] {}"#);
         let selectors = style_selectors(&css);
-        if let Simple::Attribute(key, matcher, value) = selectors[0] {
-            assert_eq!(key, "data-something", "key");
-            assert_eq!(*matcher, Matcher::Equal, "matcher");
-            assert_eq!(value, "abc", "value");
-        } else {
-            assert!(false, "selector type")
-        }
+
+        assert_eq!(
+            selectors[0],
+            &Simple::Attribute("data-something".to_string(), Matcher::Exist, "".to_string())
+        );
     }
 
     #[test]
-    pub fn test_ident_matcher() {
+    pub fn test_matcher_equal_string() {
+        let css = css(r#"[data-something="abc"] {}"#);
+        let selectors = style_selectors(&css);
+        assert_eq!(
+            selectors[0],
+            &Simple::Attribute(
+                "data-something".to_string(),
+                Matcher::Equal,
+                "abc".to_string()
+            )
+        );
+    }
+
+    #[test]
+    pub fn test_matcher_equal_ident() {
         let css = css(r#"[data-something=abc] {}"#);
         let selectors = style_selectors(&css);
-        if let Simple::Attribute(key, matcher, value) = selectors[0] {
-            assert_eq!(key, "data-something", "key");
-            assert_eq!(*matcher, Matcher::Equal, "matcher");
-            assert_eq!(value, "abc", "value");
-        } else {
-            assert!(false, "selector type")
-        }
+        assert_eq!(
+            selectors[0],
+            &Simple::Attribute(
+                "data-something".to_string(),
+                Matcher::Equal,
+                "abc".to_string()
+            )
+        );
     }
 
     #[test]

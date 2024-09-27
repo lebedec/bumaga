@@ -91,6 +91,10 @@ fn match_simple_selector(
             .unwrap_or(false),
         Simple::Attribute(name, operator, value) => {
             let value = value.as_str();
+            // println!(
+            //     "OPERATOR {operator:?} [{name}] {}",
+            //     element.attrs.contains_key(name)
+            // );
             element
                 .attrs
                 .get(name.as_str())

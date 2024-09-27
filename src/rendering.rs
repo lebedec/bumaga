@@ -132,6 +132,15 @@ impl Renderer {
                     }
                     element.attrs.insert(key, value);
                 }
+                ElementBinding::Tag(key, binder) => {
+                    let path = self.schema.field(&binder, &mut self.locals);
+                    let params = BindingParams::Tag(node, key.clone());
+                    let binding = Binding {
+                        params,
+                        pipe: binder.pipe.clone(),
+                    };
+                    self.bindings.entry(path).or_default().push(binding);
+                }
                 ElementBinding::Attribute(key, text) => {
                     if let Some(value) = text.as_simple_text() {
                         warn!(
@@ -182,7 +191,10 @@ impl Renderer {
                     }
                     element.listeners.insert(event.clone(), handler);
                 }
-                _ => {}
+                // used on other rendering stages
+                ElementBinding::Alias(_, _) => {}
+                ElementBinding::Repeat(_, _, _) => {}
+                ElementBinding::Visibility(_, _) => {}
             }
         }
         let mut children = vec![];

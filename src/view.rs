@@ -616,6 +616,7 @@ impl Source {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::system::setup_tests_logging;
     use crate::{Call, InputEvent};
     use serde::Serialize;
     use serde_json::json;
@@ -626,6 +627,129 @@ mod tests {
             function: function.to_string(),
             arguments: vec![serde_json::to_value(value).expect("valid value")],
         }
+    }
+
+    fn view(html: &str, css: &str) -> View {
+        setup_tests_logging();
+        View::compile(html, css, "").expect("view valid and compiling complete")
+    }
+
+    fn input(time: f32) -> Input {
+        Input::new().time(Duration::from_secs_f32(time))
+    }
+
+    #[test]
+    pub fn test_transition_simple_forward_by_style() {
+        let css = r#"
+            div {
+                width: 0px;
+                height: 20px;
+                transition: width 1s;
+            }
+        "#;
+        let html = r#"
+        <html>
+            <body>
+                <div @style="width: {width}px;"></div>
+            </body>
+        </html>"#;
+        let timeline = [
+            (0.1, json!({ "width": 0})),
+            (0.1, json!({ "width": 0})),
+            (0.1, json!({ "width": 100 })),
+            (0.1, json!({ "width": 100 })),
+            (0.1, json!({ "width": 100 })),
+            (0.8, json!({ "width": 100 })),
+            (0.1, json!({ "width": 100 })),
+        ];
+        let mut view = view(html, css);
+
+        let mut changes: Vec<f32> = vec![];
+        for (time, value) in timeline {
+            view.update(input(time), value).unwrap();
+            let [width, _height] = view.body().children()[0].size;
+            changes.push(width);
+        }
+
+        assert_eq!(changes, [0.0, 0.0, 0.0, 10.0, 20.0, 100.0, 100.0]);
+    }
+
+    #[test]
+    pub fn test_transition_simple_forward_by_class() {
+        let css = r#"
+            div {
+                width: 0px;
+                height: 20px;
+                transition: width 1s;
+            }
+            div.open {
+                width: 100px;
+            }
+        "#;
+        let html = r#"
+        <html>
+            <body>
+                <div @class="{class}"></div>
+            </body>
+        </html>"#;
+        let timeline = [
+            (0.1, json!({ "class": ""})),
+            (0.1, json!({ "class": ""})),
+            (0.1, json!({ "class": "open" })),
+            (0.1, json!({ "class": "open" })),
+            (0.1, json!({ "class": "open" })),
+            (0.8, json!({ "class": "open" })),
+            (0.1, json!({ "class": "open" })),
+        ];
+        let mut view = view(html, css);
+
+        let mut changes: Vec<f32> = vec![];
+        for (time, value) in timeline {
+            view.update(input(time), value).unwrap();
+            let [width, _height] = view.body().children()[0].size;
+            changes.push(width);
+        }
+
+        assert_eq!(changes, [0.0, 0.0, 0.0, 10.0, 20.0, 100.0, 100.0]);
+    }
+
+    #[test]
+    pub fn test_transition_simple_mixed_by_class() {
+        let css = r#"
+            div {
+                width: 0px;
+                height: 20px;
+                transition: width 1s;
+            }
+            div.open {
+                width: 100px;
+            }
+        "#;
+        let html = r#"
+        <html>
+            <body>
+                <div @class="{class}"></div>
+            </body>
+        </html>"#;
+        let timeline = [
+            (0.1, json!({ "class": ""})),
+            (0.1, json!({ "class": "open" })),
+            (0.1, json!({ "class": "open" })),
+            (0.1, json!({ "class": "" })),
+            (0.1, json!({ "class": "" })),
+            (0.8, json!({ "class": "" })),
+            (0.1, json!({ "class": "" })),
+        ];
+        let mut view = view(html, css);
+
+        let mut changes: Vec<f32> = vec![];
+        for (time, value) in timeline {
+            view.update(input(time), value).unwrap();
+            let [width, _height] = view.body().children()[0].size;
+            changes.push(width);
+        }
+
+        assert_eq!(changes, [0.0, 0.0, 10.0, 20.0, 18.0, 2.0, 0.0]);
     }
 
     #[test]

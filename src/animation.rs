@@ -1,4 +1,4 @@
-use crate::css::ComputedValue::{Color, Dimension, Number};
+use crate::css::ComputedValue::{Color, Dimension, Number, Percentage, Zero};
 use crate::css::{
     AnimationTrack, ComputedStyle, ComputedValue, Dim, PropertyDescriptor, PropertyKey,
 };
@@ -22,6 +22,26 @@ impl Default for Transition {
 }
 
 impl Transition {
+    pub fn init_after_style_applied(&mut self, style: &mut ComputedStyle) {
+        if self.range.is_some() {
+            return;
+        }
+        let key = match self.key {
+            Some(key) => key,
+            None => return,
+        };
+        let mut index = 0;
+        loop {
+            let descriptor = PropertyDescriptor::new(key, index);
+            let value = match style.get(&descriptor) {
+                Some(value) => value,
+                None => return,
+            };
+            self.range = Some((value.clone(), value.clone()));
+            index += 1;
+        }
+    }
+
     pub fn play(&mut self, time: f32, style: &mut ComputedStyle) {
         let key = match self.key {
             Some(key) => key,
@@ -41,16 +61,17 @@ impl Transition {
             let (from, to) = match self.range.as_ref() {
                 Some(range) => range,
                 None => {
-                    self.range = Some((value.clone(), value.clone()));
                     continue;
                 }
             };
-            let current = animate(key, from, to, time);
+            let current = animate(key, &from, &to, time);
             if to != value {
                 self.range = Some((current.clone(), value.clone()));
                 self.animator.restart();
             }
-            style.insert(descriptor, current);
+            if &current != value {
+                style.insert(descriptor, current);
+            }
             index += 1;
         }
     }
@@ -157,6 +178,16 @@ pub fn animate(key: PropertyKey, a: &ComputedValue, b: &ComputedValue, t: f32) -
     }
     match (a, b) {
         (Number(a), Number(b)) => number(a, b, t),
+        (Percentage(a), Percentage(b)) => percentage(a, b, t),
+        (Percentage(a), Zero) => {
+            let percentage = percentage(a, &0.0, t);
+            if Percentage(0.0) == percentage {
+                Zero
+            } else {
+                percentage
+            }
+        }
+        (Zero, Percentage(b)) => percentage(&0.0, b, t),
         (Dimension(a), Dimension(b)) => dimension(a, b, t),
         (Color(a), Color(b)) => color(a, b, t),
         (a, b) => {
@@ -227,6 +258,10 @@ fn dimension(a: &Dim, b: &Dim, t: f32) -> ComputedValue {
             unit: a.unit,
         })
     }
+}
+
+fn percentage(a: &f32, b: &f32, t: f32) -> ComputedValue {
+    Percentage(a + (b - a) * t)
 }
 
 fn number(a: &f32, b: &f32, t: f32) -> ComputedValue {

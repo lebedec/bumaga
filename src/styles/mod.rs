@@ -118,10 +118,13 @@ impl<'c> Cascade<'c> {
         for transition in element.transitions.iter_mut() {
             transition.play(time, &mut computed_style);
         }
-        for (property, value) in computed_style {
+        for (property, value) in &computed_style {
             if let Err(error) = self.apply(property.key, property.index, &value, layout, element) {
                 error!("unable to apply {property:?}:{value:?} because of {error:?}");
             }
+        }
+        for transition in element.transitions.iter_mut() {
+            transition.init_after_style_applied(&mut computed_style);
         }
     }
 
