@@ -18,7 +18,7 @@ pub type Bindings = BTreeMap<String, Vec<Binding>>;
 pub type Transformer = fn(Value) -> Value;
 
 pub struct ViewModel {
-    bindings: Bindings,
+    pub(crate) bindings: Bindings,
     model: Value,
     model_array_default: HashMap<String, Value>,
     pub(crate) transformers: HashMap<String, Transformer>,
@@ -599,31 +599,6 @@ fn default_transformers() -> HashMap<String, Transformer> {
 mod tests {
     use super::*;
 
-    fn node(id: u64) -> NodeId {
-        NodeId::new(id)
-    }
-
-    fn repeat(node: u64, n: usize) -> Binding {
-        Binding {
-            params: BindingParams::Repeat(NodeId::new(node), 0, n),
-            pipe: vec![],
-        }
-    }
-
-    fn text(node: u64) -> Binding {
-        Binding {
-            params: BindingParams::Text(NodeId::new(node), 0),
-            pipe: vec![],
-        }
-    }
-
-    fn attr(node: u64, attr: &str, span: usize) -> Binding {
-        Binding {
-            params: BindingParams::Attribute(NodeId::new(node), attr.to_string(), span),
-            pipe: vec![],
-        }
-    }
-
     #[test]
     pub fn test_rebind_simple_array_same_values_reduced_array() {
         let model = json!({
@@ -836,5 +811,30 @@ mod tests {
                 }
             ]
         );
+    }
+
+    fn node(id: u64) -> NodeId {
+        NodeId::new(id)
+    }
+
+    fn repeat(node: u64, n: usize) -> Binding {
+        Binding {
+            params: BindingParams::Repeat(NodeId::new(node), 0, n),
+            pipe: vec![],
+        }
+    }
+
+    fn text(node: u64) -> Binding {
+        Binding {
+            params: BindingParams::Text(NodeId::new(node), 0),
+            pipe: vec![],
+        }
+    }
+
+    fn attr(node: u64, attr: &str, span: usize) -> Binding {
+        Binding {
+            params: BindingParams::Attribute(NodeId::new(node), attr.to_string(), span),
+            pipe: vec![],
+        }
     }
 }

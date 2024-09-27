@@ -63,9 +63,10 @@ PseudoElement = { "::" ~ Ident }
 // properties
 
 DeclarationBlock = {
-    "{" ~ "}" |
-    "{" ~ Declaration* ~ "}"
+    "{" ~ Declarations ~ "}"
 }
+
+Declarations = { Declaration* }
 
 Declaration = { Property ~ ":" ~ Values ~ ";" }
 

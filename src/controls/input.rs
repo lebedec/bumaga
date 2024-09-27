@@ -103,7 +103,7 @@ impl ViewModel {
         text.text
             .as_mut()
             .expect("input value element has text")
-            .spans[0] = value;
+            .set(0, value);
         let text = text.node;
         tree.mark_dirty(text).map_err(ViewError::from)
     }

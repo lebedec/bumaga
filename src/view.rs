@@ -2,7 +2,7 @@ use crate::css::{read_css, read_inline_css, Css, Declaration, PseudoClassMatcher
 use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
 use crate::rendering::Renderer;
-use crate::styles::{inherit, Cascade, Scrolling, Sizes};
+use crate::styles::{inherit, Cascade, Scrolling, Sizes, Variables};
 use crate::tree::ViewTreeExtensions;
 use crate::view_model::{Reaction, ViewModel};
 use crate::{
@@ -11,6 +11,7 @@ use crate::{
 use log::{error, info};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::env::var;
 use std::fs;
 use std::ops::{Add, Deref, DerefMut};
 use std::path::PathBuf;
@@ -211,7 +212,7 @@ impl View {
             viewport_width,
             viewport_height,
         };
-        self.apply_styles(self.body, &input, sizes)?;
+        self.apply_styles(self.body, &input, sizes, Variables::default())?;
         self.tree.compute_layout_with_measure(
             self.body,
             Size::MAX_CONTENT,
@@ -229,10 +230,7 @@ impl View {
         mut clipping: Option<Layout>,
     ) -> Result<(), ViewError> {
         let mut layout = self.tree.get_final_layout(node).clone();
-        let style = self.tree.style(node)?;
-        if style.position == Position::Relative {
-            layout.location = layout.location.add(location);
-        }
+        layout.location = layout.location.add(location);
         let element = self.tree.get_node_context_mut(node).unwrap();
         element.position = [layout.location.x, layout.location.y];
         element.size = [layout.size.width, layout.size.height];
@@ -259,7 +257,7 @@ impl View {
                     .get_node_context_mut(node)
                     .and_then(|element| element.text.as_mut())
                     .ok_or(ViewError::ElementTextContentNotFound)?;
-                element_text.spans[span] = text;
+                element_text.set(span, text);
                 self.tree.mark_dirty(node)?;
             }
             Reaction::Reattach {
@@ -327,14 +325,12 @@ impl View {
                     .attrs_bindings
                     .get_mut(&key)
                     .ok_or(ViewError::AttributeBindingNotFound(key.clone()))?;
-                attribute.spans[span] = text;
+                attribute.set(span, text);
                 let value = attribute.to_string();
                 element.attrs.insert(key.clone(), value.clone());
-                if key == "styles" {
-                    match read_inline_css(&format!("{{ {} }}", value)) {
-                        Ok(style) => {
-                            element.style = style;
-                        }
+                if key == "style" {
+                    match read_inline_css(&value) {
+                        Ok(style) => element.style = style,
                         Err(error) => {
                             error!("unable to parse styles of {}, {error:?}", element.tag);
                         }
@@ -357,6 +353,7 @@ impl View {
         node: NodeId,
         input: &Input,
         mut sizes: Sizes,
+        variables: Variables,
     ) -> Result<(), ViewError> {
         let parent = unsafe {
             let ptr = self
@@ -378,33 +375,9 @@ impl View {
             return Ok(());
         }
 
-        match element.tag.as_str() {
-            // TODO: move to render ?
-            "body" => {
-                // layout.size = Size {
-                //     width: Dimension::Length(sizes.viewport_width),
-                //     height: Dimension::Length(sizes.viewport_height),
-                // };
-                // layout.size = Size {
-                //     width: Dimension::Auto,
-                //     height: Dimension::Auto,
-                // };
-                // layout.margin = Rect {
-                //     left: LengthPercentageAuto::Length(8.0),
-                //     right: LengthPercentageAuto::Length(8.0),
-                //     top: LengthPercentageAuto::Length(8.0),
-                //     bottom: LengthPercentageAuto::Length(8.0),
-                // };
-                element.pointer_events = PointerEvents::None;
-            }
-            "input" => {
-                layout.display = Display::Flex;
-                layout.align_items = Some(AlignItems::Center);
-            }
-            _ => {}
-        }
-        let mut cascade = Cascade::new(&self.css, sizes, "./");
+        let mut cascade = Cascade::new(&self.css, sizes, variables, "./");
         cascade.apply_styles(input, node, &self.tree, parent, &mut layout, element, self);
+        let variables = cascade.take_variables();
 
         // we must update styles only if changes detected to support Taffy cache system
         if self.tree.style(node)? != &layout {
@@ -439,7 +412,7 @@ impl View {
                 let children = self.tree.children(node)?;
                 for child in children {
                     sizes.parent_font_size = element.font.size;
-                    self.apply_styles(child, input, sizes)?;
+                    self.apply_styles(child, input, sizes, variables.clone())?;
                 }
             }
         }

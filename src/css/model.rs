@@ -8,13 +8,13 @@ pub struct Css {
     pub animations: HashMap<String, Animation>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Animation {
     pub name: String,
     pub keyframes: Vec<Keyframe>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Keyframe {
     pub step: u32,
     pub declaration: Vec<Declaration>,
@@ -85,13 +85,13 @@ pub struct Style {
     pub declaration: Vec<Declaration>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Declaration {
     Variable(Variable),
     Property(Property),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Variable {
     pub key: String,
     pub shorthand: Shorthand,

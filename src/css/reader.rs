@@ -28,10 +28,10 @@ impl From<Error<Rule>> for ReaderError {
 }
 
 pub fn read_inline_css(block: &str) -> Result<Vec<Declaration>, ReaderError> {
-    let block = CssParser::parse(Rule::DeclarationBlock, block)?
+    let block = CssParser::parse(Rule::Declarations, block)?
         .next()
         .ok_or(ReaderError::EmptyStyleSheet)?;
-    Ok(read_declaration_block(block))
+    Ok(read_declarations(block))
 }
 
 pub fn read_css(css: &str) -> Result<Css, ReaderError> {
@@ -61,7 +61,8 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                         },
                         _ => unreachable!(),
                     };
-                    let declaration = read_declaration_block(iter.next().unwrap());
+                    let decls = iter.next().unwrap().into_inner().next().unwrap();
+                    let declaration = read_declarations(decls);
                     keyframes.push(Keyframe { step, declaration });
                 }
                 let name = name.as_str().to_string();
@@ -139,7 +140,9 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
                         selectors: components,
                     })
                 }
-                let declaration = read_declaration_block(iter.next().unwrap());
+
+                let decls = iter.next().unwrap().into_inner().next().unwrap();
+                let declaration = read_declarations(decls);
                 styles.push(Style {
                     selectors,
                     declaration,
@@ -155,7 +158,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
     })
 }
 
-fn read_declaration_block(pair: Pair<Rule>) -> Vec<Declaration> {
+fn read_declarations(pair: Pair<Rule>) -> Vec<Declaration> {
     let mut declarations = vec![];
     for property in pair.into_inner() {
         let mut iter = property.into_inner();
@@ -324,6 +327,30 @@ mod tests {
     use super::*;
 
     #[test]
+    pub fn test_inline_style_one_property() {
+        let css = style("width: 0;");
+        assert_eq!(css, [prop(PropertyKey::Width, &[zero()])])
+    }
+
+    #[test]
+    pub fn test_inline_style_no_semicolumn() {
+        let css = style("width: 0");
+        assert!(css.is_empty());
+    }
+
+    #[test]
+    pub fn test_inline_style_two_properties() {
+        let css = style("width: 0; height: 0;");
+        assert_eq!(
+            css,
+            [
+                prop(PropertyKey::Width, &[zero()]),
+                prop(PropertyKey::Height, &[zero()])
+            ]
+        )
+    }
+
+    #[test]
     pub fn test_component_value_var() {
         let css = css("div { background-color: var(--main-bg-color); }");
         assert_eq!(css.first_short(), [var("--main-bg-color")]);
@@ -465,36 +492,43 @@ mod tests {
         assert_eq!(css.first_short(), expected);
     }
 
-    // #[test]
-    // pub fn test_animation_simple_keyframes() {
-    //     let css = css(r#"
-    //         @keyframes HeightAnimation {
-    //             0% {
-    //                 line-height: 1.0;
-    //             }
-    //             50% {
-    //                 line-height: 2.0;
-    //             }
-    //             100% {
-    //                 line-height: 3.0;
-    //             }
-    //         }
-    //     "#);
-    //
-    //     let animation = Animation {
-    //         keyframes: vec![Keyframe {
-    //             key: PropertyKey::LineHeight,
-    //             frames: BTreeMap::from([
-    //                 (0, vec![vec![f(1.0)]]),
-    //                 (50, vec![vec![f(2.0)]]),
-    //                 (100, vec![vec![f(3.0)]]),
-    //             ]),
-    //         }],
-    //     };
-    //     let animations = HashMap::from([("HeightAnimation".to_string(), animation)]);
-    //
-    //     assert_eq!(css.animations, animations);
-    // }
+    #[test]
+    pub fn test_animation_simple_keyframes() {
+        let css = css(r#"
+            @keyframes HeightAnimation {
+                0% {
+                    line-height: 1.0;
+                }
+                50% {
+                    line-height: 2.0;
+                }
+                100% {
+                    line-height: 3.0;
+                }
+            }
+        "#);
+
+        let animation = Animation {
+            name: "HeightAnimation".to_string(),
+            keyframes: vec![
+                Keyframe {
+                    step: 0,
+                    declaration: vec![prop(PropertyKey::LineHeight, &[f(1.0)])],
+                },
+                Keyframe {
+                    step: 50,
+                    declaration: vec![prop(PropertyKey::LineHeight, &[f(2.0)])],
+                },
+                Keyframe {
+                    step: 100,
+                    declaration: vec![prop(PropertyKey::LineHeight, &[f(3.0)])],
+                },
+            ],
+        };
+        let animations = HashMap::from([("HeightAnimation".to_string(), animation)]);
+
+        assert_eq!(css.animations, animations);
+    }
 
     fn style_selectors(css: &Css) -> Vec<&Simple> {
         css.styles[0].selectors[0].selectors.iter().collect()
@@ -520,8 +554,19 @@ mod tests {
         }
     }
 
+    fn style(css: &str) -> Vec<Declaration> {
+        read_inline_css(css).expect("inline CSS valid and parsing complete")
+    }
+
     fn css(css: &str) -> Css {
         read_css(css).expect("CSS valid and parsing complete")
+    }
+
+    fn prop(key: PropertyKey, shorthand: &[Definition]) -> Declaration {
+        Declaration::Property(Property {
+            key,
+            values: vec![shorthand.to_vec()],
+        })
     }
 
     fn px(value: i32) -> Definition {

@@ -10,7 +10,7 @@ Document = _{ SOI ~ Content+ ~ EOI }
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
 Content = _{ Script | Void | Text | Element  }
 
-Script = { "<script>" ~ (!"<" ~ ANY)* ~ "</script>" }
+Script = { "<script>" ~ (!"</script>" ~ ANY)* ~ "</script>" }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
 Element = { "<" ~ Tag ~ Attributes ~">" ~ Children ~ "<" ~ "/" ~  Tag ~ ">"}

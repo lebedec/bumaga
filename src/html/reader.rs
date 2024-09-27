@@ -160,6 +160,25 @@ fn parse_content(pair: Pair<Rule>) -> Html {
                     _ => unreachable!(),
                 }
             }
+            let len = spans.len() - 1;
+            for (index, span) in spans.iter_mut().enumerate() {
+                let is_last = index == len;
+                if let TextSpan::String(span) = span {
+                    let fragments: Vec<String> = span
+                        .split("\n")
+                        .map(|fragment| {
+                            if is_last {
+                                fragment.trim()
+                            } else {
+                                fragment.trim_start()
+                            }
+                            .to_string()
+                        })
+                        .filter(|string| !string.is_empty())
+                        .collect();
+                    *span = fragments.join(" ");
+                }
+            }
             let text = TextBinding { spans };
             Html {
                 tag: "".to_string(),
@@ -298,6 +317,27 @@ fn parse_element_bindings(pair: Pair<Rule>) -> Vec<ElementBinding> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::system::setup_tests_logging;
+    use log::info;
+
+    #[test]
+    pub fn test_ignore_script_tag() {
+        let html = html(
+            r#"<script>
+                function doSomething() {}
+                for (let i = 0; i < 27; i++) {
+                    doSomething();
+                }
+            </script>"#,
+        );
+        assert_eq!(html.children.len(), 0);
+    }
+
+    #[test]
+    pub fn test_parse_img_tag() {
+        let html = html(r#"<img alt="member.png" src="./images/member.png"/>"#);
+        assert_eq!(html.tag, "img");
+    }
 
     #[test]
     pub fn test_binding_text_one_span() {
@@ -309,6 +349,30 @@ mod tests {
     pub fn test_binding_text_multiple_spans() {
         let html = html(r#"<div>Hello, {first} {last}</div>"#);
         let expected = text(&[t("Hello, "), b("first"), b("last")]);
+        assert_eq!(html.children[0].text, expected)
+    }
+
+    #[test]
+    pub fn test_binding_text_multilines() {
+        let html = html(
+            r#"<div>
+                Line 1
+                Hello, {world}!
+                Line 3
+            </div>"#,
+        );
+        let expected = text(&[t("Line 1 Hello, "), b("world"), t("! Line 3")]);
+        assert_eq!(html.children[0].text, expected)
+    }
+
+    #[test]
+    pub fn test_binding_text_empty_multilines() {
+        let html = html(
+            r#"<div>
+                {world}
+            </div>"#,
+        );
+        let expected = text(&[b("world")]);
         assert_eq!(html.children[0].text, expected)
     }
 
@@ -476,6 +540,7 @@ mod tests {
     }
 
     fn html(html: &str) -> Html {
+        setup_tests_logging();
         read_html(html).expect("HTML valid and parsing complete")
     }
 }

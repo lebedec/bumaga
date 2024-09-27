@@ -1,7 +1,8 @@
-use log::warn;
+use log::{error, warn};
 use std::collections::{BTreeMap, HashMap};
 use taffy::{Dimension, NodeId, Size, TaffyTree};
 
+use crate::css::{read_inline_css, Declaration, ReaderError};
 use crate::html::{ArgumentBinding, ElementBinding, Html, TextBinding, TextSpan};
 use crate::styles::{create_element, default_layout};
 use crate::view_model::{Binding, Bindings, Schema};
@@ -48,12 +49,13 @@ impl Renderer {
     pub(crate) fn render_text(&mut self, text: TextBinding) -> Result<NodeId, ViewError> {
         let layout = default_layout();
         let node = self.tree.new_leaf(layout)?;
+        let count = text.spans.len();
         let spans = text
             .spans
             .into_iter()
             .enumerate()
             .map(|(index, span)| match span {
-                TextSpan::String(span) => span.trim().to_string(),
+                TextSpan::String(span) => span,
                 TextSpan::Binder(binder) => {
                     let path = self.schema.field(&binder, &mut self.locals);
                     let params = BindingParams::Text(node, index);
@@ -66,7 +68,7 @@ impl Renderer {
                 }
             })
             .collect();
-        let text = TextContent { spans };
+        let text = TextContent::new(spans);
         let mut element = create_element(node);
         element.text = Some(text);
         self.tree.set_node_context(node, Some(element))?;
@@ -117,6 +119,17 @@ impl Renderer {
         for binding in template.bindings {
             match binding {
                 ElementBinding::None(key, value) => {
+                    if key == "style" {
+                        match read_inline_css(&value) {
+                            Ok(style) => element.style = style,
+                            Err(error) => {
+                                error!(
+                                    "unable to parse inline style of {}, {error:?}",
+                                    element.tag
+                                );
+                            }
+                        }
+                    }
                     element.attrs.insert(key, value);
                 }
                 ElementBinding::Attribute(key, text) => {
@@ -146,7 +159,7 @@ impl Renderer {
                             }
                         })
                         .collect();
-                    let attribute = TextContent { spans };
+                    let attribute = TextContent::new(spans);
                     element.attrs.insert(key.clone(), attribute.to_string());
                     element.attrs_bindings.insert(key, attribute);
                 }

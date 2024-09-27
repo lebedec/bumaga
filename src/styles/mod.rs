@@ -29,7 +29,7 @@ use crate::css::{
     Variable,
 };
 
-use crate::css::ComputedValue::{Keyword, Time};
+use crate::css::ComputedValue::{Keyword, Number, Time};
 use crate::styles::initial::initial;
 use crate::{
     Background, Borders, Element, FontFace, Input, Length, ObjectFit, PointerEvents, TextAlign,
@@ -40,10 +40,12 @@ use crate::{
 /// property values originating from different sources.
 pub struct Cascade<'c> {
     css: &'c Css,
-    variables: HashMap<String, Shorthand>,
+    pub variables: Variables,
     sizes: Sizes,
     resources: &'c str,
 }
+
+pub type Variables = HashMap<String, Shorthand>;
 
 #[derive(Debug)]
 pub enum CascadeError {
@@ -62,10 +64,10 @@ impl CascadeError {
 }
 
 impl<'c> Cascade<'c> {
-    pub fn new(css: &'c Css, sizes: Sizes, resources: &'c str) -> Self {
+    pub fn new(css: &'c Css, sizes: Sizes, variables: Variables, resources: &'c str) -> Self {
         Self {
             css,
-            variables: HashMap::with_capacity(8),
+            variables,
             sizes,
             resources,
         }
@@ -123,6 +125,10 @@ impl<'c> Cascade<'c> {
         }
     }
 
+    pub fn take_variables(self) -> HashMap<String, Shorthand> {
+        self.variables
+    }
+
     fn compute_declaration_block(&mut self, block: &[Declaration], style: &mut ComputedStyle) {
         for declaration in block {
             match declaration {
@@ -154,6 +160,32 @@ impl<'c> Cascade<'c> {
                     self.compute_shorthand(definition, shorthand);
                 }
                 Definition::Function(function) => match function.name.as_str() {
+                    "rgb" | "rgba" => {
+                        let mut arguments = vec![];
+                        self.compute_shorthand(&function.arguments, &mut arguments);
+                        match arguments.as_slice() {
+                            [Number(r), Number(g), Number(b), Number(a)] => {
+                                shorthand.push(ComputedValue::Color([
+                                    *r as u8,
+                                    *g as u8,
+                                    *b as u8,
+                                    (a * 255.0) as u8,
+                                ]));
+                            }
+                            [Number(r), Number(g), Number(b)] => {
+                                shorthand.push(ComputedValue::Color([
+                                    *r as u8, *g as u8, *b as u8, 255,
+                                ]));
+                            }
+                            _ => {
+                                error!(
+                                    "unable to compute function {}, arguments {:?} not supported",
+                                    function.name, arguments
+                                );
+                                return false;
+                            }
+                        }
+                    }
                     _ => {
                         error!(
                             "unable to compute function {}, not supported",

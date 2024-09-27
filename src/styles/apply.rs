@@ -5,7 +5,7 @@ use crate::css::ComputedValue::{Keyword, Time};
 use crate::css::{ComputedValue, Dim, PropertyKey, Units};
 use crate::styles::{Cascade, CascadeError};
 use crate::{Element, Length, PointerEvents, TextAlign, TransformFunction};
-use log::error;
+use log::{debug, error};
 use taffy::{Dimension, LengthPercentage, LengthPercentageAuto, Overflow};
 
 impl<'c> Cascade<'c> {
@@ -106,6 +106,10 @@ impl<'c> Cascade<'c> {
             //
             // Layout
             //
+            (PropertyKey::BoxSizing, _) => {
+                // TODO: calculate size manually?
+                debug!("ignore box-sizing property, not supported");
+            }
             (PropertyKey::MarginTop, value) => layout.margin.top = lengthp_auto(value, self)?,
             (PropertyKey::MarginRight, value) => layout.margin.right = lengthp_auto(value, self)?,
             (PropertyKey::MarginBottom, value) => layout.margin.bottom = lengthp_auto(value, self)?,
@@ -423,6 +427,7 @@ fn parse_dimension_length(dimension: &Dim, cascade: &Cascade) -> Result<f32, Cas
 
 fn dimension(value: &ComputedValue, cascade: &Cascade) -> Result<Dimension, CascadeError> {
     let value = match value {
+        ComputedValue::Zero => Dimension::Length(0.0),
         ComputedValue::Dimension(dimension) => {
             let length = parse_dimension_length(dimension, cascade)?;
             Dimension::Length(length)

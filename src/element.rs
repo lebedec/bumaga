@@ -1,5 +1,5 @@
+use log::error;
 use std::collections::{HashMap, HashSet};
-
 use taffy::{Layout, NodeId};
 
 use crate::animation::{Animator, Transition};
@@ -68,13 +68,29 @@ impl Element {
 
 #[derive(Clone)]
 pub struct TextContent {
-    pub spans: Vec<String>,
+    spans: Vec<String>,
 }
 
 impl TextContent {
+    pub fn new(spans: Vec<String>) -> Self {
+        Self { spans }
+    }
+
+    #[inline(always)]
+    pub fn set(&mut self, span: usize, value: String) {
+        if span >= self.spans.len() {
+            error!(
+                "unable to bind text span {span} to {value}, text consists of {} spans",
+                self.spans.len()
+            )
+        } else {
+            self.spans[span] = value;
+        }
+    }
+
     #[inline(always)]
     pub fn to_string(&self) -> String {
-        self.spans.join(" ").trim().to_string()
+        self.spans.join("").trim().to_string()
     }
 }
 
