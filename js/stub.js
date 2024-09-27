@@ -101,7 +101,7 @@ function traverse(node, value, templates) {
         let [key, value] = setter;
         node.setAttribute(key, value);
     }
-    for (let child of node.childNodes) {
+    for (let child of [...node.childNodes]) {
         traverse(child, value, templates);
     }
 }
