@@ -21,6 +21,7 @@ impl<'c> Cascade<'c> {
             //
             // Element
             //
+            (PropertyKey::Opacity, value) => element.opacity = resolve_alpha(value)?,
             (PropertyKey::BackgroundColor, value) => {
                 let background = element.get_background_mut(index);
                 background.color = resolve_color(value, self)?
@@ -395,6 +396,16 @@ fn resolve_iterations(
 fn resolve_string(value: &ComputedValue, cascade: &Cascade) -> Result<String, CascadeError> {
     let value = match value {
         ComputedValue::Str(value) => value.clone(),
+        _ => return Err(CascadeError::ValueNotSupported),
+    };
+    Ok(value)
+}
+
+fn resolve_alpha(value: &ComputedValue) -> Result<f32, CascadeError> {
+    let value = match value {
+        ComputedValue::Zero => 0.0,
+        ComputedValue::Number(value) => *value,
+        ComputedValue::Percentage(value) => *value,
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)

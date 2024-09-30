@@ -5,6 +5,7 @@ use crate::{
 use log::error;
 
 use crate::html::ArgumentBinding;
+use crate::tree::ViewTreeExtensions;
 use pest::state;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -27,6 +28,8 @@ pub struct ViewModel {
     pub(crate) mouse: [f32; 2],
     pub(crate) mouse_hovers: HashSet<NodeId>,
     output: Output,
+    click: Option<ClickContext>,
+    drag: Option<ClickContext>,
 }
 
 impl ViewModel {
@@ -41,6 +44,8 @@ impl ViewModel {
             mouse: [0.0, 0.0],
             mouse_hovers: HashSet::new(),
             output: Output::new(),
+            click: None,
+            drag: None,
         }
     }
 
@@ -211,6 +216,18 @@ impl ViewModel {
         self.output = Output::new();
         self.capture_hovers(body, tree)?;
         self.capture_element_events(body, tree, &input.events)?;
+        if let Some(drag) = self.drag.as_ref() {
+            if drag.end {
+                let element = tree.get_element_mut(drag.node)?;
+                self.fire(element, "ondragend", Value::Null);
+                self.drag = None;
+            }
+        }
+        if let Some(click) = self.click.as_ref() {
+            if click.end {
+                self.click = None;
+            }
+        }
         self.output.is_cursor_over_view = !self.mouse_hovers.is_empty();
         Ok(take(&mut self.output))
     }
@@ -227,6 +244,9 @@ impl ViewModel {
                 self.fire(element, "onmouseleave", Value::Null);
                 element.state.hover = false;
                 self.mouse_hovers.remove(&element.node);
+                if self.drag.is_some() {
+                    self.fire(element, "ondragleave", Value::Null);
+                }
             }
         }
         self.capture_element_hover(body, tree);
@@ -242,6 +262,9 @@ impl ViewModel {
                     self.fire(element, "onmouseenter", Value::Null);
                     element.state.hover = true;
                     self.mouse_hovers.insert(element.node);
+                    if self.drag.is_some() {
+                        self.fire(element, "ondragenter", Value::Null);
+                    }
                 }
             }
             for child in tree.children(node).expect("childs must exist") {
@@ -257,15 +280,15 @@ impl ViewModel {
         events: &Vec<InputEvent>,
     ) -> Result<(), ViewError> {
         for event in events {
-            let element = tree
-                .get_node_context_mut(node)
-                .expect("node element must exist");
+            let element = tree.get_element_mut(node)?;
             match *event {
                 InputEvent::Char(char) => match element.tag.as_str() {
                     "input" => self.handle_input_char(node, char, tree)?,
                     _ => {}
                 },
-                InputEvent::KeyDown(_key) => {}
+                InputEvent::KeyDown(key) => match key {
+                    _ => {}
+                },
                 InputEvent::KeyUp(key) => match element.tag.as_str() {
                     "input" => self.handle_input_key_up(node, key, tree)?,
                     _ => {}
@@ -285,6 +308,13 @@ impl ViewModel {
                                 self.fire(&element, "onfocus", Value::Null);
                             }
                             element.state.focus = true;
+                            if button == MouseButtons::Left && element.draggable() {
+                                self.fire(element, "ondragstart", Value::Null);
+                                self.drag = ClickContext::new(node);
+                            }
+                            if button == MouseButtons::Left {
+                                self.click = ClickContext::new(node);
+                            }
                         } else {
                             let focus_lost = take(&mut element.state.focus);
                             if focus_lost {
@@ -301,12 +331,33 @@ impl ViewModel {
                         if button == MouseButtons::Left {
                             element.state.active = false;
                             if element.state.hover {
+                                if self.drag.is_some() {
+                                    self.fire(element, "ondrop", Value::Null);
+                                }
+                            }
+                            let is_click =
+                                self.click.as_ref().map(|click| click.node) == Some(node);
+                            if is_click {
                                 match element.tag.as_str() {
                                     "option" => self.handle_option_click(node, tree)?,
                                     _ => {
                                         self.fire(&element, "onclick", Value::Null);
                                     }
                                 }
+                            }
+                            if let Some(drag) = self.drag.as_mut() {
+                                drag.end();
+                            }
+                            if let Some(click) = self.click.as_mut() {
+                                click.end();
+                            }
+                        }
+                    }
+                    InputEvent::MouseMove(_) => {
+                        if element.state.hover {
+                            self.fire(element, "onmousemove", Value::Null);
+                            if self.drag.is_some() {
+                                self.fire(element, "ondragover", Value::Null);
                             }
                         }
                     }
@@ -593,6 +644,22 @@ fn default_transformers() -> HashMap<String, Transformer> {
     let mut transformers = HashMap::new();
     transformers.insert("duration".to_string(), duration as Transformer);
     transformers
+}
+
+#[derive(Debug)]
+pub struct ClickContext {
+    node: NodeId,
+    end: bool,
+}
+
+impl ClickContext {
+    pub fn new(node: NodeId) -> Option<Self> {
+        Some(Self { node, end: false })
+    }
+
+    pub fn end(&mut self) {
+        self.end = true;
+    }
 }
 
 #[cfg(test)]

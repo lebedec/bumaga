@@ -41,10 +41,13 @@ pub struct Element {
 }
 
 impl Element {
-    // #[inline(always)]
-    // pub fn is_visible_rectangle(&self) -> bool {
-    //     self.color[3] != 0 || self.background.color[3] != 0 || self.borders.top.color[3] != 0
-    // }
+    #[inline(always)]
+    pub fn draggable(&self) -> bool {
+        match self.attrs.get("draggable") {
+            Some(value) => value == "true",
+            None => false,
+        }
+    }
 
     #[inline(always)]
     pub fn value(&self) -> Option<&String> {
