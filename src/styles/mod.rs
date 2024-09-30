@@ -1,5 +1,6 @@
 mod apply;
 mod compute_animation_tracks;
+mod compute_function;
 mod compute_style;
 mod default;
 mod inherit;
@@ -157,46 +158,13 @@ impl<'c> Cascade<'c> {
                         Some(shorthand) => shorthand,
                         None => {
                             error!("unable to compute variable {name}, not found");
-                            return false;
+                            shorthand.push(ComputedValue::Error);
+                            continue;
                         }
                     };
                     self.compute_shorthand(definition, shorthand);
                 }
-                Definition::Function(function) => match function.name.as_str() {
-                    "rgb" | "rgba" => {
-                        let mut arguments = vec![];
-                        self.compute_shorthand(&function.arguments, &mut arguments);
-                        match arguments.as_slice() {
-                            [Number(r), Number(g), Number(b), Number(a)] => {
-                                shorthand.push(ComputedValue::Color([
-                                    *r as u8,
-                                    *g as u8,
-                                    *b as u8,
-                                    (a * 255.0) as u8,
-                                ]));
-                            }
-                            [Number(r), Number(g), Number(b)] => {
-                                shorthand.push(ComputedValue::Color([
-                                    *r as u8, *g as u8, *b as u8, 255,
-                                ]));
-                            }
-                            _ => {
-                                error!(
-                                    "unable to compute function {}, arguments {:?} not supported",
-                                    function.name, arguments
-                                );
-                                return false;
-                            }
-                        }
-                    }
-                    _ => {
-                        error!(
-                            "unable to compute function {}, not supported",
-                            function.name
-                        );
-                        return false;
-                    }
-                },
+                Definition::Function(function) => self.compute_function(function, shorthand),
                 Definition::Explicit(value) => shorthand.push(value.clone()),
             }
         }

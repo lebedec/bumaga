@@ -76,7 +76,7 @@ impl View {
         let schema = renderer.schema;
         let tree = renderer.tree;
         let model = ViewModel::create(bindings, schema.value);
-        let resources = "./todo".to_string();
+        let resources = css_base_directory.display().to_string();
         Ok(Self {
             model,
             tree,
@@ -378,7 +378,7 @@ impl View {
             return Ok(());
         }
 
-        let mut cascade = Cascade::new(&self.css, sizes, variables, "./");
+        let mut cascade = Cascade::new(&self.css, sizes, variables, &self.resources);
         cascade.apply_styles(input, node, &self.tree, parent, &mut layout, element, self);
         let variables = cascade.take_variables();
 
@@ -634,11 +634,29 @@ mod tests {
 
     fn view(html: &str, css: &str) -> View {
         setup_tests_logging();
-        View::compile(html, css, "").expect("view valid and compiling complete")
+        View::compile(html, css, "./assets").expect("view valid and compiling complete")
     }
 
     fn input(time: f32) -> Input {
         Input::new().time(Duration::from_secs_f32(time))
+    }
+
+    #[test]
+    pub fn test_url_path_resolving() {
+        let css = r#"
+            div {
+                background-image: url("./images/icon.png");
+            }
+        "#;
+        let html = r#"<html><body><div></div></body></html>"#;
+        let mut view = view(html, css);
+        view.update(Input::new(), json!({})).unwrap();
+        let body = view.body();
+        let div = body.children()[0];
+        assert_eq!(
+            div.backgrounds[0].image,
+            Some("./assets/./images/icon.png".to_string())
+        );
     }
 
     #[test]

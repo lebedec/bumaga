@@ -21,7 +21,7 @@ pub struct Element {
     pub size: [f32; 2],
     pub content_size: [f32; 2],
     pub object_fit: ObjectFit,
-    pub background: Background,
+    pub backgrounds: Vec<Background>,
     pub borders: Borders,
     /// The foreground color of element (most often text color).
     pub color: Rgba,
@@ -41,28 +41,35 @@ pub struct Element {
 }
 
 impl Element {
-    #[inline(always)]
-    pub fn is_visible_rectangle(&self) -> bool {
-        self.color[3] != 0 || self.background.color[3] != 0 || self.borders.top.color[3] != 0
-    }
+    // #[inline(always)]
+    // pub fn is_visible_rectangle(&self) -> bool {
+    //     self.color[3] != 0 || self.background.color[3] != 0 || self.borders.top.color[3] != 0
+    // }
 
     #[inline(always)]
     pub fn value(&self) -> Option<&String> {
         self.attrs.get("value")
     }
 
+    pub fn get_background_mut(&mut self, index: usize) -> &mut Background {
+        if index >= self.backgrounds.len() {
+            self.backgrounds.resize_with(index + 1, Background::default);
+        }
+        &mut self.backgrounds[index]
+    }
+
     pub fn get_animator_mut(&mut self, index: usize) -> &mut Animator {
         if index >= self.animators.len() {
             self.animators.resize_with(index + 1, Animator::default);
         }
-        self.animators.get_mut(index).expect("animator created")
+        &mut self.animators[index]
     }
 
     pub fn get_transition_mut(&mut self, index: usize) -> &mut Transition {
         if index >= self.transitions.len() {
             self.transitions.resize_with(index + 1, Transition::default);
         }
-        self.transitions.get_mut(index).expect("transition created")
+        &mut self.transitions[index]
     }
 }
 
@@ -191,6 +198,7 @@ pub struct Background {
     /// The background color.
     pub color: Rgba,
     // The background position.
+    pub src: [f32; 2],
     // pub position: BackgroundPosition,
     // /// How the background image should repeat.
     // pub repeat: BackgroundRepeat,
@@ -202,6 +210,16 @@ pub struct Background {
     // pub origin: BackgroundOrigin,
     // /// How the background should be clipped.
     // pub clip: BackgroundClip,
+}
+
+impl Default for Background {
+    fn default() -> Self {
+        Self {
+            image: None,
+            color: [0; 4],
+            src: [0.0; 2],
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

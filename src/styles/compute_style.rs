@@ -25,6 +25,14 @@ impl<'c> Cascade<'c> {
             (PropertyKey::Background, [color]) => {
                 overwrite(PropertyKey::BackgroundColor, color);
             }
+            (PropertyKey::BackgroundPosition, [value]) => {
+                overwrite(PropertyKey::BackgroundPositionX, value);
+                overwrite(PropertyKey::BackgroundPositionY, value);
+            }
+            (PropertyKey::BackgroundPosition, [x, y]) => {
+                overwrite(PropertyKey::BackgroundPositionX, x);
+                overwrite(PropertyKey::BackgroundPositionY, y);
+            }
             //
             // Element + Layout
             //

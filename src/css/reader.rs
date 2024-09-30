@@ -231,9 +231,7 @@ fn read_explicit_value(pair: Pair<Rule>) -> ComputedValue {
         Rule::Percentage => ComputedValue::Percentage(read_percentage(pair)),
         Rule::Dimension => ComputedValue::Dimension(read_dimension(pair)),
         Rule::Number => ComputedValue::Number(read_number(pair)),
-        Rule::String => {
-            ComputedValue::String(pair.into_inner().next().unwrap().as_str().to_string())
-        }
+        Rule::String => ComputedValue::Str(pair.into_inner().next().unwrap().as_str().to_string()),
         _ => unreachable!(),
     }
 }
@@ -622,7 +620,7 @@ mod tests {
     }
 
     fn s(value: &str) -> Definition {
-        Definition::Explicit(ComputedValue::String(value.to_string()))
+        Definition::Explicit(ComputedValue::Str(value.to_string()))
     }
 
     fn ts(value: f32) -> Definition {

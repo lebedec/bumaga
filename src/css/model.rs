@@ -129,7 +129,8 @@ pub enum ComputedValue {
     Dimension(Dim),
     Number(f32),
     Color([u8; 4]),
-    String(String),
+    Str(String),
+    Error,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]

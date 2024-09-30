@@ -1,7 +1,7 @@
 use crate::animation::{
     AnimationDirection, AnimationFillMode, AnimationIterations, TimingFunction,
 };
-use crate::css::ComputedValue::{Keyword, Time};
+use crate::css::ComputedValue::{Keyword, Str, Time};
 use crate::css::{ComputedValue, Dim, PropertyKey, Units};
 use crate::styles::{Cascade, CascadeError};
 use crate::{Element, Length, PointerEvents, TextAlign, TransformFunction};
@@ -22,7 +22,22 @@ impl<'c> Cascade<'c> {
             // Element
             //
             (PropertyKey::BackgroundColor, value) => {
-                element.background.color = resolve_color(value, self)?
+                let background = element.get_background_mut(index);
+                background.color = resolve_color(value, self)?
+            }
+            (PropertyKey::BackgroundImage, Str(value)) => {
+                let background = element.get_background_mut(index);
+                background.image = Some(value.clone());
+            }
+            (PropertyKey::BackgroundPositionX, value) => {
+                // TODO: percentage
+                let background = element.get_background_mut(index);
+                background.src[0] = -resolve_length(value, self, 0.0)?;
+            }
+            (PropertyKey::BackgroundPositionY, value) => {
+                // TODO: percentage
+                let background = element.get_background_mut(index);
+                background.src[1] = -resolve_length(value, self, 0.0)?;
             }
             (PropertyKey::Color, value) => element.color = resolve_color(value, self)?,
             (PropertyKey::FontSize, value) => {
@@ -379,7 +394,7 @@ fn resolve_iterations(
 
 fn resolve_string(value: &ComputedValue, cascade: &Cascade) -> Result<String, CascadeError> {
     let value = match value {
-        ComputedValue::String(value) => value.clone(),
+        ComputedValue::Str(value) => value.clone(),
         _ => return Err(CascadeError::ValueNotSupported),
     };
     Ok(value)

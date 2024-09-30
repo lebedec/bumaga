@@ -1,4 +1,5 @@
 use crate::rendering::Renderer;
+use crate::tree::ViewTreeExtensions;
 use crate::{Element, ViewError, ViewModel};
 use taffy::{NodeId, TaffyTree};
 
@@ -20,13 +21,10 @@ impl ViewModel {
         src: String,
         tree: &mut TaffyTree<Element>,
     ) -> Result<(), ViewError> {
-        let background = tree.child_at_index(img, BACKGROUND)?;
-        let background = tree
-            .get_node_context_mut(background)
-            .expect("img background has element");
-        background.background.image = Some(src);
-        let node = background.node;
-        tree.mark_dirty(node)?;
+        let child_node = tree.child_at_index(img, BACKGROUND)?;
+        let child = tree.get_element_mut(child_node)?;
+        child.get_background_mut(0).image = Some(src);
+        tree.mark_dirty(child_node)?;
         Ok(())
     }
 }

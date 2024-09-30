@@ -9,11 +9,7 @@ impl FontFace {
 }
 
 pub(crate) fn reset_element_style(element: &mut Element) {
-    // TODO: extract element styles to struct
-    element.background = Background {
-        image: None,
-        color: [0; 4],
-    };
+    element.backgrounds = vec![];
     element.borders = Borders {
         top: Default::default(),
         bottom: Default::default(),
@@ -47,10 +43,7 @@ pub fn create_element(node: NodeId) -> Element {
         size: [0.0; 2],
         content_size: [0.0; 2],
         object_fit: ObjectFit::Fill,
-        background: Background {
-            image: None,
-            color: [0; 4],
-        },
+        backgrounds: vec![],
         borders: Borders {
             top: Default::default(),
             bottom: Default::default(),
