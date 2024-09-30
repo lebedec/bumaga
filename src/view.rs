@@ -265,8 +265,11 @@ impl View {
                 node,
                 visible,
             } => {
+                let now = self.tree.children(parent)?;
                 if visible {
-                    self.tree.add_child(parent, node)?;
+                    if !now.contains(&node) {
+                        self.tree.add_child(parent, node)?;
+                    }
                 } else {
                     self.tree.remove_child(parent, node)?;
                 }
@@ -636,6 +639,129 @@ mod tests {
 
     fn input(time: f32) -> Input {
         Input::new().time(Duration::from_secs_f32(time))
+    }
+
+    #[test]
+    pub fn test_relative_position_in_relative_fragment() {
+        let css = r#"
+            body {
+                padding-left: 15px;
+                padding-top: 17px;
+            }
+            .panel {
+                position: relative;
+                padding: 8px;
+            }
+            .container {
+                position: relative;
+            }
+            .item {
+                position: relative;
+                width: 32px;
+                height: 32px;
+            }
+        "#;
+        let html = r#"<html>
+        <body>
+            <div class="panel">
+                <div class="container">
+                    <div class="item"></div>
+                </div>
+            </div>
+        </body>
+        </html>"#;
+        let mut view = view(html, css);
+        view.update(Input::new(), json!({})).unwrap();
+        let body = view.body();
+        let panel = body.children()[0];
+        let container = panel.children()[0];
+        let item = container.children()[0];
+
+        assert_eq!(body.size, [63.0, 65.0]);
+        assert_eq!(panel.position, [15.0, 17.0]);
+        assert_eq!(container.position, [23.0, 25.0]);
+        assert_eq!(container.size, [32.0, 32.0]);
+        assert_eq!(item.position, [23.0, 25.0]);
+    }
+
+    #[test]
+    pub fn test_relative_position_in_absolute_fragment_after_relative() {
+        let css = r#"
+            body { }
+            .relative {
+                width: 10px;
+                height: 10px;
+            }
+            .panel {
+                position: absolute;
+                left: 15px;
+                top: 17px;
+                padding: 8px;
+            }
+            .container {
+                position: relative;
+            }
+            .item {
+                position: relative;
+                width: 32px;
+                height: 32px;
+            }
+        "#;
+        let html = r#"<html>
+        <body>
+            <div class="relative"></div>
+            <div class="panel">
+                <div class="container">
+                    <div class="item"></div>
+                </div>
+            </div>
+        </body>
+        </html>"#;
+        let mut view = view(html, css);
+        view.update(Input::new(), json!({})).unwrap();
+        let body = view.body();
+        let panel = body.children()[1];
+        let container = panel.children()[0];
+        let item = container.children()[0];
+
+        assert_eq!(body.size, [10.0, 10.0]);
+        assert_eq!(panel.position, [15.0, 17.0]);
+        assert_eq!(container.position, [23.0, 25.0]);
+        assert_eq!(container.size, [32.0, 32.0]);
+        assert_eq!(item.position, [23.0, 25.0]);
+    }
+
+    #[test]
+    pub fn test_relative_position_after_negative_condition_binding() {
+        let css = r#"
+            .container {
+                width: 48px;
+                height: 48px;
+                padding: 8px;
+            }
+            .item {
+                width: 32px;
+                height: 32px;
+            }
+        "#;
+        let html = r#"<html>
+        <body>
+            <div class="container">
+                <div !="{condition}" class="item"></div>
+            </div>
+        </body>
+        </html>"#;
+        let mut view = view(html, css);
+        let value = json!({
+            "condition": false
+        });
+        view.update(Input::new(), value).unwrap();
+        let body = view.body();
+        let container = body.children()[0];
+        let item = container.children()[0];
+
+        assert_eq!(container.size, [48.0, 48.0]);
+        assert_eq!(item.position, [8.0, 8.0]);
     }
 
     #[test]
