@@ -17,10 +17,8 @@ The development of this library possible thanks to work of Rust enthusiasts:
 
 - check performance, use VTune (need < 1ms 100 elements)
     - separate to thread
-- fix defect of borders
 - windows + directx example ?
-- scrollbars
-- translation ?!
+- transforms ?
 - book with concepts, architecture and tutorial https://github.com/rust-lang/mdBook
 - share
     - https://arewegameyet.rs/

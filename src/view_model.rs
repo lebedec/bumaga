@@ -28,7 +28,6 @@ pub struct ViewModel {
     pub(crate) mouse: [f32; 2],
     pub(crate) mouse_hovers: HashSet<NodeId>,
     output: Output,
-    click: Option<ClickContext>,
     drag: Option<ClickContext>,
 }
 
@@ -44,7 +43,6 @@ impl ViewModel {
             mouse: [0.0, 0.0],
             mouse_hovers: HashSet::new(),
             output: Output::new(),
-            click: None,
             drag: None,
         }
     }
@@ -223,11 +221,6 @@ impl ViewModel {
                 self.drag = None;
             }
         }
-        if let Some(click) = self.click.as_ref() {
-            if click.end {
-                self.click = None;
-            }
-        }
         self.output.is_cursor_over_view = !self.mouse_hovers.is_empty();
         Ok(take(&mut self.output))
     }
@@ -312,9 +305,6 @@ impl ViewModel {
                                 self.fire(element, "ondragstart", Value::Null);
                                 self.drag = ClickContext::new(node);
                             }
-                            if button == MouseButtons::Left {
-                                self.click = ClickContext::new(node);
-                            }
                         } else {
                             let focus_lost = take(&mut element.state.focus);
                             if focus_lost {
@@ -329,14 +319,14 @@ impl ViewModel {
                     }
                     InputEvent::MouseButtonUp(button) => {
                         if button == MouseButtons::Left {
+                            let is_click =
+                                element.state.active && element.state.hover && self.drag.is_none();
                             element.state.active = false;
                             if element.state.hover {
                                 if self.drag.is_some() {
                                     self.fire(element, "ondrop", Value::Null);
                                 }
                             }
-                            let is_click =
-                                self.click.as_ref().map(|click| click.node) == Some(node);
                             if is_click {
                                 match element.tag.as_str() {
                                     "option" => self.handle_option_click(node, tree)?,
@@ -347,9 +337,6 @@ impl ViewModel {
                             }
                             if let Some(drag) = self.drag.as_mut() {
                                 drag.end();
-                            }
-                            if let Some(click) = self.click.as_mut() {
-                                click.end();
                             }
                         }
                     }

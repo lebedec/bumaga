@@ -271,7 +271,9 @@ impl View {
                         self.tree.add_child(parent, node)?;
                     }
                 } else {
-                    self.tree.remove_child(parent, node)?;
+                    if now.contains(&node) {
+                        self.tree.remove_child(parent, node)?;
+                    }
                 }
             }
             Reaction::Repeat {
@@ -780,6 +782,30 @@ mod tests {
 
         assert_eq!(container.size, [48.0, 48.0]);
         assert_eq!(item.position, [8.0, 8.0]);
+    }
+
+    #[test]
+    pub fn test_nested_positive_condition_binding_with_nullable() {
+        let html = r#"
+        <html>
+            <body>
+                <div ?="{visible}" +item="{nested}">
+                    <header>Nested Item</header>
+                    <div ?="{item.prop_a}">Property A: {item.prop_a}</div>
+                    <div ?="{item.prop_b}">Property B: {item.prop_b}</div>
+                </div>
+            </body>
+        </html>"#;
+        let values = [
+            json!({"visible": true, "nested": {"prop_a": 0, "prop_b": 42}}),
+            json!({"visible": false, "nested": null}),
+        ];
+        let mut view = view(html, "");
+        for value in values {
+            view.update(Input::new(), value).unwrap();
+        }
+        let body = view.body();
+        assert_eq!(body.children().len(), 0);
     }
 
     #[test]
