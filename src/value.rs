@@ -3,13 +3,12 @@ use serde::de::DeserializeOwned;
 
 use serde_json::Value;
 
-
 pub trait ValueExtensions {
     fn eval_array(&self) -> Vec<String>;
     fn eval_u64(&self) -> u64;
     fn eval_usize(&self) -> usize;
     fn eval_string(&self) -> String;
-    fn as_boolean(&self) -> bool;
+    fn eval_boolean(&self) -> bool;
     fn eval<T: Default + DeserializeOwned>(&self) -> T;
 }
 
@@ -63,7 +62,7 @@ impl ValueExtensions for Value {
         }
     }
 
-    fn as_boolean(&self) -> bool {
+    fn eval_boolean(&self) -> bool {
         match self {
             Value::Null => false,
             Value::Bool(value) => *value,

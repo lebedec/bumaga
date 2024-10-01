@@ -1014,7 +1014,7 @@ impl PropertyKey {
             "font-size" => Self::FontSize,
             "font-size-adjust" => Self::FontSizeAdjust,
             "font-stretch" => Self::FontStretch,
-            "font-styles" => Self::FontStyle,
+            "font-style" => Self::FontStyle,
             "font-synthesis" => Self::FontSynthesis,
             "font-synthesis-position" => Self::FontSynthesisPosition,
             "font-synthesis-small-caps" => Self::FontSynthesisSmallCaps,

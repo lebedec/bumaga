@@ -453,7 +453,7 @@ impl Binding {
     fn react_value_change(&self, value: &Value) -> Reaction {
         match self.params.clone() {
             BindingParams::Visibility(parent, node, visible) => {
-                let visible = value.as_boolean() == visible;
+                let visible = value.eval_boolean() == visible;
                 Reaction::Reattach {
                     parent,
                     node,
@@ -463,7 +463,7 @@ impl Binding {
             BindingParams::Tag(node, key) => Reaction::Tag {
                 node,
                 key,
-                tag: value.as_boolean(),
+                tag: value.eval_boolean(),
             },
             BindingParams::Attribute(node, key, span) => Reaction::Bind {
                 node,
