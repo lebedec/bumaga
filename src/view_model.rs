@@ -7,7 +7,7 @@ use log::error;
 use crate::html::ArgumentBinding;
 use crate::tree::ViewTreeExtensions;
 use pest::state;
-use serde_json::{json, Value};
+use serde_json::{json, value, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::format;
 use std::mem::take;
@@ -113,6 +113,18 @@ impl ViewModel {
                         reactions,
                         transformers,
                         default,
+                    );
+                }
+            }
+            (Value::Array(current), Value::Null) => {
+                if current.len() != 0 {
+                    current.clear();
+                    Self::react(
+                        path,
+                        &Value::Array(vec![]),
+                        bindings,
+                        reactions,
+                        transformers,
                     );
                 }
             }
