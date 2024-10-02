@@ -23,6 +23,7 @@ impl<'c> Cascade<'c> {
             // Element
             //
             (PropertyKey::Background, [color]) => {
+                overwrite(PropertyKey::BackgroundImage, &Keyword("none".to_string()));
                 overwrite(PropertyKey::BackgroundColor, color);
             }
             (PropertyKey::BackgroundPosition, [value]) => {

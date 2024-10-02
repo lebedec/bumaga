@@ -644,6 +644,45 @@ mod tests {
     }
 
     #[test]
+    pub fn test_apply_complex_style_with_data_attributes() {
+        let css = r#"
+            .slot {
+                position: absolute;
+                left: 0;
+                width: 10px;
+                height: 10px;
+            }
+            .slot.placeholder {
+                width: 20px;
+                height: 20px;
+            }
+            .slot[data-function="Primary"] {
+                left: 10px;
+                width: 30px;
+            }
+            .slot[data-target] {
+                width: 40px;
+            }
+        "#;
+        let html = r#"<html>
+        <body>
+            <div @data-function="{function}" #data-target="{is_target}" class="slot placeholder"></div>
+        </body>
+        </html>"#;
+        let value = json!({
+            "function": "Primary",
+            "is_target": true
+        });
+        let mut view = view(html, css);
+        view.update(Input::new(), value).unwrap();
+        let body = view.body();
+        let div = body.children()[0];
+
+        assert_eq!(div.position, [10.0, 0.0], "position");
+        assert_eq!(div.size, [40.0, 20.0], "size")
+    }
+
+    #[test]
     pub fn test_url_path_resolving() {
         let css = r#"
             div {

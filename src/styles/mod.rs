@@ -93,6 +93,8 @@ impl<'c> Cascade<'c> {
         for style in &self.css.styles {
             if match_style(&style, node, tree, matcher) {
                 self.compute_declaration_block(&style.declaration, &mut computed_style);
+            } else {
+                //println!("NOT MATCH");
             }
         }
         // 2: inline css

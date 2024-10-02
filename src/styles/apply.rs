@@ -26,6 +26,14 @@ impl<'c> Cascade<'c> {
                 let background = element.get_background_mut(index);
                 background.color = resolve_color(value, self)?
             }
+            (PropertyKey::BackgroundImage, Keyword(keyword)) => {
+                if keyword == "none" {
+                    let background = element.get_background_mut(index);
+                    background.image = None;
+                } else {
+                    return Err(CascadeError::InvalidKeyword(keyword.clone()));
+                }
+            }
             (PropertyKey::BackgroundImage, Str(value)) => {
                 let background = element.get_background_mut(index);
                 background.image = Some(value.clone());
