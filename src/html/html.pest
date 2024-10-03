@@ -46,7 +46,7 @@ Tag = @{ TChar+ }
 TChar = { ASCII_ALPHA | ASCII_DIGIT | "-" }
 
 // https://www.w3.org/TR/2012/WD-html-markup-20120329/syntax.html#syntax-elements
-Text = { (Binder | String)+  }
+Text = ${ (Binder | String)+  }
 
 String = @{ SChar+ }
 
@@ -111,7 +111,7 @@ NChar = @{
     | "@" | "?" | "!" | "*" | "+" | "^" | "#") ~ ANY
 }
 
-Binder = { "{" ~ Getter ~ ("|" ~ Transformer)* ~ "}" }
+Binder = !{ "{" ~ Getter ~ ("|" ~ Transformer)* ~ "}" }
 
 Getter = { Key ~ ("." ~ Key)* }
 

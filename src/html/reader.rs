@@ -152,31 +152,39 @@ fn parse_content(pair: Pair<Rule>) -> Html {
             }
         }
         Rule::Text => {
-            let mut spans = vec![];
+            let mut prefetch = vec![];
             for span in pair.into_inner() {
                 match span.as_rule() {
-                    Rule::String => spans.push(TextSpan::String(span.as_str().to_string())),
-                    Rule::Binder => spans.push(TextSpan::Binder(parse_binder(span))),
+                    Rule::String => prefetch.push(TextSpan::String(span.as_str().to_string())),
+                    Rule::Binder => prefetch.push(TextSpan::Binder(parse_binder(span))),
                     _ => unreachable!(),
                 }
             }
-            let len = spans.len() - 1;
-            for (index, span) in spans.iter_mut().enumerate() {
-                let is_last = index == len;
-                if let TextSpan::String(span) = span {
-                    let fragments: Vec<String> = span
-                        .split("\n")
-                        .map(|fragment| {
-                            if is_last {
-                                fragment.trim()
-                            } else {
-                                fragment.trim_start()
-                            }
-                            .to_string()
-                        })
-                        .filter(|string| !string.is_empty())
-                        .collect();
-                    *span = fragments.join(" ");
+            let count = prefetch.len();
+            let mut spans = vec![];
+            for (index, span) in prefetch.into_iter().enumerate() {
+                println!("SPAN[{index}] {span:?}");
+                match span {
+                    TextSpan::String(string) => {
+                        let fragments: Vec<String> = string
+                            .split("\n")
+                            .map(|fragment| {
+                                if index == count - 1 {
+                                    fragment.trim()
+                                } else if index == 0 {
+                                    fragment.trim_start()
+                                } else {
+                                    fragment
+                                }
+                                .to_string()
+                            })
+                            .filter(|string| !string.is_empty())
+                            .collect();
+                        if !fragments.is_empty() {
+                            spans.push(TextSpan::String(fragments.join(" ")));
+                        }
+                    }
+                    _ => spans.push(span),
                 }
             }
             let text = TextBinding { spans };
@@ -340,14 +348,27 @@ mod tests {
     }
 
     #[test]
+    pub fn test_binding_binder_with_whitespaces() {
+        let html = html(r#"<div>{ name }</div>"#);
+        assert_eq!(html.children[0].text, text(&[b("name")]))
+    }
+
+    #[test]
     pub fn test_binding_text_one_span() {
         let html = html(r#"<div>Hello, {name}</div>"#);
         assert_eq!(html.children[0].text, text(&[t("Hello, "), b("name")]))
     }
 
     #[test]
-    pub fn test_binding_text_multiple_spans() {
-        let html = html(r#"<div>Hello, {first} {last}</div>"#);
+    pub fn test_binding_text_multiple_spans_with_whitespaces() {
+        let html = html(r#"<div>Hello,  {first}  {last}</div>"#);
+        let expected = text(&[t("Hello,  "), b("first"), t("  "), b("last")]);
+        assert_eq!(html.children[0].text, expected)
+    }
+
+    #[test]
+    pub fn test_binding_text_multiple_spans_no_space() {
+        let html = html(r#"<div>Hello, {first}{last}</div>"#);
         let expected = text(&[t("Hello, "), b("first"), b("last")]);
         assert_eq!(html.children[0].text, expected)
     }
