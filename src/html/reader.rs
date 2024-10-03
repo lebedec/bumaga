@@ -163,7 +163,6 @@ fn parse_content(pair: Pair<Rule>) -> Html {
             let count = prefetch.len();
             let mut spans = vec![];
             for (index, span) in prefetch.into_iter().enumerate() {
-                println!("SPAN[{index}] {span:?}");
                 match span {
                     TextSpan::String(string) => {
                         let fragments: Vec<String> = string
