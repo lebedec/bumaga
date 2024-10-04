@@ -32,7 +32,6 @@ pub struct View {
     html_source: Source,
     css_source: Source,
     resources: String,
-    pub visible: bool,
     pub fonts: Box<dyn Fonts>,
 }
 
@@ -86,7 +85,6 @@ impl View {
             html_source,
             css_source,
             resources,
-            visible: true,
             fonts: Box::new(fonts),
         })
     }
@@ -153,7 +151,6 @@ impl View {
             html_source,
             css_source,
             resources,
-            visible: true,
             fonts: Box::new(DummyFonts),
         })
     }
