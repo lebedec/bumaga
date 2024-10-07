@@ -365,20 +365,23 @@ impl View {
     }
 
     fn calculate_elements_stylesheet(&mut self, node: NodeId) -> Result<(), ViewError> {
+        struct Matcher;
+        impl PseudoClassMatcher for Matcher {
+            fn has_pseudo_class(&self, _element: &Element, _class: &str) -> bool {
+                true
+            }
+        }
         for style in self.css.styles.iter() {
-            let matches = match_style(style, node, &self.tree, self);
+            let matches_ignoring_pseudo = match_style(style, node, &self.tree, &Matcher);
             let element = self.tree.get_element_mut(node)?;
             let hints = &element.style_hints;
-            // TODO: number of discarded styles can be increased
-            // by handling complex selectors more accurately
-            let is_static = !style.has_pseudo_class_selector();
-            let is_static = is_static
-                && (!hints.has_dynamic_properties()
-                    || (!style.has_attrs_selector(&hints.dynamic_attrs)
-                        && (!hints.has_dynamic_classes || !style.has_class_selector())
-                        && (!hints.has_dynamic_id || !style.has_id_selector())));
-            if matches {
-                if is_static {
+            let has_pseudo = style.has_pseudo_class_selector();
+            let is_static = !hints.has_dynamic_properties()
+                || (!style.has_attrs_selector(&hints.dynamic_attrs)
+                    && (!hints.has_dynamic_classes || !style.has_class_selector())
+                    && (!hints.has_dynamic_id || !style.has_id_selector()));
+            if matches_ignoring_pseudo {
+                if is_static && !has_pseudo {
                     element.styles.push(ElementStyle::Static(style.clone()));
                 } else {
                     element.styles.push(ElementStyle::Dynamic(style.clone()));
