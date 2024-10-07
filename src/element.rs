@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use taffy::{Layout, NodeId};
 
 use crate::animation::{Animator, Transition};
-use crate::css::{Declaration, Property, PropertyKey};
+use crate::css::{Declaration, Property, PropertyKey, Style};
 use crate::styles::Scrolling;
 use crate::{Handler, ViewError};
 
@@ -34,10 +34,37 @@ pub struct Element {
     pub clipping: Option<Layout>,
     pub pointer_events: PointerEvents,
 
+    pub style_hints: ElementStyleHints,
+    pub styles: Vec<ElementStyle>,
     pub(crate) style: Vec<Declaration>,
     pub(crate) animators: Vec<Animator>,
     pub(crate) state: ElementState,
     pub(crate) transitions: Vec<Transition>,
+}
+
+#[derive(Debug)]
+pub enum ElementStyle {
+    Static(Style),
+    Dynamic(Style),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ElementStyleHints {
+    pub dynamic_attrs: HashSet<String>,
+    pub has_dynamic_classes: bool,
+    pub has_dynamic_id: bool,
+}
+
+impl ElementStyleHints {
+    #[inline(always)]
+    pub fn has_dynamic_attrs(&self) -> bool {
+        !self.dynamic_attrs.is_empty()
+    }
+
+    #[inline(always)]
+    pub fn has_dynamic_properties(&self) -> bool {
+        self.has_dynamic_attrs() || self.has_dynamic_classes || self.has_dynamic_id
+    }
 }
 
 impl Element {

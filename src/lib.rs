@@ -15,6 +15,7 @@ mod error;
 mod fonts;
 mod html;
 mod input;
+mod metrics;
 mod output;
 mod rendering;
 mod styles;

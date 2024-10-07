@@ -1,6 +1,7 @@
 use crate::css::{Complex, Matcher, Simple, Style};
 use crate::Element;
 use log::error;
+use std::collections::HashSet;
 
 use taffy::{NodeId, TaffyTree};
 
@@ -115,6 +116,47 @@ fn match_simple_selector(
             error!("selector {component:?} not supported");
             false
         }
+    }
+}
+
+impl Style {
+    pub fn has_id_selector(&self) -> bool {
+        self.selectors.iter().any(|complex| {
+            complex.selectors.iter().any(|selector| match selector {
+                Simple::Id(_) => true,
+                _ => false,
+            })
+        })
+    }
+
+    pub fn has_class_selector(&self) -> bool {
+        self.selectors.iter().any(|complex| {
+            complex.selectors.iter().any(|selector| match selector {
+                Simple::Class(_) => true,
+                _ => false,
+            })
+        })
+    }
+
+    pub fn has_attrs_selector(&self, attrs: &HashSet<String>) -> bool {
+        if attrs.is_empty() {
+            return false;
+        }
+        self.selectors.iter().any(|complex| {
+            complex.selectors.iter().any(|selector| match selector {
+                Simple::Attribute(name, _, _) => attrs.contains(name),
+                _ => false,
+            })
+        })
+    }
+
+    pub fn has_pseudo_class_selector(&self) -> bool {
+        self.selectors.iter().any(|complex| {
+            complex.selectors.iter().any(|selector| match selector {
+                Simple::PseudoClass(_) => true,
+                _ => false,
+            })
+        })
     }
 }
 

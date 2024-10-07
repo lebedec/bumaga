@@ -140,6 +140,7 @@ impl Renderer {
                         pipe: binder.pipe.clone(),
                     };
                     self.bindings.entry(path).or_default().push(binding);
+                    element.style_hints.dynamic_attrs.insert(key);
                 }
                 ElementBinding::Attribute(key, text) => {
                     if let Some(value) = text.as_simple_text() {
@@ -169,6 +170,13 @@ impl Renderer {
                         })
                         .collect();
                     let attribute = TextContent::new(spans);
+                    element.style_hints.dynamic_attrs.insert(key.clone());
+                    if key == "class" {
+                        element.style_hints.has_dynamic_classes = true;
+                    }
+                    if key == "id" {
+                        element.style_hints.has_dynamic_id = true;
+                    }
                     element.attrs.insert(key.clone(), attribute.to_string());
                     element.attrs_bindings.insert(key, attribute);
                 }

@@ -1,16 +1,21 @@
-use crate::css::{read_css, read_inline_css, Css, Declaration, PseudoClassMatcher, ReaderError};
+use crate::css::{
+    match_style, read_css, read_inline_css, Css, Declaration, PseudoClassMatcher, ReaderError,
+};
 use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
+use crate::metrics::ViewMetrics;
 use crate::rendering::Renderer;
 use crate::styles::{inherit, Cascade, Scrolling, Sizes, Variables};
 use crate::tree::ViewTreeExtensions;
 use crate::view_model::{Reaction, ViewModel};
 use crate::{
-    Element, Fonts, Input, Output, PointerEvents, Transformer, ValueExtensions, ViewError,
+    Element, ElementStyle, Fonts, Input, Output, PointerEvents, Transformer, ValueExtensions,
+    ViewError,
 };
 use log::{error, info};
+use mesura::GaugeValue;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env::var;
 use std::fs;
 use std::ops::{Add, Deref, DerefMut};
@@ -33,6 +38,7 @@ pub struct View {
     css_source: Source,
     resources: String,
     pub fonts: Box<dyn Fonts>,
+    metrics: ViewMetrics,
 }
 
 impl View {
@@ -76,7 +82,7 @@ impl View {
         let tree = renderer.tree;
         let model = ViewModel::create(bindings, schema.value);
         let resources = css_base_directory.display().to_string();
-        Ok(Self {
+        let mut view = Self {
             model,
             tree,
             root,
@@ -86,7 +92,10 @@ impl View {
             css_source,
             resources,
             fonts: Box::new(fonts),
-        })
+            metrics: ViewMetrics::new(),
+        };
+        view.calculate_elements_stylesheet(body)?;
+        Ok(view)
     }
 
     pub fn fonts(mut self, fonts: impl Fonts + 'static) -> Self {
@@ -142,7 +151,7 @@ impl View {
         let tree = renderer.tree;
         let model = ViewModel::create(bindings, schema.value);
         let resources = resources.to_string();
-        Ok(Self {
+        let mut view = Self {
             model,
             tree,
             root,
@@ -152,7 +161,10 @@ impl View {
             css_source,
             resources,
             fonts: Box::new(DummyFonts),
-        })
+            metrics: ViewMetrics::new(),
+        };
+        view.calculate_elements_stylesheet(body)?;
+        Ok(view)
     }
 
     pub fn pipe(mut self, name: &str, transformer: Transformer) -> Self {
@@ -186,6 +198,7 @@ impl View {
     }
 
     pub fn update(&mut self, input: Input, value: Value) -> Result<Output, ViewError> {
+        self.metrics.updates.inc();
         self.watch_changes();
         let reactions = self.model.bind(&value);
         for reaction in reactions {
@@ -216,16 +229,17 @@ impl View {
             |size, space, _, view, _| measure_text(self.fonts.as_ref(), size, space, view),
         )?;
         // TODO: clipping of viewport
-        self.compute_positions_and_clipping(self.body, Point::ZERO, None)?;
+        self.compute_final_positions_and_clipping(self.body, Point::ZERO, None)?;
         self.model.handle_output(&input, self.body, &mut self.tree)
     }
 
-    fn compute_positions_and_clipping(
+    fn compute_final_positions_and_clipping(
         &mut self,
         node: NodeId,
         location: Point<f32>,
         mut clipping: Option<Layout>,
     ) -> Result<(), ViewError> {
+        self.metrics.elements_shown.inc();
         let mut layout = self.tree.get_final_layout(node).clone();
         layout.location = layout.location.add(location);
         let element = self.tree.get_node_context_mut(node).unwrap();
@@ -241,7 +255,7 @@ impl View {
             location.y -= scrolling.y;
         }
         for child in self.tree.children(node).unwrap() {
-            self.compute_positions_and_clipping(child, location, clipping)?;
+            self.compute_final_positions_and_clipping(child, location, clipping)?;
         }
         Ok(())
     }
@@ -350,6 +364,40 @@ impl View {
         Ok(())
     }
 
+    fn calculate_elements_stylesheet(&mut self, node: NodeId) -> Result<(), ViewError> {
+        for style in self.css.styles.iter() {
+            let matches = match_style(style, node, &self.tree, self);
+            let element = self.tree.get_element_mut(node)?;
+            let hints = &element.style_hints;
+            // TODO: number of discarded styles can be increased
+            // by handling complex selectors more accurately
+            let is_static = !style.has_pseudo_class_selector();
+            let is_static = is_static
+                && (!hints.has_dynamic_properties()
+                    || (!style.has_attrs_selector(&hints.dynamic_attrs)
+                        && (!hints.has_dynamic_classes || !style.has_class_selector())
+                        && (!hints.has_dynamic_id || !style.has_id_selector())));
+            if matches {
+                if is_static {
+                    element.styles.push(ElementStyle::Static(style.clone()));
+                } else {
+                    element.styles.push(ElementStyle::Dynamic(style.clone()));
+                }
+            } else {
+                if is_static {
+                    // discard, we do not handle styles that will never be applied
+                } else {
+                    element.styles.push(ElementStyle::Dynamic(style.clone()));
+                }
+            }
+        }
+        let children = self.tree.children(node)?;
+        for child in children {
+            self.calculate_elements_stylesheet(child)?;
+        }
+        Ok(())
+    }
+
     fn apply_styles(
         &mut self,
         node: NodeId,
@@ -377,12 +425,21 @@ impl View {
             return Ok(());
         }
 
+        self.metrics.cascades.inc();
         let mut cascade = Cascade::new(&self.css, sizes, variables, &self.resources);
         cascade.apply_styles(input, node, &self.tree, parent, &mut layout, element, self);
+        let stats = cascade.stats;
+        self.metrics.styles.set(self.css.styles.len());
+        let cascade_metrics = &mut self.metrics.cascade;
+        cascade_metrics.matches_static.add(stats.matches_static);
+        cascade_metrics.matches_dynamic.add(stats.matches_dynamic);
+        cascade_metrics.apply_ok.add(stats.apply_ok);
+        cascade_metrics.apply_error.add(stats.apply_error);
         let variables = cascade.take_variables();
 
         // we must update styles only if changes detected to support Taffy cache system
         if self.tree.style(node)? != &layout {
+            self.metrics.layouts.inc();
             self.tree.set_style(node, layout)?;
         }
 

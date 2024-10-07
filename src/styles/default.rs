@@ -71,6 +71,8 @@ pub fn create_element(node: NodeId) -> Element {
         transitions: vec![],
         state: Default::default(),
         pointer_events: Default::default(),
+        style_hints: Default::default(),
+        styles: vec![],
         style: vec![],
     }
 }

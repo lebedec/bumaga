@@ -12,4 +12,5 @@ serde_json = "1.0.118"
 log = { version = "0.4", features = ["std"] }
 pest = { version = "2" }
 pest_derive = { version = "2" }
+mesura = { version = "0.1" }
 

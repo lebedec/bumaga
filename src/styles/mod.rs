@@ -6,15 +6,16 @@ mod default;
 mod inherit;
 mod initial;
 mod scrolling;
+mod stats;
 
 pub use default::*;
 pub use inherit::*;
 pub use scrolling::*;
 
 use log::error;
+use mesura::GaugeValue;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env::var;
-
 use taffy::{
     Dimension, Layout, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect,
     TaffyTree,
@@ -31,10 +32,12 @@ use crate::css::{
 };
 
 use crate::css::ComputedValue::{Keyword, Number, Time};
+use crate::metrics::CascadeMetrics;
 use crate::styles::initial::initial;
+use crate::styles::stats::CascadeStats;
 use crate::{
-    Background, Borders, Element, FontFace, Input, Length, ObjectFit, PointerEvents, TextAlign,
-    TransformFunction,
+    Background, Borders, Element, ElementStyle, FontFace, Input, Length, ObjectFit, PointerEvents,
+    TextAlign, TransformFunction,
 };
 
 /// The cascade is an algorithm that defines how to combine CSS (Cascading Style Sheets)
@@ -44,6 +47,7 @@ pub struct Cascade<'c> {
     pub variables: Variables,
     sizes: Sizes,
     resources: &'c str,
+    pub stats: CascadeStats,
 }
 
 pub type Variables = HashMap<String, Shorthand>;
@@ -71,6 +75,7 @@ impl<'c> Cascade<'c> {
             variables,
             sizes,
             resources,
+            stats: CascadeStats::default(),
         }
     }
 
@@ -90,11 +95,18 @@ impl<'c> Cascade<'c> {
         inherit(parent, element);
         // 1: css rules
         let mut computed_style = HashMap::new();
-        for style in &self.css.styles {
-            if match_style(&style, node, tree, matcher) {
-                self.compute_declaration_block(&style.declaration, &mut computed_style);
-            } else {
-                //println!("NOT MATCH");
+        for style in element.styles.iter() {
+            match style {
+                ElementStyle::Static(style) => {
+                    self.stats.matches_static += 1;
+                    self.compute_declaration_block(&style.declaration, &mut computed_style);
+                }
+                ElementStyle::Dynamic(style) => {
+                    self.stats.matches_dynamic += 1;
+                    if match_style(&style, node, tree, matcher) {
+                        self.compute_declaration_block(&style.declaration, &mut computed_style);
+                    }
+                }
             }
         }
         // 2: inline css
@@ -124,6 +136,9 @@ impl<'c> Cascade<'c> {
         for (property, value) in &computed_style {
             if let Err(error) = self.apply(property.key, property.index, &value, layout, element) {
                 error!("unable to apply {property:?}:{value:?} because of {error:?}");
+                self.stats.apply_error += 1;
+            } else {
+                self.stats.apply_ok += 1;
             }
         }
         for transition in element.transitions.iter_mut() {
