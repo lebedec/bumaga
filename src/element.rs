@@ -3,9 +3,9 @@ use std::collections::{HashMap, HashSet};
 use taffy::{Layout, NodeId};
 
 use crate::animation::{Animator, Transition};
-use crate::css::{Declaration, Property, PropertyKey, Style};
+use crate::css::{Declaration, Style};
 use crate::styles::Scrolling;
-use crate::{Handler, ViewError};
+use crate::Handler;
 
 /// The most fundamental object for building a UI, Element contains layout and appearance.
 /// Element maps directly to the native rectangle view equivalent on whatever graphics engine

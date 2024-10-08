@@ -5,7 +5,7 @@ use crate::css::ComputedValue::{Keyword, Str, Time};
 use crate::css::{ComputedValue, Dim, PropertyKey, Units};
 use crate::styles::{Cascade, CascadeError};
 use crate::{Element, Length, PointerEvents, TextAlign, TransformFunction};
-use log::{debug, error};
+use log::debug;
 use taffy::{Dimension, LengthPercentage, LengthPercentageAuto, Overflow};
 
 impl<'c> Cascade<'c> {

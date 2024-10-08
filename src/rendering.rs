@@ -2,7 +2,7 @@ use log::{error, warn};
 use std::collections::{BTreeMap, HashMap};
 use taffy::{Dimension, NodeId, Size, TaffyTree};
 
-use crate::css::{read_inline_css, Declaration, ReaderError};
+use crate::css::read_inline_css;
 use crate::html::{ArgumentBinding, ElementBinding, Html, TextBinding, TextSpan};
 use crate::styles::{create_element, default_layout};
 use crate::view_model::{Binding, Bindings, Schema};

@@ -325,7 +325,7 @@ fn parse_element_bindings(pair: Pair<Rule>) -> Vec<ElementBinding> {
 mod tests {
     use super::*;
     use crate::system::setup_tests_logging;
-    use log::info;
+    
 
     #[test]
     pub fn test_ignore_script_tag() {

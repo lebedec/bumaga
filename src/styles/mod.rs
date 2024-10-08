@@ -13,31 +13,21 @@ pub use inherit::*;
 pub use scrolling::*;
 
 use log::error;
-use mesura::GaugeValue;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::env::var;
+use std::collections::HashMap;
 use taffy::{
-    Dimension, Layout, LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Point, Rect,
+    NodeId,
     TaffyTree,
 };
 
-use crate::animation::{
-    AnimationDirection, AnimationFillMode, AnimationIterations, Animator, TimingFunction,
-    Transition,
-};
 use crate::css::{
-    match_style, Animation, AnimationTrack, ComputedStyle, ComputedValue, Css, Declaration,
-    Definition, Dim, Property, PropertyKey, PseudoClassMatcher, Shorthand, Style, Units, Var,
+    match_style, ComputedStyle, ComputedValue, Css, Declaration,
+    Definition, PseudoClassMatcher, Shorthand,
     Variable,
 };
 
-use crate::css::ComputedValue::{Keyword, Number, Time};
-use crate::metrics::CascadeMetrics;
-use crate::styles::initial::initial;
 use crate::styles::stats::CascadeStats;
 use crate::{
-    Background, Borders, Element, ElementStyle, FontFace, Input, Length, ObjectFit, PointerEvents,
-    TextAlign, TransformFunction,
+    Element, ElementStyle, Input,
 };
 
 /// The cascade is an algorithm that defines how to combine CSS (Cascading Style Sheets)

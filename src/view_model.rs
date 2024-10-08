@@ -1,15 +1,12 @@
 use crate::{
-    Element, Fragment, Input, InputEvent, Keys, MouseButtons, Output, PointerEvents,
+    Element, Input, InputEvent, MouseButtons, Output, PointerEvents,
     ValueExtensions, ViewError,
 };
 use log::error;
 
-use crate::html::ArgumentBinding;
 use crate::tree::ViewTreeExtensions;
-use pest::state;
-use serde_json::{json, value, Value};
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt::format;
 use std::mem::take;
 use std::time::Duration;
 use taffy::{NodeId, TaffyTree};

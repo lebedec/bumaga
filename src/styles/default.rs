@@ -1,5 +1,4 @@
-use crate::{Background, Borders, Element, FontFace, Length, ObjectFit, TextAlign};
-use std::collections::HashMap;
+use crate::{Borders, Element, FontFace, Length, ObjectFit, TextAlign};
 use taffy::{Dimension, NodeId, Overflow, Point, Rect};
 
 impl FontFace {

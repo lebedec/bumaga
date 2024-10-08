@@ -1,5 +1,5 @@
 use crate::css::{
-    Animation, AnimationTrack, ComputedStyle, Declaration, PropertyDescriptor, PropertyKey,
+    Animation, AnimationTrack, ComputedStyle, Declaration, PropertyDescriptor,
 };
 use crate::styles::initial::initial;
 use crate::styles::Cascade;

@@ -6,9 +6,9 @@ use crate::css::{
 use log::error;
 use pest::error::Error;
 use pest::iterators::Pair;
-use pest::{Parser, Span};
+use pest::Parser;
 use pest_derive::Parser;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 #[derive(Parser)]
 #[grammar = "css/css.pest"]

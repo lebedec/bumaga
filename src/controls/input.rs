@@ -1,5 +1,5 @@
 use serde_json::Value;
-use taffy::{NodeId, TaffyTree};
+use taffy::NodeId;
 
 use crate::html::TextBinding;
 use crate::rendering::Renderer;

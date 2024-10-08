@@ -1,5 +1,5 @@
 use crate::css::{
-    match_style, read_css, read_inline_css, Css, Declaration, PseudoClassMatcher, ReaderError,
+    match_style, read_css, read_inline_css, Css, PseudoClassMatcher,
 };
 use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
@@ -9,22 +9,21 @@ use crate::styles::{inherit, Cascade, Scrolling, Sizes, Variables};
 use crate::tree::ViewTreeExtensions;
 use crate::view_model::{Reaction, ViewModel};
 use crate::{
-    Element, ElementStyle, Fonts, Input, Output, PointerEvents, Transformer, ValueExtensions,
+    Element, ElementStyle, Fonts, Input, Output, Transformer,
     ViewError,
 };
-use log::{error, info};
+use log::error;
 use mesura::GaugeValue;
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
-use std::env::var;
+use std::collections::HashMap;
 use std::fs;
-use std::ops::{Add, Deref, DerefMut};
+use std::ops::{Add, Deref};
 use std::path::PathBuf;
 use std::time::SystemTime;
 use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
 use taffy::{
-    AlignItems, AvailableSpace, Display, Layout, NodeId, Point, Position, PrintTree, Size,
+    AvailableSpace, Layout, NodeId, Point, PrintTree, Size,
     TaffyTree,
 };
 
