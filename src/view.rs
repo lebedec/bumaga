@@ -271,14 +271,40 @@ impl View {
                 node,
                 visible,
             } => {
-                let now = self.tree.children(parent)?;
+                let definition = self
+                    .tree
+                    .get_element(parent)
+                    .map(|parent| parent.children.clone())?;
+                let definition_index = definition
+                    .iter()
+                    .position(|child| child == &node)
+                    .ok_or(ViewError::ChildNotFound(node))?;
+                let current = self.tree.children(parent)?;
+                let current_index = current.iter().position(|child| child == &node);
                 if visible {
-                    if !now.contains(&node) {
-                        self.tree.add_child(parent, node)?;
+                    if current_index.is_some() {
+                        // nothing to do, already visible
+                    } else {
+                        let mut index = current.len().min(definition_index);
+                        while index > 0 {
+                            index -= 1;
+                            let sibling = current[index];
+                            let sibling_index = definition
+                                .iter()
+                                .position(|child| child == &sibling)
+                                .ok_or(ViewError::ChildNotFound(sibling))?;
+                            if sibling_index < definition_index {
+                                index += 1;
+                                break;
+                            }
+                        }
+                        self.tree.insert_child_at_index(parent, index, node)?;
                     }
                 } else {
-                    if now.contains(&node) {
-                        self.tree.remove_child(parent, node)?;
+                    if let Some(current_index) = current_index {
+                        self.tree.remove_child_at_index(parent, current_index)?;
+                    } else {
+                        // nothing to do, already hidden
                     }
                 }
             }
@@ -751,6 +777,41 @@ mod tests {
             div.backgrounds[0].image,
             Some("./assets/./images/icon.png".to_string())
         );
+    }
+
+    #[test]
+    pub fn test_element_position_after_conditional_rerender() {
+        let css = r#"
+            div {
+                height: 10px;
+            }
+        "#;
+        let html = r#"
+        <html>
+        <body>
+            <div ?="{test_a}" id="a"></div>
+            <div ?="{test_b}" id="b"></div>
+            <div ?="{test_c}" id="c"></div>
+        </body>
+        </html>"#;
+        let mut view = view(html, css);
+
+        let value = json!({"test_a": true, "test_b": false, "test_c": true});
+        view.update(Input::new(), value).unwrap();
+        let value = json!({"test_a": true, "test_b": true, "test_c": true});
+        view.update(Input::new(), value).unwrap();
+
+        let body = view.body();
+        let children = body.children();
+        let a = children[0];
+        let b = children[1];
+        let c = children[2];
+        assert_eq!(a.position, [0.0, 0.0], "a position");
+        assert_eq!(a.attrs.get("id"), Some(&"a".to_string()), "a id");
+        assert_eq!(b.position, [0.0, 10.0], "b position");
+        assert_eq!(b.attrs.get("id"), Some(&"b".to_string()), "b id");
+        assert_eq!(c.position, [0.0, 20.0], "c position");
+        assert_eq!(c.attrs.get("id"), Some(&"c".to_string()), "c id");
     }
 
     #[test]

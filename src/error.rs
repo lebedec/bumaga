@@ -11,6 +11,7 @@ pub enum ViewError {
     ElementNotFound(NodeId),
     ElementTextContentNotFound,
     ParentNotFound(NodeId),
+    ChildNotFound(NodeId),
     Html(html::ReaderError),
     Css(css::ReaderError),
     Io(io::Error),
