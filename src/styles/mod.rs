@@ -14,21 +14,15 @@ pub use scrolling::*;
 
 use log::error;
 use std::collections::HashMap;
-use taffy::{
-    NodeId,
-    TaffyTree,
-};
+use taffy::{NodeId, TaffyTree};
 
 use crate::css::{
-    match_style, ComputedStyle, ComputedValue, Css, Declaration,
-    Definition, PseudoClassMatcher, Shorthand,
-    Variable,
+    match_style, ComputedStyle, ComputedValue, Css, Declaration, Definition, PseudoClassMatcher,
+    Shorthand, Variable,
 };
 
 use crate::styles::stats::CascadeStats;
-use crate::{
-    Element, ElementStyle, Input,
-};
+use crate::{Element, ElementStyle, Input};
 
 /// The cascade is an algorithm that defines how to combine CSS (Cascading Style Sheets)
 /// property values originating from different sources.
@@ -192,6 +186,7 @@ impl<'c> Cascade<'c> {
 pub struct Sizes {
     pub root_font_size: f32,
     pub parent_font_size: f32,
+    pub parent_color: [u8; 4],
     pub viewport_width: f32,
     pub viewport_height: f32,
 }

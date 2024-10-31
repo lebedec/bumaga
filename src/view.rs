@@ -1,6 +1,4 @@
-use crate::css::{
-    match_style, read_css, read_inline_css, Css, PseudoClassMatcher,
-};
+use crate::css::{match_style, read_css, read_inline_css, Css, PseudoClassMatcher};
 use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
 use crate::metrics::ViewMetrics;
@@ -8,10 +6,7 @@ use crate::rendering::Renderer;
 use crate::styles::{inherit, Cascade, Scrolling, Sizes, Variables};
 use crate::tree::ViewTreeExtensions;
 use crate::view_model::{Reaction, ViewModel};
-use crate::{
-    Element, ElementStyle, Fonts, Input, Output, Transformer,
-    ViewError,
-};
+use crate::{Element, ElementStyle, Fonts, Input, Output, Transformer, ViewError};
 use log::error;
 use mesura::GaugeValue;
 use serde_json::Value;
@@ -22,10 +17,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
-use taffy::{
-    AvailableSpace, Layout, NodeId, Point, PrintTree, Size,
-    TaffyTree,
-};
+use taffy::{AvailableSpace, Layout, NodeId, Point, PrintTree, Size, TaffyTree};
 
 pub struct View {
     model: ViewModel,
@@ -59,6 +51,9 @@ impl View {
                 }
                 if attrs.get("rel") == Some(&"stylesheet") {
                     if let Some(href) = attrs.get("href") {
+                        if href.starts_with("http") {
+                            continue;
+                        }
                         let mut file = css_base_directory.clone();
                         file.push(href);
                         css_files.push(file);
@@ -218,6 +213,7 @@ impl View {
         let sizes = Sizes {
             root_font_size: 16.0,
             parent_font_size: 16.0,
+            parent_color: [0; 4],
             viewport_width,
             viewport_height,
         };
@@ -473,6 +469,7 @@ impl View {
                 let children = self.tree.children(node)?;
                 for child in children {
                     sizes.parent_font_size = element.font.size;
+                    sizes.parent_color = element.color;
                     self.apply_styles(child, input, sizes, variables.clone())?;
                 }
             }

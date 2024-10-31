@@ -37,6 +37,23 @@ impl<'c> Cascade<'c> {
             //
             // Element + Layout
             //
+            (PropertyKey::Border, [Keyword(keyword)]) => match keyword.as_str() {
+                "none" => {
+                    let width = &ComputedValue::Zero;
+                    let color = &ComputedValue::Keyword("currentcolor".to_string());
+                    overwrite(PropertyKey::BorderTopWidth, width);
+                    overwrite(PropertyKey::BorderTopColor, color);
+                    overwrite(PropertyKey::BorderRightWidth, width);
+                    overwrite(PropertyKey::BorderRightColor, color);
+                    overwrite(PropertyKey::BorderBottomWidth, width);
+                    overwrite(PropertyKey::BorderBottomColor, color);
+                    overwrite(PropertyKey::BorderLeftWidth, width);
+                    overwrite(PropertyKey::BorderLeftColor, color);
+                }
+                value => {
+                    error!("unable to compute styles, property {key:?} keyword {value:?} not supported");
+                }
+            },
             (PropertyKey::Border, [width, _style, color]) => {
                 overwrite(PropertyKey::BorderTopWidth, width);
                 overwrite(PropertyKey::BorderTopColor, color);

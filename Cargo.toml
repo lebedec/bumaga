@@ -6,7 +6,7 @@ edition = "2021"
 
 
 [dependencies]
-taffy = "0.5.1"
+taffy = "0.6"
 serde = "1.0"
 serde_json = "1.0.118"
 log = { version = "0.4", features = ["std"] }

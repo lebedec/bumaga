@@ -6,7 +6,7 @@ use crate::css::{ComputedValue, Dim, PropertyKey, Units};
 use crate::styles::{Cascade, CascadeError};
 use crate::{Element, Length, PointerEvents, TextAlign, TransformFunction};
 use log::debug;
-use taffy::{Dimension, LengthPercentage, LengthPercentageAuto, Overflow};
+use taffy::{BoxSizing, CoreStyle, Dimension, LengthPercentage, LengthPercentageAuto, Overflow};
 
 impl<'c> Cascade<'c> {
     pub(crate) fn apply(
@@ -18,6 +18,10 @@ impl<'c> Cascade<'c> {
         element: &mut Element,
     ) -> Result<(), CascadeError> {
         match (key, value) {
+            //
+            // Unused properties which can be used to reset styles in HTML prototyping
+            //
+            (PropertyKey::Outline, value) => {}
             //
             // Element
             //
@@ -130,9 +134,12 @@ impl<'c> Cascade<'c> {
             //
             // Layout
             //
-            (PropertyKey::BoxSizing, _) => {
-                // TODO: calculate size manually?
-                debug!("ignore box-sizing property, not supported");
+            (PropertyKey::BoxSizing, ComputedValue::Keyword(keyword)) => {
+                layout.box_sizing = match keyword.as_str() {
+                    "border-box" => BoxSizing::BorderBox,
+                    "content-box" => BoxSizing::ContentBox,
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
             }
             (PropertyKey::MarginTop, value) => layout.margin.top = lengthp_auto(value, self)?,
             (PropertyKey::MarginRight, value) => layout.margin.right = lengthp_auto(value, self)?,
@@ -296,7 +303,7 @@ fn resolve_font_weight(value: &ComputedValue, cascade: &Cascade) -> Result<u16, 
     Ok(value)
 }
 
-fn resolve_color(value: &ComputedValue, _cascade: &Cascade) -> Result<[u8; 4], CascadeError> {
+fn resolve_color(value: &ComputedValue, cascade: &Cascade) -> Result<[u8; 4], CascadeError> {
     let value = match value {
         ComputedValue::Color(color) => *color,
         ComputedValue::Keyword(keyword) => match keyword.as_str() {
@@ -306,6 +313,7 @@ fn resolve_color(value: &ComputedValue, _cascade: &Cascade) -> Result<[u8; 4], C
             "blue" => [0, 0, 255, 255],
             "green" => [0, 255, 0, 255],
             "transparent" => [0, 0, 0, 0],
+            "currentcolor" | "currentColor" => cascade.sizes.parent_color,
             keyword => return Err(CascadeError::InvalidKeyword(keyword.to_string())),
         },
         _ => return Err(CascadeError::ValueNotSupported),
