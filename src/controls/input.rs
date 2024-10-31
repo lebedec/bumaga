@@ -7,7 +7,6 @@ use crate::tree::{ViewTree, ViewTreeExtensions};
 use crate::{Element, Keys, ViewError, ViewModel};
 
 const VALUE: usize = 0;
-const CARET: usize = 1;
 
 impl Renderer {
     pub(crate) fn render_input(&mut self, input: &mut Element) -> Result<[NodeId; 2], ViewError> {

@@ -19,7 +19,8 @@ mod metrics;
 mod output;
 mod rendering;
 mod styles;
-mod system;
+#[cfg(test)]
+mod testing;
 mod tree;
 mod value;
 mod view;

@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug)]
 pub struct Css {
-    pub source: String,
     pub styles: Vec<Style>,
     pub animations: HashMap<String, Animation>,
 }

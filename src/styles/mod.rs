@@ -9,7 +9,7 @@ mod scrolling;
 mod stats;
 
 pub use default::*;
-pub use inherit::*;
+pub use inherit::inherit;
 pub use scrolling::*;
 
 use log::error;
@@ -39,10 +39,8 @@ pub type Variables = HashMap<String, Shorthand>;
 #[derive(Debug)]
 pub enum CascadeError {
     PropertyNotSupported,
-    DimensionUnitsNotSupported,
     ValueNotSupported,
-    TransformFunctionNotSupported,
-    VariableNotFound,
+    #[allow(dead_code)]
     InvalidKeyword(String),
 }
 
@@ -76,7 +74,7 @@ impl<'c> Cascade<'c> {
         // -1: initial
         reset_element_style(element);
         // 0: inheritance
-        inherit(parent, element);
+        inherit::inherit(parent, element);
         // 1: css rules
         let mut computed_style = HashMap::new();
         for style in element.styles.iter() {

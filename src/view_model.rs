@@ -1,6 +1,5 @@
 use crate::{
-    Element, Input, InputEvent, MouseButtons, Output, PointerEvents,
-    ValueExtensions, ViewError,
+    Element, Input, InputEvent, MouseButtons, Output, PointerEvents, ValueExtensions, ViewError,
 };
 use log::error;
 
@@ -874,10 +873,6 @@ mod tests {
                 }
             ]
         );
-    }
-
-    fn node(id: u64) -> NodeId {
-        NodeId::new(id)
     }
 
     fn repeat(node: u64, n: usize) -> Binding {

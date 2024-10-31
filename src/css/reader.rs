@@ -1,4 +1,4 @@
-use crate::css::model::{ComputedValue, PropertyKey, Shorthand, Var};
+use crate::css::model::{ComputedValue, PropertyKey, Shorthand};
 use crate::css::{
     Animation, Complex, Css, Declaration, Definition, Dim, Function, Keyframe, Matcher, Property,
     Simple, Style, Units, Variable,
@@ -151,11 +151,7 @@ pub fn read_css(css: &str) -> Result<Css, ReaderError> {
             _ => unreachable!(),
         }
     }
-    Ok(Css {
-        source: css.to_string(),
-        styles,
-        animations,
-    })
+    Ok(Css { styles, animations })
 }
 
 fn read_declarations(pair: Pair<Rule>) -> Vec<Declaration> {
@@ -165,7 +161,6 @@ fn read_declarations(pair: Pair<Rule>) -> Vec<Declaration> {
         let name = iter.next().unwrap();
         let shorthands = iter.next().unwrap();
         // println!("PROP {} {values:?}", name.as_str());
-        let id = name.as_span().start();
         let key = name.as_str();
         let declaration = if key.starts_with("--") {
             let values: Vec<Shorthand> = shorthands
@@ -262,16 +257,6 @@ fn read_seconds(pair: Pair<Rule>) -> f32 {
         "s" => value,
         "ms" => value / 1000.0,
         _ => unreachable!(),
-    }
-}
-
-fn read_variable(pair: Pair<Rule>) -> Var {
-    let mut iter = pair.into_inner();
-    let name = iter.next().unwrap();
-    let fallback = iter.next();
-    Var {
-        name: name.as_str().to_string(),
-        fallback: fallback.map(|pair| pair.as_str().to_string()),
     }
 }
 

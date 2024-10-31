@@ -5,8 +5,7 @@ use crate::css::ComputedValue::{Keyword, Str, Time};
 use crate::css::{ComputedValue, Dim, PropertyKey, Units};
 use crate::styles::{Cascade, CascadeError};
 use crate::{Element, Length, PointerEvents, TextAlign, TransformFunction};
-use log::debug;
-use taffy::{BoxSizing, CoreStyle, Dimension, LengthPercentage, LengthPercentageAuto, Overflow};
+use taffy::{BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Overflow};
 
 impl<'c> Cascade<'c> {
     pub(crate) fn apply(
@@ -21,7 +20,7 @@ impl<'c> Cascade<'c> {
             //
             // Unused properties which can be used to reset styles in HTML prototyping
             //
-            (PropertyKey::Outline, value) => {}
+            (PropertyKey::Outline, _value) => {}
             //
             // Element
             //
@@ -290,7 +289,7 @@ impl<'c> Cascade<'c> {
     }
 }
 
-fn resolve_font_weight(value: &ComputedValue, cascade: &Cascade) -> Result<u16, CascadeError> {
+fn resolve_font_weight(value: &ComputedValue, _cascade: &Cascade) -> Result<u16, CascadeError> {
     let value = match value {
         ComputedValue::Number(value) if *value >= 1.0 && *value <= 1000.0 => *value as u16,
         ComputedValue::Keyword(keyword) => match keyword.as_str() {
@@ -323,7 +322,7 @@ fn resolve_color(value: &ComputedValue, cascade: &Cascade) -> Result<[u8; 4], Ca
 
 fn resolve_timing(
     value: &ComputedValue,
-    cascade: &Cascade,
+    _cascade: &Cascade,
 ) -> Result<TimingFunction, CascadeError> {
     let value = match value {
         ComputedValue::Keyword(keyword) => match keyword.as_str() {
@@ -341,9 +340,9 @@ fn resolve_timing(
     Ok(value)
 }
 
-fn resolve_transforms(
-    values: &[ComputedValue],
-    cascade: &Cascade,
+fn _resolve_transforms(
+    _values: &[ComputedValue],
+    _cascade: &Cascade,
 ) -> Result<Vec<TransformFunction>, CascadeError> {
     unimplemented!()
     // let mut transforms = vec![];
@@ -396,7 +395,7 @@ fn resolve_transforms(
 
 fn resolve_iterations(
     value: &ComputedValue,
-    cascade: &Cascade,
+    _cascade: &Cascade,
 ) -> Result<AnimationIterations, CascadeError> {
     let value = match value {
         ComputedValue::Keyword(keyword) => match keyword.as_str() {
@@ -409,7 +408,7 @@ fn resolve_iterations(
     Ok(value)
 }
 
-fn resolve_string(value: &ComputedValue, cascade: &Cascade) -> Result<String, CascadeError> {
+fn resolve_string(value: &ComputedValue, _cascade: &Cascade) -> Result<String, CascadeError> {
     let value = match value {
         ComputedValue::Str(value) => value.clone(),
         _ => return Err(CascadeError::ValueNotSupported),

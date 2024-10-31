@@ -169,7 +169,7 @@ impl Animator {
     }
 }
 
-pub fn animate(key: PropertyKey, a: &ComputedValue, b: &ComputedValue, t: f32) -> ComputedValue {
+pub fn animate(_key: PropertyKey, a: &ComputedValue, b: &ComputedValue, t: f32) -> ComputedValue {
     if t == 0.0 {
         return a.clone();
     }
@@ -222,16 +222,16 @@ pub enum TimingFunction {
     Linear,
     StepStart,
     StepEnd,
-    Steps(u8, Jump),
-    CubicBezier(f32, f32, f32, f32),
+    _Steps(u8, Jump),
+    _CubicBezier(f32, f32, f32, f32),
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Jump {
-    None,
-    Start,
-    End,
-    Both,
+    _None,
+    _Start,
+    _End,
+    _Both,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -268,6 +268,6 @@ fn number(a: &f32, b: &f32, t: f32) -> ComputedValue {
     Number(a + (b - a) * t)
 }
 
-fn transform(_a: &[ComputedValue], _b: &[ComputedValue], _t: f32) -> Vec<ComputedValue> {
+fn _transform(_a: &[ComputedValue], _b: &[ComputedValue], _t: f32) -> Vec<ComputedValue> {
     unimplemented!()
 }

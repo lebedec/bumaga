@@ -1,6 +1,6 @@
 use crate::Element;
 
-pub(crate) fn inherit(parent: &Element, element: &mut Element) {
+pub fn inherit(parent: &Element, element: &mut Element) {
     // border-collapse
     // border-spacing
     // caption-side

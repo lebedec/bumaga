@@ -34,6 +34,6 @@ impl Log for BasicLogger {
 }
 
 pub fn setup_tests_logging() {
-    set_boxed_logger(Box::new(BasicLogger::new()));
+    let _ = set_boxed_logger(Box::new(BasicLogger::new()));
     set_max_level(LevelFilter::Debug);
 }

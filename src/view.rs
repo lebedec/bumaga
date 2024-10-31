@@ -577,7 +577,7 @@ impl PseudoClassMatcher for View {
 }
 
 #[derive(Clone)]
-enum Source {
+pub enum Source {
     Memory(String),
     File(PathBuf, SystemTime),
     Files(Vec<(PathBuf, SystemTime)>),
@@ -674,7 +674,7 @@ impl Source {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::system::setup_tests_logging;
+    use crate::testing::setup_tests_logging;
     use crate::{Call, InputEvent};
     use serde::Serialize;
     use serde_json::json;

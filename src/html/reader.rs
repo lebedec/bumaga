@@ -108,10 +108,6 @@ pub enum TextSpan {
     Binder(Binder),
 }
 
-pub fn read_html_unchecked(html: &str) -> Html {
-    read_html(html).expect("must be read html")
-}
-
 pub fn read_html(html: &str) -> Result<Html, ReaderError> {
     let document = HtmlParser::parse(Rule::Document, html)?
         .next()
@@ -324,8 +320,7 @@ fn parse_element_bindings(pair: Pair<Rule>) -> Vec<ElementBinding> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::system::setup_tests_logging;
-    
+    use crate::testing::setup_tests_logging;
 
     #[test]
     pub fn test_ignore_script_tag() {

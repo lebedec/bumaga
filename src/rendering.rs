@@ -49,7 +49,6 @@ impl Renderer {
     pub(crate) fn render_text(&mut self, text: TextBinding) -> Result<NodeId, ViewError> {
         let layout = default_layout();
         let node = self.tree.new_leaf(layout)?;
-        let count = text.spans.len();
         let spans = text
             .spans
             .into_iter()
