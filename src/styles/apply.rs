@@ -494,6 +494,7 @@ fn length(value: &ComputedValue, cascade: &Cascade) -> Result<Length, CascadeErr
 
 fn lengthp(value: &ComputedValue, cascade: &Cascade) -> Result<LengthPercentage, CascadeError> {
     let value = match value {
+        ComputedValue::Zero => LengthPercentage::Length(0.0),
         ComputedValue::Dimension(dimension) => {
             let length = parse_dimension_length(dimension, cascade)?;
             LengthPercentage::Length(length)
