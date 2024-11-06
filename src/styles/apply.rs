@@ -92,19 +92,19 @@ impl<'c> Cascade<'c> {
             //
             (PropertyKey::BorderTopWidth, value) => {
                 element.borders.top.width = dimension_length(value, self)?;
-                // box-sizing layout.border.top = LengthPercentage::Length(element.borders.top.width);
+                layout.border.top = LengthPercentage::Length(element.borders.top.width);
             }
             (PropertyKey::BorderRightWidth, value) => {
                 element.borders.right.width = dimension_length(value, self)?;
-                // box-sizing layout.border.right = LengthPercentage::Length(element.borders.right.width);
+                layout.border.right = LengthPercentage::Length(element.borders.right.width);
             }
             (PropertyKey::BorderBottomWidth, value) => {
                 element.borders.bottom.width = dimension_length(value, self)?;
-                // box-sizing layout.border.bottom = LengthPercentage::Length(element.borders.bottom.width);
+                layout.border.bottom = LengthPercentage::Length(element.borders.bottom.width);
             }
             (PropertyKey::BorderLeftWidth, value) => {
                 element.borders.left.width = dimension_length(value, self)?;
-                // box-sizing layout.border.left = LengthPercentage::Length(element.borders.left.width);
+                layout.border.left = LengthPercentage::Length(element.borders.left.width);
             }
             (PropertyKey::BorderTopColor, value) => {
                 element.borders.top.color = resolve_color(value, self)?;
