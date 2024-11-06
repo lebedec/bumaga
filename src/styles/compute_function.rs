@@ -15,7 +15,8 @@ impl<'c> Cascade<'c> {
             ("rgba", [Number(r), Number(g), Number(b), Number(a)]) => {
                 Color([*r as u8, *g as u8, *b as u8, (a * 255.0) as u8])
             }
-            ("url", [Str(path)]) => Str(format!("{}/{}", self.resources, path)),
+            // ("url", [Str(path)]) => Str(format!("{}/{}", self.resources, path)),
+            ("url", [Str(path)]) => Str(path.to_string()),
             _ => {
                 error!("unable to compute function {name}({arguments:?}), not supported");
                 ComputedValue::Error

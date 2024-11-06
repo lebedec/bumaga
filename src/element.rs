@@ -225,6 +225,7 @@ pub struct MyBorder {
 pub struct Background {
     /// The background image.
     pub image: Option<String>,
+    pub is_src: bool,
     /// The background color.
     pub color: Rgba,
     // The background position.
@@ -246,6 +247,7 @@ impl Default for Background {
     fn default() -> Self {
         Self {
             image: None,
+            is_src: false,
             color: [0; 4],
             src: [0.0; 2],
         }

@@ -24,6 +24,7 @@ impl ViewModel {
         let child_node = tree.child_at_index(img, BACKGROUND)?;
         let child = tree.get_element_mut(child_node)?;
         child.get_background_mut(0).image = Some(src);
+        child.get_background_mut(0).is_src = true;
         tree.mark_dirty(child_node)?;
         Ok(())
     }

@@ -87,6 +87,7 @@ impl Renderer {
         let node = self.tree.new_leaf(layout)?;
         let mut element = create_element(node);
         element.get_background_mut(0).image = Some(src);
+        element.get_background_mut(0).is_src = true;
         self.tree.set_node_context(node, Some(element))?;
         Ok(node)
     }
