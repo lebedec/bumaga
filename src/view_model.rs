@@ -301,15 +301,16 @@ impl ViewModel {
                         }
                     }
                     InputEvent::MouseButtonDown(button) => {
-                        if button == MouseButtons::Left && element.state.hover {
-                            element.state.active = true;
-                        }
                         if element.state.hover {
                             let event = json!({
                                 "button": button
                             });
                             self.fire(&element, "onmousedown", event);
-
+                        }
+                        if button == MouseButtons::Left && element.state.hover {
+                            element.state.active = true;
+                        }
+                        if element.state.hover {
                             if !element.state.focus {
                                 self.fire(&element, "onfocus", Value::Null);
                             }
@@ -331,12 +332,19 @@ impl ViewModel {
                         }
                     }
                     InputEvent::MouseButtonUp(button) => {
-                        if button == MouseButtons::Left {
+                        if element.state.hover {
                             let event = json!({
                                 "button": button
                             });
                             self.fire(&element, "onmouseup", event);
-
+                        }
+                        if button == MouseButtons::Right
+                            && element.state.hover
+                            && self.drag.is_none()
+                        {
+                            self.fire(&element, "oncontextmenu", Value::Null);
+                        }
+                        if button == MouseButtons::Left {
                             let is_click =
                                 element.state.active && element.state.hover && self.drag.is_none();
                             element.state.active = false;
