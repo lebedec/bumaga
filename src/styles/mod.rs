@@ -30,7 +30,6 @@ pub struct Cascade<'c> {
     css: &'c Css,
     pub variables: Variables,
     sizes: Sizes,
-    resources: &'c str,
     pub stats: CascadeStats,
 }
 
@@ -51,12 +50,11 @@ impl CascadeError {
 }
 
 impl<'c> Cascade<'c> {
-    pub fn new(css: &'c Css, sizes: Sizes, variables: Variables, resources: &'c str) -> Self {
+    pub fn new(css: &'c Css, sizes: Sizes, variables: Variables) -> Self {
         Self {
             css,
             variables,
             sizes,
-            resources,
             stats: CascadeStats::default(),
         }
     }

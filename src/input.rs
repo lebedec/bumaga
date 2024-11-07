@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub struct Input {
@@ -48,7 +49,7 @@ pub enum InputEvent {
     Char(char),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum MouseButtons {
     Left,
     Right,

@@ -450,7 +450,7 @@ impl View {
         }
 
         self.metrics.cascades.inc();
-        let mut cascade = Cascade::new(&self.css, sizes, variables, &self.resources);
+        let mut cascade = Cascade::new(&self.css, sizes, variables);
         cascade.apply_styles(input, node, &self.tree, parent, &mut layout, element, self);
         let stats = cascade.stats;
         self.metrics.styles.set(self.css.styles.len());
@@ -775,7 +775,7 @@ mod tests {
         let div = body.children()[0];
         assert_eq!(
             div.backgrounds[0].image,
-            Some("./assets/./images/icon.png".to_string())
+            Some("./images/icon.png".to_string())
         );
     }
 

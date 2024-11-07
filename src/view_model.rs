@@ -305,6 +305,11 @@ impl ViewModel {
                             element.state.active = true;
                         }
                         if element.state.hover {
+                            let event = json!({
+                                "button": button
+                            });
+                            self.fire(&element, "onmousedown", event);
+
                             if !element.state.focus {
                                 self.fire(&element, "onfocus", Value::Null);
                             }
@@ -327,6 +332,11 @@ impl ViewModel {
                     }
                     InputEvent::MouseButtonUp(button) => {
                         if button == MouseButtons::Left {
+                            let event = json!({
+                                "button": button
+                            });
+                            self.fire(&element, "onmouseup", event);
+
                             let is_click =
                                 element.state.active && element.state.hover && self.drag.is_none();
                             element.state.active = false;
