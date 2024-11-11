@@ -206,7 +206,7 @@ impl Renderer {
             }
         }
         let mut children = vec![];
-
+        let mut hidden = vec![];
         match element.tag.as_str() {
             // void elements
             "img" => {
@@ -236,6 +236,7 @@ impl Renderer {
                         let pipe = binder.pipe.clone();
                         let child_id = self.render_node(child)?;
                         children.push(child_id);
+                        hidden.push(child_id);
                         let params = BindingParams::Visibility(node, child_id, visible);
                         let binding = Binding { params, pipe };
                         self.bindings.entry(path).or_default().push(binding);
@@ -274,6 +275,7 @@ impl Renderer {
         element.children = children.clone();
         self.tree.set_node_context(node, Some(element))?;
         self.tree.set_children(node, &children)?;
+        // todo:
         Ok(node)
     }
 }

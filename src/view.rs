@@ -6,7 +6,7 @@ use crate::rendering::Renderer;
 use crate::styles::{inherit, Cascade, Scrolling, Sizes, Variables};
 use crate::tree::ViewTreeExtensions;
 use crate::view_model::{Reaction, ViewModel};
-use crate::{Element, ElementStyle, Fonts, Input, Output, Transformer, ViewError};
+use crate::{BindingParams, Element, ElementStyle, Fonts, Input, Output, Transformer, ViewError};
 use log::error;
 use mesura::GaugeValue;
 use serde_json::Value;
@@ -89,6 +89,7 @@ impl View {
             metrics: ViewMetrics::new(),
         };
         view.calculate_elements_stylesheet(body)?;
+        view.apply_default_bindings_state()?;
         Ok(view)
     }
 
@@ -158,6 +159,7 @@ impl View {
             metrics: ViewMetrics::new(),
         };
         view.calculate_elements_stylesheet(body)?;
+        view.apply_default_bindings_state()?;
         Ok(view)
     }
 
@@ -196,7 +198,7 @@ impl View {
         self.watch_changes();
         let reactions = self.model.bind(&value);
         for reaction in reactions {
-            self.update_tree(reaction).unwrap();
+            self.update_tree(reaction)?;
         }
         // detect viewport changes
         let [viewport_width, viewport_height] = input.viewport;
@@ -381,6 +383,32 @@ impl View {
                     _ => {}
                 }
             }
+        }
+        Ok(())
+    }
+
+    // Why this function is needed?
+    // We need all elements to add in layout tree via rendering function.
+    // Apply reaction after rendering closest way to perform "clean" binding with default values.
+    // But this can degrade performance of View creation.
+    fn apply_default_bindings_state(&mut self) -> Result<(), ViewError> {
+        let mut reactions = vec![];
+        for bindings in self.model.bindings.values() {
+            for binding in bindings {
+                match binding.params {
+                    BindingParams::Visibility(parent, node, _) => {
+                        reactions.push(Reaction::Reattach {
+                            parent,
+                            node,
+                            visible: false,
+                        })
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for reaction in reactions {
+            self.update_tree(reaction)?;
         }
         Ok(())
     }
@@ -806,12 +834,12 @@ mod tests {
         let a = children[0];
         let b = children[1];
         let c = children[2];
-        assert_eq!(a.position, [0.0, 0.0], "a position");
         assert_eq!(a.attrs.get("id"), Some(&"a".to_string()), "a id");
-        assert_eq!(b.position, [0.0, 10.0], "b position");
+        assert_eq!(a.position, [0.0, 0.0], "a position");
         assert_eq!(b.attrs.get("id"), Some(&"b".to_string()), "b id");
-        assert_eq!(c.position, [0.0, 20.0], "c position");
+        assert_eq!(b.position, [0.0, 10.0], "b position");
         assert_eq!(c.attrs.get("id"), Some(&"c".to_string()), "c id");
+        assert_eq!(c.position, [0.0, 20.0], "c position");
     }
 
     #[test]
@@ -959,6 +987,24 @@ mod tests {
         }
         let body = view.body();
         assert_eq!(body.children().len(), 0);
+    }
+
+    #[test]
+    pub fn test_null_object_condition_rendering() {
+        let html = r#"
+        <html>
+        <body>
+            <div id="a" ?="{object}">{object.name}</div>
+            <div id="b"></div>
+        </body>
+        </html>"#;
+        let mut view = view(html, "");
+        view.update(Input::new(), json!({"object": null})).unwrap();
+        let body = view.body();
+        let children = body.children();
+        let b = children[0];
+        assert_eq!(children.len(), 1);
+        assert_eq!(b.attrs.get("id"), Some(&"b".to_string()));
     }
 
     #[test]
