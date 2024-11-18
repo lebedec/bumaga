@@ -240,8 +240,8 @@ impl View {
         self.metrics.elements_shown.inc();
         let mut layout = self.tree.get_final_layout(node).clone();
         layout.location = layout.location.add(location);
-        let element = self.tree.get_node_context_mut(node).unwrap();
-        element.opacity = opacity * element.opacity;
+        let element = self.tree.get_element_mut(node)?;
+        element.opacity = opacity * element.self_opacity;
         element.position = [layout.location.x, layout.location.y];
         element.size = [layout.size.width, layout.size.height];
         element.content_size = [layout.content_size.width, layout.content_size.height];
@@ -254,7 +254,7 @@ impl View {
             location.y -= scrolling.y;
         }
         opacity = element.opacity;
-        for child in self.tree.children(node).unwrap() {
+        for child in self.tree.children(node)? {
             self.compute_final_positions_and_clipping(child, location, opacity, clipping)?;
         }
         Ok(())

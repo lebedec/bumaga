@@ -24,7 +24,7 @@ impl<'c> Cascade<'c> {
             //
             // Element
             //
-            (PropertyKey::Opacity, value) => element.opacity = resolve_alpha(value)?,
+            (PropertyKey::Opacity, value) => element.self_opacity = resolve_alpha(value)?,
             (PropertyKey::BackgroundColor, value) => {
                 let background = element.get_background_mut(index);
                 background.color = resolve_color(value, self)?

@@ -28,6 +28,7 @@ pub struct Element {
     /// The different properties of an element's text font.
     pub font: FontFace,
     pub listeners: HashMap<String, Handler>,
+    pub self_opacity: f32,
     pub opacity: f32,
     pub transforms: Vec<TransformFunction>,
     pub scrolling: Option<Scrolling>,

@@ -27,7 +27,7 @@ pub(crate) fn reset_element_style(element: &mut Element) {
         // wrap: OverflowWrap::Normal,
         align: TextAlign::Start,
     };
-    element.opacity = 1.0;
+    element.self_opacity = 1.0;
 }
 
 pub fn create_element(node: NodeId) -> Element {
@@ -62,6 +62,7 @@ pub fn create_element(node: NodeId) -> Element {
             align: TextAlign::Start,
         },
         listeners: Default::default(),
+        self_opacity: 1.0,
         opacity: 1.0,
         transforms: vec![],
         animators: vec![],
