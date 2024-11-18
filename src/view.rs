@@ -226,7 +226,7 @@ impl View {
             |size, space, _, view, _| measure_text(self.fonts.as_ref(), size, space, view),
         )?;
         // TODO: clipping of viewport
-        self.compute_final_positions_and_clipping(self.body, Point::ZERO, None)?;
+        self.compute_final_positions_and_clipping(self.body, Point::ZERO, 1.0, None)?;
         self.model.handle_output(&input, self.body, &mut self.tree)
     }
 
@@ -234,12 +234,14 @@ impl View {
         &mut self,
         node: NodeId,
         location: Point<f32>,
+        mut opacity: f32,
         mut clipping: Option<Layout>,
     ) -> Result<(), ViewError> {
         self.metrics.elements_shown.inc();
         let mut layout = self.tree.get_final_layout(node).clone();
         layout.location = layout.location.add(location);
         let element = self.tree.get_node_context_mut(node).unwrap();
+        element.opacity = opacity * element.opacity;
         element.position = [layout.location.x, layout.location.y];
         element.size = [layout.size.width, layout.size.height];
         element.content_size = [layout.content_size.width, layout.content_size.height];
@@ -251,8 +253,9 @@ impl View {
             location.x -= scrolling.x;
             location.y -= scrolling.y;
         }
+        opacity = element.opacity;
         for child in self.tree.children(node).unwrap() {
-            self.compute_final_positions_and_clipping(child, location, clipping)?;
+            self.compute_final_positions_and_clipping(child, location, opacity, clipping)?;
         }
         Ok(())
     }
