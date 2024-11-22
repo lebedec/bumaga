@@ -140,11 +140,12 @@ impl ViewModel {
                 for (key, dst) in object.iter_mut() {
                     let path = format!("{path}/{key}");
                     let arrays_path = format!("{arrays_path}/{key}");
+                    let undefined = Value::Null;
                     let src = match src.get(key) {
                         Some(src) => src,
                         None => {
-                            error!("unable to bind '{path}', must be specified");
-                            continue;
+                            // error!("unable to bind '{path}', must be specified");
+                            &undefined
                         }
                     };
                     let changed = Self::bind_value(
@@ -701,6 +702,84 @@ impl ClickContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    pub fn test_rebind_root_property_with_undefined() {
+        let model = json!({
+            "name": null,
+            "description": null
+        });
+        let [name, desc] = [100, 200];
+        let bindings = BTreeMap::from([
+            ("/name".to_string(), vec![text(name)]),
+            ("/description".to_string(), vec![text(desc)]),
+        ]);
+        let mut view_model = ViewModel::create(bindings, model);
+        view_model.bind(&json!({
+            "name": "Name",
+            "description": "Description...",
+        }));
+        let reactions = view_model.bind(&json!({
+            "name": "Alice",
+        }));
+        assert_eq!(
+            reactions,
+            vec![
+                Reaction::Type {
+                    node: desc.into(),
+                    span: 0,
+                    text: "".to_string(),
+                },
+                Reaction::Type {
+                    node: name.into(),
+                    span: 0,
+                    text: "Alice".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    pub fn test_rebind_object_property_with_undefined() {
+        let model = json!({
+            "object": {
+                "name": null,
+                "description": null
+            }
+        });
+        let [name, desc] = [100, 200];
+        let bindings = BTreeMap::from([
+            ("/object/name".to_string(), vec![text(name)]),
+            ("/object/description".to_string(), vec![text(desc)]),
+        ]);
+        let mut view_model = ViewModel::create(bindings, model);
+        view_model.bind(&json!({
+            "object": {
+                "name": "Name",
+                "description": "Description...",
+            }
+        }));
+        let reactions = view_model.bind(&json!({
+            "object": {
+                "name": "Alice",
+            }
+        }));
+        assert_eq!(
+            reactions,
+            vec![
+                Reaction::Type {
+                    node: desc.into(),
+                    span: 0,
+                    text: "".to_string(),
+                },
+                Reaction::Type {
+                    node: name.into(),
+                    span: 0,
+                    text: "Alice".to_string(),
+                },
+            ]
+        );
+    }
 
     #[test]
     pub fn test_rebind_object_with_null() {
