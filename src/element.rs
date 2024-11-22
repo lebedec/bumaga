@@ -128,7 +128,7 @@ impl TextContent {
 
     #[inline(always)]
     pub fn to_string(&self) -> String {
-        self.spans.join("").trim().to_string()
+        self.spans.join("").to_string()
     }
 }
 
