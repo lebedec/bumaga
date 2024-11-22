@@ -112,7 +112,7 @@ pub fn read_html(html: &str) -> Result<Html, ReaderError> {
     let document = HtmlParser::parse(Rule::Document, html)?
         .next()
         .ok_or(ReaderError::EmptyDocument)?;
-    let content = parse_content(document);
+    let content = parse_content(document, true);
     Ok(content)
 }
 
@@ -120,7 +120,7 @@ pub fn read_html(html: &str) -> Result<Html, ReaderError> {
 /// Pest parser guarantees that pairs will contain only rules defined in grammar.
 /// So, knowing the exact order of rules and it parameters we can unwrap iterators
 /// without error handling. Macro unreachable! can be used for the same reason.
-fn parse_content(pair: Pair<Rule>) -> Html {
+fn parse_content(pair: Pair<Rule>, is_last_content: bool) -> Html {
     match pair.as_rule() {
         Rule::Element => {
             let mut iter = pair.into_inner();
@@ -137,13 +137,16 @@ fn parse_content(pair: Pair<Rule>) -> Html {
                     _ => {}
                 }
             }
+            let children: Vec<Pair<Rule>> = children.into_inner().collect();
+            let children_count = children.len();
             Html {
                 tag: tag.to_string(),
                 bindings,
                 text: None,
                 children: children
-                    .into_inner()
-                    .map(|child| parse_content(child))
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, child)| parse_content(child, index + 1 == children_count))
                     .collect(),
             }
         }
@@ -165,7 +168,11 @@ fn parse_content(pair: Pair<Rule>) -> Html {
                             .split("\n")
                             .map(|fragment| {
                                 if index == count - 1 {
-                                    fragment.trim()
+                                    if is_last_content {
+                                        fragment.trim()
+                                    } else {
+                                        fragment
+                                    }
                                 } else if index == 0 {
                                     fragment.trim_start()
                                 } else {
@@ -354,6 +361,15 @@ mod tests {
     }
 
     #[test]
+    pub fn test_binding_text_whitespace_before_sibling_element() {
+        let html = html(r#"<div>Hello, {binding} <span>Element Text</span></div>"#);
+        assert_eq!(
+            html.children[0].text,
+            text(&[t("Hello, "), b("binding"), t(" ")])
+        )
+    }
+
+    #[test]
     pub fn test_binding_text_multiple_spans_with_whitespaces() {
         let html = html(r#"<div>Hello,  {first}  {last}</div>"#);
         let expected = text(&[t("Hello,  "), b("first"), t("  "), b("last")]);
@@ -365,6 +381,12 @@ mod tests {
         let html = html(r#"<div>Hello, {first}{last}</div>"#);
         let expected = text(&[t("Hello, "), b("first"), b("last")]);
         assert_eq!(html.children[0].text, expected)
+    }
+
+    #[test]
+    pub fn test_binding_text_ends_with_whitespace() {
+        let html = html(r#"<div>Hello, {binding} </div>"#);
+        assert_eq!(html.children[0].text, text(&[t("Hello, "), b("binding")]))
     }
 
     #[test]
