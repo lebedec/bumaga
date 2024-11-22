@@ -86,11 +86,13 @@ impl ViewModel {
         reactions: &mut Vec<Reaction>,
         transformers: &HashMap<String, Transformer>,
         default: &HashMap<String, Value>,
-    ) {
+    ) -> bool {
         match (&mut dst, src) {
             (Value::Array(current), Value::Array(next)) => {
+                let mut array_changed = false;
                 if current.len() != next.len() {
                     if let Some(default) = default.get(arrays_path).cloned() {
+                        array_changed = true;
                         current.resize(next.len(), default);
                         Self::react(path, src, bindings, reactions, transformers);
                     } else {
@@ -100,7 +102,7 @@ impl ViewModel {
                 for (index, dst) in current.iter_mut().enumerate() {
                     let src = &next[index];
                     let path = format!("{path}/{index}");
-                    Self::bind_value(
+                    let changed = Self::bind_value(
                         dst,
                         src,
                         &path,
@@ -110,7 +112,9 @@ impl ViewModel {
                         transformers,
                         default,
                     );
+                    array_changed = array_changed || changed;
                 }
+                array_changed
             }
             (Value::Array(current), Value::Null) => {
                 if current.len() != 0 {
@@ -122,12 +126,17 @@ impl ViewModel {
                         reactions,
                         transformers,
                     );
+                    true
+                } else {
+                    false
                 }
             }
             (Value::Array(_), _) => {
-                error!("unable to bind '{path}', must be array")
+                error!("unable to bind '{path}', must be array");
+                false
             }
             (Value::Object(object), Value::Object(src)) => {
+                let mut object_changed = false;
                 for (key, dst) in object.iter_mut() {
                     let path = format!("{path}/{key}");
                     let arrays_path = format!("{arrays_path}/{key}");
@@ -138,7 +147,7 @@ impl ViewModel {
                             continue;
                         }
                     };
-                    Self::bind_value(
+                    let changed = Self::bind_value(
                         dst,
                         src,
                         &path,
@@ -148,13 +157,19 @@ impl ViewModel {
                         transformers,
                         default,
                     );
+                    object_changed = object_changed || changed;
                 }
+                if object_changed {
+                    Self::react(path, &json!({}), bindings, reactions, transformers);
+                }
+                object_changed
             }
             (Value::Object(object), Value::Null) => {
+                let mut object_changed = false;
                 for (key, dst) in object.iter_mut() {
                     let path = format!("{path}/{key}");
                     let arrays_path = format!("{arrays_path}/{key}");
-                    Self::bind_value(
+                    let changed = Self::bind_value(
                         dst,
                         &Value::Null,
                         &path,
@@ -164,12 +179,20 @@ impl ViewModel {
                         transformers,
                         default,
                     );
+                    object_changed = object_changed || changed;
                 }
+                if object_changed {
+                    Self::react(path, &Value::Null, bindings, reactions, transformers);
+                }
+                object_changed
             }
             (dst, src) => {
                 if *dst != src {
                     **dst = src.clone();
                     Self::react(path, src, bindings, reactions, transformers);
+                    true
+                } else {
+                    false
                 }
             }
         }
@@ -680,6 +703,52 @@ mod tests {
     use super::*;
 
     #[test]
+    pub fn test_rebind_object_with_null() {
+        let model = json!({
+            "tooltip": {
+                "name": null,
+                "description": null
+            }
+        });
+        let [parent, node, name, desc] = [100, 200, 300, 400];
+        let bindings = BTreeMap::from([
+            ("/tooltip".to_string(), vec![cond_if(parent, node)]),
+            ("/tooltip/name".to_string(), vec![text(name)]),
+            ("/tooltip/description".to_string(), vec![text(desc)]),
+        ]);
+        let mut view_model = ViewModel::create(bindings, model);
+        view_model.bind(&json!({
+            "tooltip": {
+                "name": "Name",
+                "description": "Description...",
+            }
+        }));
+        let reactions = view_model.bind(&json!({
+            "tooltip": null
+        }));
+        assert_eq!(
+            reactions,
+            vec![
+                Reaction::Type {
+                    node: desc.into(),
+                    span: 0,
+                    text: "".to_string(),
+                },
+                Reaction::Type {
+                    node: name.into(),
+                    span: 0,
+                    text: "".to_string(),
+                },
+                Reaction::Reattach {
+                    parent: parent.into(),
+                    node: node.into(),
+                    visible: false,
+                }
+            ]
+        );
+    }
+
+    #[test]
     pub fn test_rebind_simple_array_same_values_reduced_array() {
         let model = json!({
             "names": [null, null, null]
@@ -891,6 +960,13 @@ mod tests {
                 }
             ]
         );
+    }
+
+    fn cond_if(parent: u64, node: u64) -> Binding {
+        Binding {
+            params: BindingParams::Visibility(NodeId::new(parent), NodeId::new(node), true),
+            pipe: vec![],
+        }
     }
 
     fn repeat(node: u64, n: usize) -> Binding {
