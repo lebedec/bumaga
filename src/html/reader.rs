@@ -45,6 +45,26 @@ impl Html {
         }
     }
 
+    pub fn as_template_link(&self) -> Option<(String, Vec<ElementBinding>)> {
+        if self.tag == "link" {
+            let mut bindings = vec![];
+            let mut id = None;
+            for binding in &self.bindings {
+                if let ElementBinding::None(name, value) = binding {
+                    if name == "href" {
+                        id = Some(value.clone());
+                        continue;
+                    }
+                }
+                bindings.push(binding.clone());
+            }
+            if let Some(id) = id {
+                return Some((id, bindings));
+            }
+        }
+        None
+    }
+
     pub fn as_visibility(&self) -> Option<(bool, &Binder)> {
         for binding in &self.bindings {
             if let ElementBinding::Visibility(visible, binder) = binding {
@@ -71,14 +91,8 @@ pub enum ElementBinding {
     Tag(String, Binder),
     Attribute(String, TextBinding),
     Repeat(String, usize, Binder),
-    Callback(String, String, Vec<ArgumentBinding>),
+    Callback(String, Binder),
     Visibility(bool, Binder),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ArgumentBinding {
-    This,
-    Binder(Binder),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -287,17 +301,9 @@ fn parse_element_bindings(pair: Pair<Rule>) -> Vec<ElementBinding> {
                 ElementBinding::Attribute(name, text)
             }
             Rule::CallbackBinding => {
-                let function = iter.next().unwrap().as_str().to_string();
-                let mut arguments = vec![];
-                for pair in iter {
-                    let argument = match pair.as_rule() {
-                        Rule::Binder => ArgumentBinding::Binder(parse_binder(pair)),
-                        Rule::This => ArgumentBinding::This,
-                        _ => unreachable!(),
-                    };
-                    arguments.push(argument);
-                }
-                ElementBinding::Callback(name, function, arguments)
+                let binder = iter.next().unwrap();
+                let binder = parse_binder(binder);
+                ElementBinding::Callback(name, binder)
             }
             Rule::VisibilityBinding => {
                 let visible = name == "?";
@@ -485,45 +491,13 @@ mod tests {
     }
 
     #[test]
-    pub fn test_binding_callback_this_argument() {
-        let html = html(r#"<input ^onchange="change this" />"#);
-        assert_eq!(html.bindings, vec![cb("onchange", "change", &[this()])])
-    }
-
-    #[test]
-    pub fn test_binding_callback_no_arguments() {
-        let html = html(r#"<button ^onclick="do_something"></button>"#);
-        assert_eq!(html.bindings, vec![cb("onclick", "do_something", &[])])
-    }
-
-    #[test]
     pub fn test_binding_callback_binding_argument() {
-        let html = html(r#"<button ^onclick="do_something {my_data}"></button>"#);
-        assert_eq!(
-            html.bindings,
-            vec![cb("onclick", "do_something", &[arg("my_data")])]
-        )
+        let html = html(r#"<button ^onclick="{my_data}"></button>"#);
+        assert_eq!(html.bindings, vec![cb("onclick", "my_data")])
     }
 
-    #[test]
-    pub fn test_binding_callback_binding_this_and_binding_arguments() {
-        let html = html(r#"<button ^onclick="do_something this {my_data}"></button>"#);
-        assert_eq!(
-            html.bindings,
-            vec![cb("onclick", "do_something", &[this(), arg("my_data")])]
-        )
-    }
-
-    fn cb(event: &str, handler: &str, args: &[ArgumentBinding]) -> ElementBinding {
-        ElementBinding::Callback(event.to_string(), handler.to_string(), args.to_vec())
-    }
-
-    fn this() -> ArgumentBinding {
-        ArgumentBinding::This
-    }
-
-    fn arg(path: &str) -> ArgumentBinding {
-        ArgumentBinding::Binder(binder(path))
+    fn cb(event: &str, path: &str) -> ElementBinding {
+        ElementBinding::Callback(event.to_string(), binder(path))
     }
 
     fn repeat(name: &str, count: usize, path: &str) -> ElementBinding {

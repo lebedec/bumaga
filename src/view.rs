@@ -1,3 +1,4 @@
+use crate::controls::Controls;
 use crate::css::{match_style, read_css, read_inline_css, Css, PseudoClassMatcher};
 use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
@@ -41,6 +42,7 @@ impl View {
         let mut css_files = vec![];
         let css_base_directory = html_source.folder();
         let mut body = Html::empty();
+        let mut templates = HashMap::new();
         for child in html.children {
             if child.tag == "link" {
                 let mut attrs = HashMap::new();
@@ -60,6 +62,22 @@ impl View {
                     }
                 }
             }
+            if child.tag == "template" {
+                let mut id = None;
+                for binding in &child.bindings {
+                    if let ElementBinding::None(key, value) = binding {
+                        if key == "id" {
+                            id = Some(value.clone());
+                        }
+                    }
+                }
+                if let Some(id) = id {
+                    if child.children.len() == 1 {
+                        templates.insert(format!("#{id}"), child.children[0].clone());
+                    }
+                }
+                continue;
+            }
             if child.tag == "body" {
                 body = child;
                 break;
@@ -69,7 +87,7 @@ impl View {
         let css = css_source.get_content()?;
         let css = read_css(&css)?;
         //
-        let mut renderer = Renderer::new();
+        let mut renderer = Renderer::new(templates);
         let [root, body] = renderer.render(body)?;
         let bindings = renderer.bindings;
         let schema = renderer.schema;
@@ -119,8 +137,9 @@ impl View {
         let css = css_source.get_content()?;
         let html = read_html(&html)?;
         let css = read_css(&css)?;
-        let mut renderer = Renderer::new();
         // TODO: remove cloned, take ownership
+        let mut templates = HashMap::new();
+        let mut body = Html::empty();
         for child in &html.children {
             if child.tag == "link" {
                 let mut attrs = HashMap::new();
@@ -133,6 +152,22 @@ impl View {
                     if let Some(_href) = attrs.get("href") {}
                 }
             }
+            if child.tag == "template" {
+                let mut id = None;
+                for binding in &child.bindings {
+                    if let ElementBinding::None(key, value) = binding {
+                        if key == "id" {
+                            id = Some(value.clone());
+                        }
+                    }
+                }
+                if let Some(id) = id {
+                    if child.children.len() == 1 {
+                        templates.insert(format!("#{id}"), child.children[0].clone());
+                    }
+                }
+                continue;
+            }
         }
         let body = html
             .children
@@ -140,6 +175,7 @@ impl View {
             .cloned()
             .ok_or(ViewError::BodyNotFound)?;
         //
+        let mut renderer = Renderer::new(templates);
         let [root, body] = renderer.render(body)?;
         let bindings = renderer.bindings;
         let schema = renderer.schema;
@@ -191,6 +227,10 @@ impl View {
                 }
             }
         }
+    }
+
+    pub fn control<Message>(&self) -> Controls<Message> {
+        Controls::new()
     }
 
     pub fn update(&mut self, input: Input, value: Value) -> Result<Output, ViewError> {
@@ -344,17 +384,6 @@ impl View {
                 } else {
                     element.attrs.remove(&key);
                 };
-                match (element.tag.as_ref(), key.as_ref()) {
-                    ("option", "selected") => {
-                        self.model
-                            .update_option_selected(node, tag, &mut self.tree)?
-                    }
-                    ("input", "disabled") => {
-                        self.model
-                            .update_input_disabled(node, tag, &mut self.tree)?
-                    }
-                    _ => {}
-                }
             }
             Reaction::Bind {
                 node,
@@ -380,9 +409,6 @@ impl View {
                 }
                 match (element.tag.as_str(), key.as_str()) {
                     ("img", "src") => self.model.update_img_src(node, value, &mut self.tree)?,
-                    ("input", "value") => {
-                        self.model.update_input_value(node, value, &mut self.tree)?
-                    }
                     _ => {}
                 }
             }
@@ -732,17 +758,10 @@ impl Source {
 mod tests {
     use super::*;
     use crate::testing::setup_tests_logging;
-    use crate::{Call, InputEvent};
+    use crate::*;
     use serde::Serialize;
     use serde_json::json;
     use std::time::Duration;
-
-    fn call<T: Serialize>(function: &str, value: T) -> Call {
-        Call {
-            function: function.to_string(),
-            arguments: vec![serde_json::to_value(value).expect("valid value")],
-        }
-    }
 
     fn view(html: &str, css: &str) -> View {
         setup_tests_logging();
@@ -751,6 +770,37 @@ mod tests {
 
     fn input(time: f32) -> Input {
         Input::new().time(Duration::from_secs_f32(time))
+    }
+
+    #[test]
+    pub fn test_template_with_repeat() {
+        let css = "";
+        let html = r##"<html>
+            <template id="my-component">
+                <div @id="{item}"></div>
+            </template>
+            <body>
+                <div id="start"></div>
+                <link href="#my-component" *item="5 {items}" />
+                <div id="end"></div>
+            </body>
+        </html>"##;
+        let mut view = view(html, css);
+        let value = json!({
+            "items": ["a", "b", "c"]
+        });
+        view.update(Input::new(), value).unwrap();
+        let body = view.body();
+        let div = body.children();
+        assert_eq!(
+            div[0].attrs.get("id"),
+            Some(&"start".to_string()),
+            "start id"
+        );
+        assert_eq!(div[1].attrs.get("id"), Some(&"a".to_string()), "a id");
+        assert_eq!(div[2].attrs.get("id"), Some(&"b".to_string()), "b id");
+        assert_eq!(div[3].attrs.get("id"), Some(&"c".to_string()), "c id");
+        assert_eq!(div[4].attrs.get("id"), Some(&"end".to_string()), "end id");
     }
 
     #[test]
@@ -1158,8 +1208,8 @@ mod tests {
                 .expect("valid update");
         }
 
-        assert_eq!(output.is_cursor_over_view, false, "cursor over view");
-        assert_eq!(output.calls, vec![call("leave", "A")]);
+        assert_eq!(output.is_input_captured, false, "cursor over view");
+        assert_eq!(output.responses, vec![call("leave", "A")]);
     }
 
     #[test]
@@ -1193,7 +1243,7 @@ mod tests {
                 .expect("valid update");
         }
 
-        assert_eq!(output.is_cursor_over_view, true, "cursor over view");
+        assert_eq!(output.is_input_captured, true, "cursor over view");
         assert_eq!(output.calls, vec![call("leave", "A"), call("enter", "B")]);
     }
 
@@ -1227,7 +1277,7 @@ mod tests {
                 .update(Input::new().event(event), value.clone())
                 .expect("valid update");
         }
-        assert_eq!(output.is_cursor_over_view, true, "cursor over view");
+        assert_eq!(output.is_input_captured, true, "cursor over view");
         assert_eq!(output.calls, vec![call("leave", "B"), call("enter", "A")]);
     }
 
@@ -1271,7 +1321,7 @@ mod tests {
                 .expect("valid update");
         }
 
-        assert_eq!(output.is_cursor_over_view, false, "cursor over view");
+        assert_eq!(output.is_input_captured, false, "cursor over view");
         assert_eq!(output.calls, vec![call("leave", "A")]);
     }
 }

@@ -3,20 +3,21 @@ use std::collections::{BTreeMap, HashMap};
 use taffy::{Dimension, NodeId, Size, TaffyTree};
 
 use crate::css::read_inline_css;
-use crate::html::{ArgumentBinding, ElementBinding, Html, TextBinding, TextSpan};
+use crate::html::{ElementBinding, Html, TextBinding, TextSpan};
 use crate::styles::{create_element, default_layout};
 use crate::view_model::{Binding, Bindings, Schema};
-use crate::{BindingParams, CallbackArgument, Element, Handler, TextContent, ViewError};
+use crate::{BindingParams, Element, TextContent, ViewError};
 
 pub struct Renderer {
     pub tree: TaffyTree<Element>,
     pub bindings: Bindings,
     pub locals: HashMap<String, String>,
     pub schema: Schema,
+    pub templates: HashMap<String, Html>,
 }
 
 impl Renderer {
-    pub fn new() -> Self {
+    pub fn new(templates: HashMap<String, Html>) -> Self {
         let tree = TaffyTree::new();
         let bindings = BTreeMap::new();
         let locals = HashMap::new();
@@ -26,6 +27,7 @@ impl Renderer {
             bindings,
             locals,
             schema,
+            templates,
         }
     }
 
@@ -42,7 +44,17 @@ impl Renderer {
         if let Some(text) = template.text {
             self.render_text(text)
         } else {
-            self.render_template(template)
+            if let Some((id, bindings)) = template.as_template_link() {
+                let mut template = self
+                    .templates
+                    .get(&id)
+                    .ok_or(ViewError::TemplateNotFound(id))?
+                    .clone();
+                template.bindings.extend(bindings);
+                self.render_template(template)
+            } else {
+                self.render_template(template)
+            }
         }
     }
 
@@ -180,24 +192,9 @@ impl Renderer {
                     element.attrs.insert(key.clone(), attribute.to_string());
                     element.attrs_bindings.insert(key, attribute);
                 }
-                ElementBinding::Callback(event, function, arguments) => {
-                    let mut handler = Handler {
-                        function,
-                        arguments: vec![],
-                    };
-                    for argument in arguments {
-                        match &argument {
-                            ArgumentBinding::This => {
-                                handler.arguments.push(CallbackArgument::This);
-                            }
-                            ArgumentBinding::Binder(binder) => {
-                                let path = self.schema.field(binder, &self.locals);
-                                let pipe = binder.pipe.clone();
-                                handler.arguments.push(CallbackArgument::Binder(path, pipe));
-                            }
-                        }
-                    }
-                    element.listeners.insert(event.clone(), handler);
+                ElementBinding::Callback(event, binder) => {
+                    let path = self.schema.field(&binder, &mut self.locals);
+                    element.listeners.insert(event, path);
                 }
                 // used on other rendering stages
                 ElementBinding::Alias(_, _) => {}
@@ -212,9 +209,7 @@ impl Renderer {
             "img" => {
                 children.extend(self.render_img(&mut element)?);
             }
-            "input" => {
-                children.extend(self.render_input(&mut element)?);
-            }
+            "input" => {}
             "area" => {}
             "base" => {}
             "br" => {}

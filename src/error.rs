@@ -18,6 +18,7 @@ pub enum ViewError {
     BodyNotFound,
     ElementInvalidBehaviour,
     AttributeBindingNotFound(String),
+    TemplateNotFound(String),
 }
 
 impl From<TaffyError> for ViewError {

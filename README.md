@@ -15,6 +15,7 @@ The development of this library possible thanks to work of Rust enthusiasts:
 
 # TODO:
 
+- describe how Controls works
 - check performance, use VTune (need < 1ms 100 elements)
     - separate to thread
 - windows + directx example ?

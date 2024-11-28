@@ -5,7 +5,6 @@ use taffy::{Layout, NodeId};
 use crate::animation::{Animator, Transition};
 use crate::css::{Declaration, Style};
 use crate::styles::Scrolling;
-use crate::Handler;
 
 /// The most fundamental object for building a UI, Element contains layout and appearance.
 /// Element maps directly to the native rectangle view equivalent on whatever graphics engine
@@ -27,7 +26,7 @@ pub struct Element {
     pub color: Rgba,
     /// The different properties of an element's text font.
     pub font: FontFace,
-    pub listeners: HashMap<String, Handler>,
+    pub listeners: HashMap<String, String>,
     pub self_opacity: f32,
     pub opacity: f32,
     pub transforms: Vec<TransformFunction>,
@@ -295,7 +294,7 @@ pub enum TextAlign {
     MatchParent,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct ElementState {
     pub active: bool,
     pub hover: bool,
@@ -303,7 +302,7 @@ pub struct ElementState {
     pub checked: bool,
 }
 
-#[derive(Default, PartialEq, Clone, Copy)]
+#[derive(Default, Debug, PartialEq, Clone, Copy)]
 pub enum PointerEvents {
     #[default]
     Auto,

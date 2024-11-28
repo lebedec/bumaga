@@ -1,3 +1,4 @@
+pub use controls::*;
 pub use element::*;
 pub use error::*;
 pub use fonts::*;

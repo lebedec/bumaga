@@ -1,12 +1,13 @@
 use crate::{
-    Element, Input, InputEvent, MouseButtons, Output, PointerEvents, ValueExtensions, ViewError,
+    ControlEvent, ControlTarget, Element, Input, InputEvent, MouseButtons, Output, PointerEvents,
+    ValueExtensions, View, ViewError, ViewResponse,
 };
 use log::error;
 
 use crate::tree::ViewTreeExtensions;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::mem::take;
+use std::mem::{forget, take};
 use std::time::Duration;
 use taffy::{NodeId, TaffyTree};
 
@@ -24,7 +25,8 @@ pub struct ViewModel {
     pub(crate) mouse: [f32; 2],
     pub(crate) mouse_hovers: HashSet<NodeId>,
     output: Output,
-    drag: Option<ClickContext>,
+    pub(crate) drag: Option<DragContext>,
+    pub(crate) focus: Option<NodeId>,
 }
 
 impl ViewModel {
@@ -40,6 +42,7 @@ impl ViewModel {
             mouse_hovers: HashSet::new(),
             output: Output::new(),
             drag: None,
+            focus: None,
         }
     }
 
@@ -244,81 +247,36 @@ impl ViewModel {
             }
         }
         self.output = Output::new();
-        self.capture_hovers(body, tree)?;
-        self.capture_element_events(body, tree, &input.events)?;
-        if let Some(drag) = self.drag.as_ref() {
-            if drag.end {
-                let element = tree.get_element_mut(drag.node)?;
-                self.fire(element, "ondragend", Value::Null);
-                self.drag = None;
-            }
-        }
-        self.output.is_cursor_over_view = !self.mouse_hovers.is_empty();
+        self.capture_element_input(body, tree, &input.events)?;
+        self.output.is_input_captured =
+            !self.mouse_hovers.is_empty() || self.drag.is_some() || self.focus.is_some();
         Ok(take(&mut self.output))
     }
 
-    fn capture_hovers(
-        &mut self,
-        body: NodeId,
-        tree: &mut TaffyTree<Element>,
-    ) -> Result<(), ViewError> {
-        for node in self.mouse_hovers.clone() {
-            let element = tree.get_node_context_mut(node).unwrap();
-            let hover = hovers(self.mouse, element);
-            if !hover {
-                self.fire(element, "onmouseleave", Value::Null);
-                element.state.hover = false;
-                self.mouse_hovers.remove(&element.node);
-                if self.drag.is_some() {
-                    self.fire(element, "ondragleave", Value::Null);
-                }
-            }
-        }
-        self.capture_element_hover(body, tree);
-        Ok(())
-    }
-
-    fn capture_element_hover(&mut self, node: NodeId, tree: &mut TaffyTree<Element>) {
-        let element = tree.get_node_context_mut(node).unwrap();
-        let hover = hovers(self.mouse, element);
-        if hover {
-            if !element.state.hover {
-                if element.pointer_events == PointerEvents::Auto {
-                    self.fire(element, "onmouseenter", Value::Null);
-                    element.state.hover = true;
-                    self.mouse_hovers.insert(element.node);
-                    if self.drag.is_some() {
-                        self.fire(element, "ondragenter", Value::Null);
-                    }
-                }
-            }
-            for child in tree.children(node).expect("childs must exist") {
-                self.capture_element_hover(child, tree);
-            }
-        }
-    }
-
-    fn capture_element_events(
+    fn capture_element_input(
         &mut self,
         node: NodeId,
         tree: &mut TaffyTree<Element>,
         events: &Vec<InputEvent>,
     ) -> Result<(), ViewError> {
-        for event in events {
-            let element = tree.get_element_mut(node)?;
-            match *event {
-                InputEvent::Char(char) => match element.tag.as_str() {
-                    "input" => self.handle_input_char(node, char, tree)?,
+        let mut element = tree.get_element_mut(node)?;
+        for input_event in events.iter().copied() {
+            if element.state.focus {
+                match input_event {
+                    InputEvent::Char(char) => {
+                        self.control(element, "oninput", ControlEvent::OnInput(char))
+                    }
+                    InputEvent::KeyDown(key) => {
+                        self.control(element, "onkeydown", ControlEvent::OnKeyDown(key))
+                    }
+                    InputEvent::KeyUp(key) => {
+                        self.control(element, "onkeyup", ControlEvent::OnKeyUp(key))
+                    }
                     _ => {}
-                },
-                InputEvent::KeyDown(key) => match key {
-                    _ => {}
-                },
-                InputEvent::KeyUp(key) => match element.tag.as_str() {
-                    "input" => self.handle_input_key_up(node, key, tree)?,
-                    _ => {}
-                },
-                event if element.pointer_events == PointerEvents::Auto => match event {
+                }
+            }
+            if element.pointer_events == PointerEvents::Auto {
+                match input_event {
                     InputEvent::MouseWheel(wheel) if element.state.hover => {
                         if let Some(scrolling) = element.scrolling.as_mut() {
                             scrolling.offset(wheel);
@@ -326,115 +284,106 @@ impl ViewModel {
                     }
                     InputEvent::MouseButtonDown(button) => {
                         if element.state.hover {
-                            let event = json!({
-                                "button": button
-                            });
-                            self.fire(&element, "onmousedown", event);
-                        }
-                        if button == MouseButtons::Left && element.state.hover {
-                            element.state.active = true;
-                        }
-                        if element.state.hover {
-                            if !element.state.focus {
-                                self.fire(&element, "onfocus", Value::Null);
+                            self.control(&element, "onmousedown", ControlEvent::OnMouseDown);
+                            if button == MouseButtons::Left {
+                                element.state.active = true;
                             }
-                            element.state.focus = true;
+                            if !element.state.focus {
+                                element.state.focus = true;
+                                self.focus = Some(node);
+                                self.control(&element, "onfocus", ControlEvent::OnFocus);
+                            }
                             if button == MouseButtons::Left && element.draggable() {
-                                self.fire(element, "ondragstart", Value::Null);
-                                self.drag = ClickContext::new(node);
+                                self.control(element, "ondragstart", ControlEvent::OnDragStart);
+                                self.drag = DragContext::new(node);
                             }
                         } else {
-                            let focus_lost = take(&mut element.state.focus);
-                            if focus_lost {
-                                match element.tag.as_str() {
-                                    "input" => self.handle_input_blur(node, tree)?,
-                                    _ => {
-                                        self.fire(&element, "onblur", Value::Null);
-                                    }
+                            if element.state.focus {
+                                if self.focus == Some(node) {
+                                    // reset focus only if not reassigned by other element
+                                    self.focus = None;
                                 }
+                                element.state.focus = false;
+                                self.control(&element, "onblur", ControlEvent::OnBlur);
                             }
                         }
                     }
                     InputEvent::MouseButtonUp(button) => {
                         if element.state.hover {
-                            let event = json!({
-                                "button": button
-                            });
-                            self.fire(&element, "onmouseup", event);
-                        }
-                        if button == MouseButtons::Right
-                            && element.state.hover
-                            && self.drag.is_none()
-                        {
-                            self.fire(&element, "oncontextmenu", Value::Null);
-                        }
-                        if button == MouseButtons::Left {
-                            let is_click =
-                                element.state.active && element.state.hover && self.drag.is_none();
-                            element.state.active = false;
-                            if element.state.hover {
-                                if self.drag.is_some() {
-                                    self.fire(element, "ondrop", Value::Null);
-                                }
-                            }
-                            if is_click {
-                                match element.tag.as_str() {
-                                    "option" => self.handle_option_click(node, tree)?,
-                                    _ => {
-                                        self.fire(&element, "onclick", Value::Null);
-                                    }
-                                }
-                            }
+                            self.control(&element, "onmouseup", ControlEvent::OnMouseUp);
                             if let Some(drag) = self.drag.as_mut() {
-                                drag.end();
+                                if element.listeners.contains_key("ondrop") {
+                                    // valid drop target
+                                    let source = drag.source;
+                                    self.control(element, "ondrop", ControlEvent::OnDrop);
+                                    self.drag = None;
+                                    element = tree.get_element_mut(source)?;
+                                    self.control(element, "ondragend", ControlEvent::OnDragEnd);
+                                    element = tree.get_element_mut(node)?;
+                                }
+                            } else {
+                                if button == MouseButtons::Left && element.state.active {
+                                    self.control(&element, "onclick", ControlEvent::OnClick);
+                                }
+                                if button == MouseButtons::Right {
+                                    self.control(
+                                        &element,
+                                        "oncontextmenu",
+                                        ControlEvent::OnContextMenu,
+                                    );
+                                }
                             }
                         }
+                        element.state.active = false;
                     }
-                    InputEvent::MouseMove(_) => {
+                    InputEvent::MouseMove(m) => {
+                        let hover = hovers(self.mouse, element);
+                        if hover {
+                            if !element.state.hover {
+                                element.state.hover = true;
+                                self.control(element, "onmouseenter", ControlEvent::OnMouseEnter);
+                                self.mouse_hovers.insert(element.node);
+                                if self.drag.is_some() {
+                                    self.control(element, "ondragenter", ControlEvent::OnDragEnter);
+                                }
+                            }
+                        } else {
+                            if element.state.hover {
+                                element.state.hover = false;
+                                self.control(element, "onmouseleave", ControlEvent::OnMouseLeave);
+                                self.mouse_hovers.remove(&element.node);
+                                if self.drag.is_some() {
+                                    self.control(element, "ondragleave", ControlEvent::OnDragLeave);
+                                }
+                            }
+                        }
                         if element.state.hover {
-                            self.fire(element, "onmousemove", Value::Null);
+                            self.control(element, "onmousemove", ControlEvent::OnMouseMove);
                             if self.drag.is_some() {
-                                self.fire(element, "ondragover", Value::Null);
+                                self.control(element, "ondragover", ControlEvent::OnDragOver);
                             }
                         }
                     }
                     _ => {}
-                },
-                _ => {}
+                }
             }
         }
         for child in tree.children(node).expect("node {node:?} children must be") {
-            self.capture_element_events(child, tree, events)?;
+            self.capture_element_input(child, tree, events)?;
         }
         Ok(())
     }
 
-    pub(crate) fn fire(&mut self, element: &Element, event: &str, this: Value) {
-        if let Some(handler) = element.listeners.get(event) {
-            let mut arguments = vec![];
-            for argument in &handler.arguments {
-                match argument {
-                    CallbackArgument::This => {
-                        arguments.push(this.clone());
-                    }
-                    CallbackArgument::Binder(path, pipe) => {
-                        let mut value = self.model.pointer(path).cloned().unwrap_or(Value::Null);
-                        for name in pipe {
-                            match self.transformers.get(name) {
-                                Some(transform) => value = transform(value),
-                                None => {
-                                    error!("unable to transform argument, transformer {name} not found")
-                                }
-                            }
-                        }
-                        arguments.push(value);
-                    }
-                }
+    pub(crate) fn control(&mut self, element: &Element, handler: &str, event: ControlEvent) {
+        if let Some(path) = element.listeners.get(handler) {
+            if let Some(id) = self.model.pointer(path).and_then(|id| id.as_u64()) {
+                let target = ControlTarget::create(element, self.mouse);
+                self.output.responses.push(ViewResponse {
+                    id: id as usize,
+                    event,
+                    target,
+                })
             }
-            self.output.calls.push(Call {
-                function: handler.function.clone(),
-                arguments,
-            })
         }
     }
 }
@@ -633,40 +582,6 @@ impl Schema {
     }
 }
 
-/// It is a mechanism that allows a Bumaga component to request
-/// interaction event handling in application.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Call {
-    /// The identifier of event handler (function name probably).
-    pub function: String,
-    /// The JSON-like arguments.
-    pub arguments: Vec<Value>,
-}
-
-impl Call {
-    pub fn signature(&self) -> (&str, &[Value]) {
-        let name = self.function.as_str();
-        let args = self.arguments.as_slice();
-        (name, args)
-    }
-
-    pub fn get_str(&self, index: usize) -> Option<&str> {
-        self.arguments.get(index).and_then(Value::as_str)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Handler {
-    pub function: String,
-    pub arguments: Vec<CallbackArgument>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CallbackArgument {
-    This,
-    Binder(String, Vec<String>),
-}
-
 fn default_transformers() -> HashMap<String, Transformer> {
     fn duration(value: Value) -> Value {
         match value.as_f64() {
@@ -684,18 +599,13 @@ fn default_transformers() -> HashMap<String, Transformer> {
 }
 
 #[derive(Debug)]
-pub struct ClickContext {
-    node: NodeId,
-    end: bool,
+pub struct DragContext {
+    source: NodeId,
 }
 
-impl ClickContext {
+impl DragContext {
     pub fn new(node: NodeId) -> Option<Self> {
-        Some(Self { node, end: false })
-    }
-
-    pub fn end(&mut self) {
-        self.end = true;
+        Some(Self { source: node })
     }
 }
 

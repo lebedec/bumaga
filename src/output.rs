@@ -1,9 +1,9 @@
-use crate::Call;
+use crate::ViewResponse;
 
 #[derive(Debug, Default)]
 pub struct Output {
-    pub calls: Vec<Call>,
-    pub is_cursor_over_view: bool,
+    pub is_input_captured: bool,
+    pub responses: Vec<ViewResponse>,
 }
 
 impl Output {

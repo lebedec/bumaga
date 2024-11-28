@@ -81,9 +81,7 @@ DoubleQuotedAttributeChar = {
     !("<" | ">" | "{" | "\"") ~ ANY
 }
 
-CallbackBinding = { "^" ~ Key ~ "=" ~ "\"" ~ Key ~ (Binder | This )* ~ "\"" }
-
-This = { "this" }
+CallbackBinding = { "^" ~ Key ~ "=" ~ "\"" ~ Binder ~ "\"" }
 
 VisibilityBinding = { Visible ~ "=" ~ "\"" ~ Binder ~ "\"" }
 
