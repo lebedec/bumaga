@@ -176,34 +176,61 @@ fn parse_content(pair: Pair<Rule>, is_last_content: bool) -> Html {
             }
             let count = prefetch.len();
             let mut spans = vec![];
-            for (index, span) in prefetch.into_iter().enumerate() {
+
+            for index in 0..count {
+                let is_next_binding = if let Some(TextSpan::Binder(_)) = prefetch.get(index + 1) {
+                    true
+                } else {
+                    false
+                };
+                let span = prefetch[index].clone();
                 match span {
                     TextSpan::String(string) => {
-                        let fragments: Vec<String> = string
+                        let fragments: Vec<&str> = string
                             .split("\n")
-                            .map(|fragment| {
-                                if index == count - 1 {
-                                    if is_last_content {
-                                        fragment.trim()
-                                    } else {
-                                        fragment
-                                    }
-                                } else if index == 0 {
-                                    fragment.trim_start()
-                                } else {
-                                    fragment
-                                }
-                                .to_string()
-                            })
-                            .filter(|string| !string.is_empty())
+                            .map(|fragment| fragment.trim())
+                            .filter(|fragment| !fragment.is_empty())
                             .collect();
-                        if !fragments.is_empty() {
-                            spans.push(TextSpan::String(fragments.join(" ")));
+                        let mut text = fragments.join(" ").trim().to_string();
+                        if is_next_binding || !is_last_content {
+                            text.push(' ');
+                        }
+                        if !text.is_empty() {
+                            spans.push(TextSpan::String(text));
                         }
                     }
-                    _ => spans.push(span),
+                    span => spans.push(span),
                 }
             }
+
+            // for (index, span) in prefetch.into_iter().enumerate() {
+            //     match span {
+            //         TextSpan::String(string) => {
+            //             let fragments: Vec<String> = string
+            //                 .split("\n")
+            //                 .map(|fragment| {
+            //                     if index == count - 1 {
+            //                         if is_last_content {
+            //                             fragment.trim()
+            //                         } else {
+            //                             fragment
+            //                         }
+            //                     } else if index == 0 {
+            //                         fragment.trim_start()
+            //                     } else {
+            //                         fragment
+            //                     }
+            //                     .to_string()
+            //                 })
+            //                 .filter(|string| !string.is_empty())
+            //                 .collect();
+            //             if !fragments.is_empty() {
+            //                 spans.push(TextSpan::String(fragments.join(" ")));
+            //             }
+            //         }
+            //         _ => spans.push(span),
+            //     }
+            // }
             let text = TextBinding { spans };
             Html {
                 tag: "".to_string(),
@@ -387,7 +414,7 @@ mod tests {
     #[test]
     pub fn test_binding_text_multiple_spans_with_whitespaces() {
         let html = html(r#"<div>Hello,  {first}  {last}</div>"#);
-        let expected = text(&[t("Hello,  "), b("first"), t("  "), b("last")]);
+        let expected = text(&[t("Hello, "), b("first"), t(" "), b("last")]);
         assert_eq!(html.children[0].text, expected)
     }
 
@@ -414,6 +441,19 @@ mod tests {
             </div>"#,
         );
         let expected = text(&[t("Line 1 Hello, "), b("world"), t("! Line 3")]);
+        assert_eq!(html.children[0].text, expected)
+    }
+
+    #[test]
+    pub fn test_binding_text_multilines_before_sibling() {
+        let html = html(
+            r#"<div>
+                Line 1
+                Hello, {world}!
+                <div>something</div>
+            </div>"#,
+        );
+        let expected = text(&[t("Line 1 Hello, "), b("world"), t("! ")]);
         assert_eq!(html.children[0].text, expected)
     }
 

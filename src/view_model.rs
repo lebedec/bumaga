@@ -474,12 +474,18 @@ impl ViewModel {
                     arguments.push(argument);
                 }
             }
-            let message = if arguments.is_empty() {
-                Value::String(key)
-            } else {
-                let mut object = Map::new();
-                object.insert(key, Value::Array(arguments));
-                Value::Object(object)
+            let message = match arguments.len() {
+                0 => Value::String(key),
+                1 => {
+                    let mut object = Map::new();
+                    object.insert(key, arguments.into_iter().next().expect("one argument"));
+                    Value::Object(object)
+                }
+                _ => {
+                    let mut object = Map::new();
+                    object.insert(key, Value::Array(arguments));
+                    Value::Object(object)
+                }
             };
             self.output.messages.push(message);
         }

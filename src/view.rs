@@ -1379,7 +1379,7 @@ mod tests {
 
     fn msg(key: &str, value: &str) -> Value {
         json!({
-            key: [value]
+            key: value
         })
     }
 }
