@@ -91,8 +91,15 @@ pub enum ElementBinding {
     Tag(String, Binder),
     Attribute(String, TextBinding),
     Repeat(String, usize, Binder),
-    Callback(String, Binder),
+    Callback(String, Vec<CallbackArgument>),
     Visibility(bool, Binder),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CallbackArgument {
+    Keyword(String),
+    Event,
+    Binder(Binder),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -101,12 +108,6 @@ pub struct TextBinding {
 }
 
 impl TextBinding {
-    pub fn string(value: &str) -> Self {
-        Self {
-            spans: vec![TextSpan::String(value.to_string())],
-        }
-    }
-
     #[inline(always)]
     pub fn as_simple_text(&self) -> Option<String> {
         match self.spans.as_slice() {
@@ -301,9 +302,17 @@ fn parse_element_bindings(pair: Pair<Rule>) -> Vec<ElementBinding> {
                 ElementBinding::Attribute(name, text)
             }
             Rule::CallbackBinding => {
-                let binder = iter.next().unwrap();
-                let binder = parse_binder(binder);
-                ElementBinding::Callback(name, binder)
+                let mut arguments = vec![];
+                for pair in iter {
+                    let argument = match pair.as_rule() {
+                        Rule::Key => CallbackArgument::Keyword(pair.as_str().to_string()),
+                        Rule::Binder => CallbackArgument::Binder(parse_binder(pair)),
+                        Rule::Event => CallbackArgument::Event,
+                        _ => unreachable!(),
+                    };
+                    arguments.push(argument);
+                }
+                ElementBinding::Callback(name, arguments)
             }
             Rule::VisibilityBinding => {
                 let visible = name == "?";
@@ -493,11 +502,24 @@ mod tests {
     #[test]
     pub fn test_binding_callback_binding_argument() {
         let html = html(r#"<button ^onclick="{my_data}"></button>"#);
-        assert_eq!(html.bindings, vec![cb("onclick", "my_data")])
+        let binding = ElementBinding::Callback(
+            "onclick".into(),
+            vec![CallbackArgument::Binder(binder("my_data"))],
+        );
+        assert_eq!(html.bindings, vec![binding])
     }
 
-    fn cb(event: &str, path: &str) -> ElementBinding {
-        ElementBinding::Callback(event.to_string(), binder(path))
+    #[test]
+    pub fn test_binding_callback_event_argument() {
+        let html = html(r#"<button ^onclick="MyMessage $event"></button>"#);
+        let binding = ElementBinding::Callback(
+            "onclick".into(),
+            vec![
+                CallbackArgument::Keyword("MyMessage".into()),
+                CallbackArgument::Event,
+            ],
+        );
+        assert_eq!(html.bindings, vec![binding])
     }
 
     fn repeat(name: &str, count: usize, path: &str) -> ElementBinding {

@@ -1,5 +1,6 @@
 use log::error;
 use std::collections::{HashMap, HashSet};
+use serde::{Deserialize, Serialize};
 use taffy::{Layout, NodeId};
 
 use crate::animation::{Animator, Transition};
@@ -26,7 +27,7 @@ pub struct Element {
     pub color: Rgba,
     /// The different properties of an element's text font.
     pub font: FontFace,
-    pub listeners: HashMap<String, String>,
+    pub listeners: HashMap<String, Handler>,
     pub self_opacity: f32,
     pub opacity: f32,
     pub transforms: Vec<TransformFunction>,
@@ -40,6 +41,18 @@ pub struct Element {
     pub(crate) animators: Vec<Animator>,
     pub(crate) state: ElementState,
     pub(crate) transitions: Vec<Transition>,
+}
+
+#[derive(Debug)]
+pub struct Handler {
+    pub arguments: Vec<HandlerArgument>,
+}
+
+#[derive(Debug)]
+pub enum HandlerArgument {
+    Keyword(String),
+    Event,
+    Binder { path: String, pipe: Vec<String> },
 }
 
 #[derive(Debug)]
@@ -294,7 +307,7 @@ pub enum TextAlign {
     MatchParent,
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ElementState {
     pub active: bool,
     pub hover: bool,

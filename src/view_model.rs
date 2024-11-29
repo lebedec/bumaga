@@ -1,13 +1,14 @@
 use crate::{
-    ControlEvent, ControlTarget, Element, Input, InputEvent, MouseButtons, Output, PointerEvents,
-    ValueExtensions, View, ViewError, ViewResponse,
+    Element, ElementState, HandlerArgument, Input, InputEvent, Keys, MouseButtons, Output,
+    PointerEvents, ValueExtensions, ViewError,
 };
 use log::error;
 
 use crate::tree::ViewTreeExtensions;
-use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::mem::{forget, take};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
+use std::collections::{BTreeMap, HashMap};
+use std::mem::take;
 use std::time::Duration;
 use taffy::{NodeId, TaffyTree};
 
@@ -23,7 +24,8 @@ pub struct ViewModel {
     // state
     // pub(crate) focus: Option<NodeId>,
     pub(crate) mouse: [f32; 2],
-    pub(crate) mouse_hovers: HashSet<NodeId>,
+    pub(crate) elements_under_mouse: Vec<NodeId>,
+    pub(crate) elements_in_action: Vec<NodeId>,
     output: Output,
     pub(crate) drag: Option<DragContext>,
     pub(crate) focus: Option<NodeId>,
@@ -39,7 +41,8 @@ impl ViewModel {
             model_array_default,
             transformers: default_transformers(),
             mouse: [0.0, 0.0],
-            mouse_hovers: HashSet::new(),
+            elements_under_mouse: Vec::new(),
+            elements_in_action: vec![],
             output: Output::new(),
             drag: None,
             focus: None,
@@ -238,152 +241,309 @@ impl ViewModel {
         body: NodeId,
         tree: &mut TaffyTree<Element>,
     ) -> Result<Output, ViewError> {
-        for event in input.events.iter() {
+        let mut has_mouse_move = false;
+        let mut events = input.events.clone();
+        for event in events.iter() {
             match *event {
                 InputEvent::MouseMove(mouse) => {
                     self.mouse = mouse;
+                    has_mouse_move = true;
                 }
                 _ => {}
             }
         }
+        if !has_mouse_move {
+            // fake event to recalculate hovers event user not move mouse
+            // need because CSS animation can change elements size and we need handle this
+            // TODO: proper solution to fix problem
+            events.insert(0, InputEvent::MouseMove(self.mouse))
+        }
         self.output = Output::new();
-        self.capture_element_input(body, tree, &input.events)?;
-        self.output.is_input_captured =
-            !self.mouse_hovers.is_empty() || self.drag.is_some() || self.focus.is_some();
+        self.handle_elements_input(events, body, tree)?;
+        self.output.is_input_captured = !self.elements_under_mouse.is_empty()
+            || self.drag.is_some()
+            || self.focus.is_some()
+            || !self.elements_in_action.is_empty();
         Ok(take(&mut self.output))
     }
 
-    fn capture_element_input(
+    fn handle_elements_input(
         &mut self,
-        node: NodeId,
+        events: Vec<InputEvent>,
+        body: NodeId,
         tree: &mut TaffyTree<Element>,
-        events: &Vec<InputEvent>,
     ) -> Result<(), ViewError> {
-        let mut element = tree.get_element_mut(node)?;
-        for input_event in events.iter().copied() {
-            if element.state.focus {
-                match input_event {
-                    InputEvent::Char(char) => {
-                        self.control(element, "oninput", ControlEvent::OnInput(char))
+        for event in events {
+            match event {
+                InputEvent::Unknown => {}
+                InputEvent::MouseMove(position) => {
+                    let previous_update = take(&mut self.elements_under_mouse);
+                    self.calculate_mouse_hovers(tree, body, position)?;
+                    for node in previous_update.iter().rev() {
+                        if !self.elements_under_mouse.contains(node) {
+                            let element = tree.get_element_mut(*node)?;
+                            element.state.hover = false;
+                            let event = MouseEvent::new(self.mouse, element);
+                            self.emit(element, "onmouseleave", event);
+                            if self.drag.is_some() {
+                                let event = MouseEvent::new(self.mouse, element);
+                                self.emit(element, "ondragleave", event);
+                            }
+                        }
                     }
-                    InputEvent::KeyDown(key) => {
-                        self.control(element, "onkeydown", ControlEvent::OnKeyDown(key))
+                    let current = self.elements_under_mouse.clone();
+                    for node in current.iter().rev() {
+                        if !previous_update.contains(node) {
+                            let element = tree.get_element_mut(*node)?;
+                            element.state.hover = true;
+                            let event = MouseEvent::new(self.mouse, element);
+                            self.emit(element, "onmouseenter", event);
+                            if self.drag.is_some() {
+                                let event = MouseEvent::new(self.mouse, element);
+                                self.emit(element, "ondragenter", event);
+                            }
+                        }
+                        let element = tree.get_element_mut(*node)?;
+                        let event = MouseEvent::new(self.mouse, element);
+                        self.emit(element, "onmousemove", event);
+                        if self.drag.is_some() {
+                            let event = MouseEvent::new(self.mouse, element);
+                            self.emit(element, "ondragover", event);
+                        }
                     }
-                    InputEvent::KeyUp(key) => {
-                        self.control(element, "onkeyup", ControlEvent::OnKeyUp(key))
-                    }
-                    _ => {}
                 }
-            }
-            if element.pointer_events == PointerEvents::Auto {
-                match input_event {
-                    InputEvent::MouseWheel(wheel) if element.state.hover => {
-                        if let Some(scrolling) = element.scrolling.as_mut() {
-                            scrolling.offset(wheel);
+                InputEvent::MouseButtonDown(button) => {
+                    if let Some(focus) = self.focus {
+                        if !self.elements_under_mouse.contains(&focus) {
+                            self.focus = None;
+                            let element = tree.get_element_mut(focus)?;
+                            element.state.focus = false;
+                            let event = MouseEvent::new(self.mouse, element);
+                            self.emit(&element, "onblur", event);
                         }
                     }
-                    InputEvent::MouseButtonDown(button) => {
-                        if element.state.hover {
-                            self.control(&element, "onmousedown", ControlEvent::OnMouseDown);
-                            if button == MouseButtons::Left {
-                                element.state.active = true;
-                            }
-                            if !element.state.focus {
-                                element.state.focus = true;
-                                self.focus = Some(node);
-                                self.control(&element, "onfocus", ControlEvent::OnFocus);
-                            }
-                            if button == MouseButtons::Left && element.draggable() {
-                                self.control(element, "ondragstart", ControlEvent::OnDragStart);
-                                self.drag = DragContext::new(node);
-                            }
-                        } else {
-                            if element.state.focus {
-                                if self.focus == Some(node) {
-                                    // reset focus only if not reassigned by other element
+                    let elements_under_mouse = self.elements_under_mouse.clone();
+                    for node in elements_under_mouse.iter().copied().rev() {
+                        let mut element = tree.get_element_mut(node)?;
+
+                        element.state.active = true;
+                        self.elements_in_action.push(node);
+
+                        if element.listeners.contains_key("oninput") {
+                            // valid focus target
+                            if let Some(focus) = self.focus {
+                                if focus != node {
                                     self.focus = None;
-                                }
-                                element.state.focus = false;
-                                self.control(&element, "onblur", ControlEvent::OnBlur);
-                            }
-                        }
-                    }
-                    InputEvent::MouseButtonUp(button) => {
-                        if element.state.hover {
-                            self.control(&element, "onmouseup", ControlEvent::OnMouseUp);
-                            if let Some(drag) = self.drag.as_mut() {
-                                if element.listeners.contains_key("ondrop") {
-                                    // valid drop target
-                                    let source = drag.source;
-                                    self.control(element, "ondrop", ControlEvent::OnDrop);
-                                    self.drag = None;
-                                    element = tree.get_element_mut(source)?;
-                                    self.control(element, "ondragend", ControlEvent::OnDragEnd);
+                                    element = tree.get_element_mut(focus)?;
+                                    element.state.focus = false;
+                                    let event = MouseEvent::new(self.mouse, element);
+                                    self.emit(&element, "onblur", event);
                                     element = tree.get_element_mut(node)?;
                                 }
-                            } else {
-                                if button == MouseButtons::Left && element.state.active {
-                                    self.control(&element, "onclick", ControlEvent::OnClick);
-                                }
-                                if button == MouseButtons::Right {
-                                    self.control(
-                                        &element,
-                                        "oncontextmenu",
-                                        ControlEvent::OnContextMenu,
-                                    );
-                                }
+                            }
+                            if Some(node) != self.focus {
+                                self.focus = Some(node);
+                                element.state.focus = true;
+                                let event = MouseEvent::new(self.mouse, element);
+                                self.emit(&element, "onfocus", event);
                             }
                         }
-                        element.state.active = false;
+
+                        let event = MouseEvent::new(self.mouse, element);
+                        self.emit(&element, "onmousedown", event);
+                        if button == MouseButtons::Left && element.draggable() {
+                            let event = MouseEvent::new(self.mouse, element);
+                            self.emit(element, "ondragstart", event);
+                            self.drag = DragContext::new(node);
+                        }
                     }
-                    InputEvent::MouseMove(m) => {
-                        let hover = hovers(self.mouse, element);
-                        if hover {
-                            if !element.state.hover {
-                                element.state.hover = true;
-                                self.control(element, "onmouseenter", ControlEvent::OnMouseEnter);
-                                self.mouse_hovers.insert(element.node);
-                                if self.drag.is_some() {
-                                    self.control(element, "ondragenter", ControlEvent::OnDragEnter);
-                                }
+                }
+                InputEvent::MouseButtonUp(button) => {
+                    let elements_under_mouse = self.elements_under_mouse.clone();
+                    for node in elements_under_mouse.iter().rev() {
+                        let element = tree.get_element_mut(*node)?;
+                        let event = MouseEvent::new(self.mouse, element);
+                        self.emit(&element, "onmouseup", event);
+                        if let Some(drag) = self.drag.as_mut() {
+                            if element.listeners.contains_key("ondrop") {
+                                // valid drop target
+                                let source = drag.source;
+                                let event = MouseEvent::new(self.mouse, element);
+                                self.emit(element, "ondrop", event);
+                                self.drag = None;
+                                let element = tree.get_element_mut(source)?;
+                                let event = MouseEvent::new(self.mouse, element);
+                                self.emit(element, "ondragend", event);
                             }
                         } else {
-                            if element.state.hover {
-                                element.state.hover = false;
-                                self.control(element, "onmouseleave", ControlEvent::OnMouseLeave);
-                                self.mouse_hovers.remove(&element.node);
-                                if self.drag.is_some() {
-                                    self.control(element, "ondragleave", ControlEvent::OnDragLeave);
-                                }
+                            if button == MouseButtons::Left && element.state.active {
+                                let event = MouseEvent::new(self.mouse, element);
+                                self.emit(&element, "onclick", event);
                             }
-                        }
-                        if element.state.hover {
-                            self.control(element, "onmousemove", ControlEvent::OnMouseMove);
-                            if self.drag.is_some() {
-                                self.control(element, "ondragover", ControlEvent::OnDragOver);
+                            if button == MouseButtons::Right {
+                                let event = MouseEvent::new(self.mouse, element);
+                                self.emit(&element, "oncontextmenu", event);
                             }
                         }
                     }
-                    _ => {}
+                    for node in take(&mut self.elements_in_action) {
+                        let element = tree.get_element_mut(node)?;
+                        element.state.active = false;
+                    }
+                }
+                InputEvent::MouseWheel(_) => {}
+                InputEvent::KeyDown(key) => {
+                    if let Some(node) = self.focus {
+                        let element = tree.get_element(node)?;
+                        let event = KeyboardEvent::new(key, element);
+                        self.emit(element, "onkeydown", event)
+                    }
+                }
+                InputEvent::KeyUp(key) => {
+                    if let Some(node) = self.focus {
+                        let element = tree.get_element(node)?;
+                        let event = KeyboardEvent::new(key, element);
+                        self.emit(element, "onkeyup", event)
+                    }
+                }
+                InputEvent::Char(char) => {
+                    if let Some(node) = self.focus {
+                        let element = tree.get_element(node)?;
+                        let event = TextEvent::new(char, element);
+                        self.emit(element, "oninput", event)
+                    }
                 }
             }
-        }
-        for child in tree.children(node).expect("node {node:?} children must be") {
-            self.capture_element_input(child, tree, events)?;
         }
         Ok(())
     }
 
-    pub(crate) fn control(&mut self, element: &Element, handler: &str, event: ControlEvent) {
-        if let Some(path) = element.listeners.get(handler) {
-            if let Some(id) = self.model.pointer(path).and_then(|id| id.as_u64()) {
-                let target = ControlTarget::create(element, self.mouse);
-                self.output.responses.push(ViewResponse {
-                    id: id as usize,
-                    event,
-                    target,
-                })
+    fn calculate_mouse_hovers(
+        &mut self,
+        tree: &TaffyTree<Element>,
+        node: NodeId,
+        position: [f32; 2],
+    ) -> Result<(), ViewError> {
+        let element = tree.get_element(node)?;
+        if element.pointer_events == PointerEvents::Auto && hovers(position, &element) {
+            self.elements_under_mouse.push(node);
+        }
+        for child in tree.children(node)? {
+            self.calculate_mouse_hovers(tree, child, position)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn emit<T: Serialize>(&mut self, element: &Element, handler: &str, event: T) {
+        if let Some(handler) = element.listeners.get(handler) {
+            let mut key = "Undefined".to_string();
+            let mut arguments = vec![];
+            for (index, argument) in handler.arguments.iter().enumerate() {
+                let argument = match argument {
+                    HandlerArgument::Keyword(keyword) => Value::String(keyword.clone()),
+                    HandlerArgument::Event => match serde_json::to_value(&event) {
+                        Ok(event) => event,
+                        Err(error) => {
+                            error!("unable to serialize event, {error:?}");
+                            continue;
+                        }
+                    },
+                    HandlerArgument::Binder { path, pipe } => {
+                        let mut value = match self.model.pointer(&path).cloned() {
+                            Some(value) => value,
+                            None => {
+                                error!("unable to get value at {path:?}, not found");
+                                continue;
+                            }
+                        };
+                        for name in pipe {
+                            match self.transformers.get(name) {
+                                Some(transform) => value = transform(value),
+                                None => {
+                                    error!("unable to get value {path:?}, transformer {name} not found");
+                                    continue;
+                                }
+                            }
+                        }
+                        value
+                    }
+                };
+                if index == 0 {
+                    key = argument.eval_string();
+                } else {
+                    arguments.push(argument);
+                }
             }
+            let message = if arguments.is_empty() {
+                Value::String(key)
+            } else {
+                let mut object = Map::new();
+                object.insert(key, Value::Array(arguments));
+                Value::Object(object)
+            };
+            self.output.messages.push(message);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct KeyboardEvent {
+    pub key: Keys,
+    pub target: EventTarget,
+}
+
+impl KeyboardEvent {
+    pub fn new(key: Keys, element: &Element) -> Self {
+        Self {
+            key,
+            target: EventTarget::create(element),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct MouseEvent {
+    pub position: [f32; 2],
+    pub target: EventTarget,
+}
+
+impl MouseEvent {
+    pub fn new(position: [f32; 2], element: &Element) -> Self {
+        Self {
+            position,
+            target: EventTarget::create(element),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct TextEvent {
+    pub char: char,
+    pub target: EventTarget,
+}
+
+impl TextEvent {
+    pub fn new(char: char, element: &Element) -> Self {
+        Self {
+            char,
+            target: EventTarget::create(element),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct EventTarget {
+    pub size: [f32; 2],
+    pub position: [f32; 2],
+    pub state: ElementState,
+}
+
+impl EventTarget {
+    pub fn create(element: &Element) -> Self {
+        Self {
+            size: element.size,
+            position: element.position,
+            state: element.state,
         }
     }
 }

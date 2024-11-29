@@ -60,7 +60,7 @@ pub enum MouseButtons {
 /// Any other "printable" keys must be passed as unicode characters in context of the current keyboard layout.
 ///
 /// see for details: https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum Keys {
     Unknown,
     // UI keys

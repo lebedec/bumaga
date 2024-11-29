@@ -1,4 +1,3 @@
-use crate::controls::Controls;
 use crate::css::{match_style, read_css, read_inline_css, Css, PseudoClassMatcher};
 use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
@@ -139,7 +138,7 @@ impl View {
         let css = read_css(&css)?;
         // TODO: remove cloned, take ownership
         let mut templates = HashMap::new();
-        let mut body = Html::empty();
+        let _body = Html::empty();
         for child in &html.children {
             if child.tag == "link" {
                 let mut attrs = HashMap::new();
@@ -227,10 +226,6 @@ impl View {
                 }
             }
         }
-    }
-
-    pub fn control<Message>(&self) -> Controls<Message> {
-        Controls::new()
     }
 
     pub fn update(&mut self, input: Input, value: Value) -> Result<Output, ViewError> {
@@ -759,7 +754,6 @@ mod tests {
     use super::*;
     use crate::testing::setup_tests_logging;
     use crate::*;
-    use serde::Serialize;
     use serde_json::json;
     use std::time::Duration;
 
@@ -770,6 +764,36 @@ mod tests {
 
     fn input(time: f32) -> Input {
         Input::new().time(Duration::from_secs_f32(time))
+    }
+
+    #[test]
+    pub fn test_template_with_array_alias() {
+        let css = "";
+        let html = r##"<html>
+            <template id="my-component">
+                <div *item="5 {items}" @id="{item}"></div>
+            </template>
+            <body>
+                <div id="start"></div>
+                <link href="#my-component" +items="{object.items}" />
+                <div id="end"></div>
+            </body>
+        </html>"##;
+        let mut view = view(html, css);
+        let value = json!({
+            "object": {
+                "items": ["a", "b", "c"]
+            }
+        });
+        view.update(Input::new(), value).unwrap();
+        let body = view.body();
+        let div = body.children();
+        assert_eq!(5, div.len(), "elements count");
+        assert_eq!(div[0].attrs.get("id"), Some(&"start".to_string()));
+        assert_eq!(div[1].attrs.get("id"), Some(&"a".to_string()), "a id");
+        assert_eq!(div[2].attrs.get("id"), Some(&"b".to_string()), "b id");
+        assert_eq!(div[3].attrs.get("id"), Some(&"c".to_string()), "c id");
+        assert_eq!(div[4].attrs.get("id"), Some(&"end".to_string()), "end id");
     }
 
     #[test]
@@ -792,11 +816,8 @@ mod tests {
         view.update(Input::new(), value).unwrap();
         let body = view.body();
         let div = body.children();
-        assert_eq!(
-            div[0].attrs.get("id"),
-            Some(&"start".to_string()),
-            "start id"
-        );
+        assert_eq!(5, div.len(), "elements count");
+        assert_eq!(div[0].attrs.get("id"), Some(&"start".to_string()));
         assert_eq!(div[1].attrs.get("id"), Some(&"a".to_string()), "a id");
         assert_eq!(div[2].attrs.get("id"), Some(&"b".to_string()), "b id");
         assert_eq!(div[3].attrs.get("id"), Some(&"c".to_string()), "c id");
@@ -1209,7 +1230,38 @@ mod tests {
         }
 
         assert_eq!(output.is_input_captured, false, "cursor over view");
-        assert_eq!(output.responses, vec![call("leave", "A")]);
+        assert_eq!(output.messages, vec![msg("leave", "A")]);
+    }
+
+    #[test]
+    pub fn test_mouse_click_event() {
+        let css = r#"
+            div {
+                width: 32px;
+                height: 32px;
+            }
+        "#;
+        let html = r#"<html>
+        <body>
+            <div ^onclick="Hello {name}"></div>
+        </body>
+        </html>"#;
+        let value = json!({ "name": "Alice" });
+        let mut view = View::compile(html, css, "").expect("view valid");
+
+        let user_input = vec![
+            InputEvent::MouseMove([20.0, 20.0]),
+            InputEvent::MouseButtonDown(MouseButtons::Left),
+            InputEvent::MouseButtonUp(MouseButtons::Left),
+        ];
+        let mut output = Output::new();
+        for event in user_input {
+            output = view
+                .update(Input::new().event(event), value.clone())
+                .expect("valid update");
+        }
+        assert_eq!(output.is_input_captured, true, "cursor over view");
+        assert_eq!(output.messages, vec![msg("Hello", "Alice")]);
     }
 
     #[test]
@@ -1244,7 +1296,7 @@ mod tests {
         }
 
         assert_eq!(output.is_input_captured, true, "cursor over view");
-        assert_eq!(output.calls, vec![call("leave", "A"), call("enter", "B")]);
+        assert_eq!(output.messages, vec![msg("leave", "A"), msg("enter", "B")]);
     }
 
     #[test]
@@ -1278,7 +1330,7 @@ mod tests {
                 .expect("valid update");
         }
         assert_eq!(output.is_input_captured, true, "cursor over view");
-        assert_eq!(output.calls, vec![call("leave", "B"), call("enter", "A")]);
+        assert_eq!(output.messages, vec![msg("leave", "B"), msg("enter", "A")]);
     }
 
     #[test]
@@ -1322,6 +1374,12 @@ mod tests {
         }
 
         assert_eq!(output.is_input_captured, false, "cursor over view");
-        assert_eq!(output.calls, vec![call("leave", "A")]);
+        assert_eq!(output.messages, vec![msg("leave", "A")]);
+    }
+
+    fn msg(key: &str, value: &str) -> Value {
+        json!({
+            key: [value]
+        })
     }
 }

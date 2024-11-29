@@ -81,7 +81,9 @@ DoubleQuotedAttributeChar = {
     !("<" | ">" | "{" | "\"") ~ ANY
 }
 
-CallbackBinding = { "^" ~ Key ~ "=" ~ "\"" ~ Binder ~ "\"" }
+CallbackBinding = { "^" ~ Key ~ "=" ~ "\"" ~ (Event | Binder | Key)* ~ "\"" }
+
+Event = { "$event" }
 
 VisibilityBinding = { Visible ~ "=" ~ "\"" ~ Binder ~ "\"" }
 
@@ -113,7 +115,7 @@ Binder = !{ "{" ~ Getter ~ ("|" ~ Transformer)* ~ "}" }
 
 Getter = { Key ~ ("." ~ Key)* }
 
-Transformer = { Key }
+Transformer = { Key ~ (":" ~ Getter)* }
 
 Key = @{ KChar+ }
 

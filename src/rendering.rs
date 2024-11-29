@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, HashMap};
 use taffy::{Dimension, NodeId, Size, TaffyTree};
 
 use crate::css::read_inline_css;
-use crate::html::{ElementBinding, Html, TextBinding, TextSpan};
+use crate::html::{CallbackArgument, ElementBinding, Html, TextBinding, TextSpan};
 use crate::styles::{create_element, default_layout};
 use crate::view_model::{Binding, Bindings, Schema};
-use crate::{BindingParams, Element, TextContent, ViewError};
+use crate::{BindingParams, Element, Handler, HandlerArgument, TextContent, ViewError};
 
 pub struct Renderer {
     pub tree: TaffyTree<Element>,
@@ -44,17 +44,7 @@ impl Renderer {
         if let Some(text) = template.text {
             self.render_text(text)
         } else {
-            if let Some((id, bindings)) = template.as_template_link() {
-                let mut template = self
-                    .templates
-                    .get(&id)
-                    .ok_or(ViewError::TemplateNotFound(id))?
-                    .clone();
-                template.bindings.extend(bindings);
-                self.render_template(template)
-            } else {
-                self.render_template(template)
-            }
+            self.render_element(template)
         }
     }
 
@@ -101,25 +91,6 @@ impl Renderer {
         element.get_background_mut(0).image = Some(src);
         element.get_background_mut(0).is_src = true;
         self.tree.set_node_context(node, Some(element))?;
-        Ok(node)
-    }
-
-    fn render_template(&mut self, template: Html) -> Result<NodeId, ViewError> {
-        let mut overridden = HashMap::new();
-        for binding in &template.bindings {
-            if let ElementBinding::Alias(name, binder) = binding {
-                let path = self.schema.field(binder, &mut self.locals);
-                overridden.insert(name.to_string(), self.locals.insert(name.to_string(), path));
-            }
-        }
-        let node = self.render_element(template)?;
-        for (key, value) in overridden {
-            if let Some(value) = value {
-                self.locals.insert(key, value);
-            } else {
-                self.locals.remove(&key);
-            }
-        }
         Ok(node)
     }
 
@@ -192,9 +163,20 @@ impl Renderer {
                     element.attrs.insert(key.clone(), attribute.to_string());
                     element.attrs_bindings.insert(key, attribute);
                 }
-                ElementBinding::Callback(event, binder) => {
-                    let path = self.schema.field(&binder, &mut self.locals);
-                    element.listeners.insert(event, path);
+                ElementBinding::Callback(event, arguments) => {
+                    let arguments = arguments
+                        .into_iter()
+                        .map(|argument| match argument {
+                            CallbackArgument::Keyword(key) => HandlerArgument::Keyword(key),
+                            CallbackArgument::Event => HandlerArgument::Event,
+                            CallbackArgument::Binder(binder) => {
+                                let path = self.schema.field(&binder, &mut self.locals);
+                                let pipe = binder.pipe.clone();
+                                HandlerArgument::Binder { path, pipe }
+                            }
+                        })
+                        .collect();
+                    element.listeners.insert(event, Handler { arguments });
                 }
                 // used on other rendering stages
                 ElementBinding::Alias(_, _) => {}
@@ -226,6 +208,31 @@ impl Renderer {
             "wbr" => {}
             _ => {
                 for child in template.children {
+                    let child = if let Some((id, mut bindings)) = child.as_template_link() {
+                        let mut template = self
+                            .templates
+                            .get(&id)
+                            .ok_or(ViewError::TemplateNotFound(id))?
+                            .clone();
+                        // handle link bindings first
+                        bindings.extend(template.bindings);
+                        template.bindings = bindings;
+                        template
+                    } else {
+                        child
+                    };
+
+                    let mut overridden = HashMap::new();
+                    for binding in &child.bindings {
+                        if let ElementBinding::Alias(name, binder) = binding {
+                            let path = self.schema.field(binder, &mut self.locals);
+                            overridden.insert(
+                                name.to_string(),
+                                self.locals.insert(name.to_string(), path),
+                            );
+                        }
+                    }
+
                     if let Some((visible, binder)) = child.as_visibility() {
                         let path = self.schema.field(&binder, &self.locals);
                         let pipe = binder.pipe.clone();
@@ -263,6 +270,14 @@ impl Renderer {
                     } else {
                         let child = self.render_node(child)?;
                         children.push(child);
+                    }
+
+                    for (key, value) in overridden {
+                        if let Some(value) = value {
+                            self.locals.insert(key, value);
+                        } else {
+                            self.locals.remove(&key);
+                        }
                     }
                 }
             }
