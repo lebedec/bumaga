@@ -30,6 +30,7 @@ pub struct View {
     resources: String,
     pub fonts: Box<dyn Fonts>,
     metrics: ViewMetrics,
+    identified: HashMap<String, NodeId>,
 }
 
 impl View {
@@ -91,6 +92,7 @@ impl View {
         let bindings = renderer.bindings;
         let schema = renderer.schema;
         let tree = renderer.tree;
+        let identified = renderer.static_id;
         let model = ViewModel::create(bindings, schema.value);
         let resources = css_base_directory.display().to_string();
         let mut view = Self {
@@ -104,6 +106,7 @@ impl View {
             resources,
             fonts: Box::new(fonts),
             metrics: ViewMetrics::new(),
+            identified,
         };
         view.calculate_elements_stylesheet(body)?;
         view.apply_default_bindings_state()?;
@@ -179,6 +182,7 @@ impl View {
         let bindings = renderer.bindings;
         let schema = renderer.schema;
         let tree = renderer.tree;
+        let identified = renderer.static_id;
         let model = ViewModel::create(bindings, schema.value);
         let resources = resources.to_string();
         let mut view = Self {
@@ -192,6 +196,7 @@ impl View {
             resources,
             fonts: Box::new(DummyFonts),
             metrics: ViewMetrics::new(),
+            identified,
         };
         view.calculate_elements_stylesheet(body)?;
         view.apply_default_bindings_state()?;
@@ -402,6 +407,9 @@ impl View {
                         }
                     }
                 }
+                if key == "id" {
+                    self.identified.insert(value.clone(), node);
+                }
                 match (element.tag.as_str(), key.as_str()) {
                     ("img", "src") => self.model.update_img_src(node, value, &mut self.tree)?,
                     _ => {}
@@ -554,6 +562,13 @@ impl View {
         }
 
         Ok(())
+    }
+
+    #[inline(always)]
+    pub fn get_element_by_id(&self, id: &str) -> Option<&Element> {
+        self.identified
+            .get(id)
+            .and_then(|node| self.tree.get_element(*node).ok())
     }
 
     pub fn body(&self) -> Fragment {

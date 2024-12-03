@@ -14,6 +14,7 @@ pub struct Renderer {
     pub locals: HashMap<String, String>,
     pub schema: Schema,
     pub templates: HashMap<String, Html>,
+    pub static_id: HashMap<String, NodeId>,
 }
 
 impl Renderer {
@@ -22,12 +23,14 @@ impl Renderer {
         let bindings = BTreeMap::new();
         let locals = HashMap::new();
         let schema = Schema::new();
+        let static_id = HashMap::new();
         Self {
             tree,
             bindings,
             locals,
             schema,
             templates,
+            static_id,
         }
     }
 
@@ -112,6 +115,9 @@ impl Renderer {
                                 );
                             }
                         }
+                    }
+                    if key == "id" {
+                        self.static_id.insert(value.clone(), node);
                     }
                     element.attrs.insert(key, value);
                 }
