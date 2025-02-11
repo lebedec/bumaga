@@ -87,6 +87,13 @@ impl<'c> Cascade<'c> {
                     keyword => return CascadeError::invalid_keyword(keyword),
                 }
             }
+            (PropertyKey::Visibility, ComputedValue::Keyword(keyword)) => {
+                element.visible = match keyword.as_str() {
+                    "visible" => true,
+                    "hidden" => false,
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
+            }
             //
             // Element + Layout
             //

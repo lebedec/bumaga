@@ -379,6 +379,12 @@ mod tests {
     }
 
     #[test]
+    pub fn test_component_value_rgba_function() {
+        let css = css(r#"div { background: rgba(31, 37, 38, 0.4); }"#);
+        assert_eq!(css.first_short(), &[func("rgba", &[n(31), n(37), n(38), f(0.4)])]);
+    }
+
+    #[test]
     pub fn test_component_value_function_url_string() {
         let css = css(r#"div { mask-image: url("masks.svg#mask1"); }"#);
         assert_eq!(css.first_short(), &[func("url", &[s("masks.svg#mask1")])]);

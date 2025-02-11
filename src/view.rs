@@ -1054,6 +1054,49 @@ mod tests {
         assert_eq!(item.position, [8.0, 8.0]);
     }
 
+
+    #[test]
+    pub fn test_visibility() {
+        // The visibility shows or hides an element without changing the layout of a document.
+        let css = r#"
+            div {
+                width: 32px;
+                height: 32px;
+            }
+            .visible {
+                visibility: visible;
+            }
+            .hidden {
+                visibility: hidden;
+            }
+        "#;
+        let html = r#"<html>
+        <body>
+            <div class="visible"></div>
+            <div class="hidden" ^onmousedown="B"></div>
+            <div class="visible" ^onmousedown="C"></div>
+        </body>
+        </html>"#;
+        let user_input = vec![
+            InputEvent::MouseMove([20.0, 33.0]),
+            InputEvent::MouseButtonDown(MouseButtons::Left),
+            InputEvent::MouseMove([20.0, 65.0]),
+            InputEvent::MouseButtonDown(MouseButtons::Left),
+        ];
+        let mut view = view(html, css);
+        let value = json!({});
+        let output = view.update(Input::new().events(user_input), value).unwrap();
+        let body = view.body();
+        let div = &body.children();
+        assert_eq!(div[0].position, [0.0, 0.0]);
+        assert_eq!(div[0].visible, true, "0-th visible");
+        assert_eq!(div[1].position, [0.0, 32.0]);
+        assert_eq!(div[1].visible, false, "1-th hidden");
+        assert_eq!(div[2].position, [0.0, 64.0]);
+        assert_eq!(div[2].visible, true, "2-th visible");
+        assert_eq!(vec!["C".to_string()], output.messages);
+    }
+
     #[test]
     pub fn test_nested_positive_condition_binding_with_nullable() {
         let html = r#"

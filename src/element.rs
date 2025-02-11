@@ -34,6 +34,7 @@ pub struct Element {
     pub scrolling: Option<Scrolling>,
     pub clipping: Option<Layout>,
     pub pointer_events: PointerEvents,
+    pub visible: bool,
 
     pub style_hints: ElementStyleHints,
     pub styles: Vec<ElementStyle>,

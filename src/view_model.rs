@@ -425,7 +425,7 @@ impl ViewModel {
         position: [f32; 2],
     ) -> Result<(), ViewError> {
         let element = tree.get_element(node)?;
-        if element.pointer_events == PointerEvents::Auto && hovers(position, &element) {
+        if element.pointer_events == PointerEvents::Auto && element.visible && hovers(position, &element) {
             self.elements_under_mouse.push(node);
         }
         for child in tree.children(node)? {

@@ -9,11 +9,11 @@ impl<'c> Cascade<'c> {
         let mut arguments = vec![];
         self.compute_shorthand(&function.arguments, &mut arguments);
         let computed_value = match (name, arguments.as_slice()) {
-            ("rgb", [Number(r), Number(g), Number(b)]) => {
-                Color([*r as u8, *g as u8, *b as u8, 255])
+            ("rgb", [r, g, b]) => {
+                Color([map_c(r), map_c(g), map_c(b), 255])
             }
-            ("rgba", [Number(r), Number(g), Number(b), Number(a)]) => {
-                Color([*r as u8, *g as u8, *b as u8, (a * 255.0) as u8])
+            ("rgba", [r, g, b, a]) => {
+                Color([map_c(r), map_c(g), map_c(b), map_a(a)])
             }
             // ("url", [Str(path)]) => Str(format!("{}/{}", self.resources, path)),
             ("url", [Str(path)]) => Str(path.to_string()),
@@ -23,5 +23,25 @@ impl<'c> Cascade<'c> {
             }
         };
         shorthand.push(computed_value);
+    }
+}
+
+#[inline(always)]
+fn map_c(value: &ComputedValue) -> u8 {
+    match value {
+        ComputedValue::Zero => 0,
+        ComputedValue::Percentage(value) => (*value * 255.0) as u8,
+        Number(value) => *value as u8,
+        _ => 0
+    }
+}
+
+#[inline(always)]
+fn map_a(value: &ComputedValue) -> u8 {
+    match value {
+        ComputedValue::Zero => 0,
+        ComputedValue::Percentage(value) => (*value * 255.0) as u8,
+        Number(value) => (*value * 255.0) as u8,
+        _ => 0
     }
 }
