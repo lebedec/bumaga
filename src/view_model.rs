@@ -425,7 +425,10 @@ impl ViewModel {
         position: [f32; 2],
     ) -> Result<(), ViewError> {
         let element = tree.get_element(node)?;
-        if element.pointer_events == PointerEvents::Auto && element.visible && hovers(position, &element) {
+        if element.pointer_events == PointerEvents::Auto
+            && element.visible
+            && hovers(position, &element)
+        {
             self.elements_under_mouse.push(node);
         }
         for child in tree.children(node)? {
@@ -631,7 +634,8 @@ impl Binding {
                 if let Some(value) = value.as_array() {
                     let count = value.len();
                     let count = if count > size {
-                        error!("unable to repeat all items of {parent:?}");
+                        let slice = &value[size..count.min(size + 3)];
+                        error!("unable to repeat all items of {parent:?}, expect {size} but {count}, drop {slice:?} ...");
                         size
                     } else {
                         count
