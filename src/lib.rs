@@ -6,6 +6,7 @@ pub use output::*;
 pub use value::*;
 pub use view::*;
 pub use view_model::*;
+pub use rendering::RendererTranslator;
 
 mod animation;
 mod controls;

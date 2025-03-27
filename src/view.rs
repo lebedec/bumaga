@@ -2,7 +2,7 @@ use crate::css::{match_style, read_css, read_inline_css, Css, PseudoClassMatcher
 use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
 use crate::metrics::ViewMetrics;
-use crate::rendering::Renderer;
+use crate::rendering::{FakeTranslator, Renderer, RendererTranslator};
 use crate::styles::{inherit, Cascade, Scrolling, Sizes, Variables};
 use crate::tree::ViewTreeExtensions;
 use crate::view_model::{Reaction, ViewModel};
@@ -34,7 +34,7 @@ pub struct View {
 }
 
 impl View {
-    pub fn from_html(path: &str, fonts: impl Fonts + 'static) -> Result<Self, ViewError> {
+    pub fn from_html(path: &str, fonts: impl Fonts + 'static, translator: Box<dyn RendererTranslator>) -> Result<Self, ViewError> {
         let mut html_source = Source::file(path);
         let html = html_source.get_content()?;
         let html = read_html(&html)?;
@@ -87,7 +87,7 @@ impl View {
         let css = css_source.get_content()?;
         let css = read_css(&css)?;
         //
-        let mut renderer = Renderer::new(templates);
+        let mut renderer = Renderer::new(templates, translator);
         let [root, body] = renderer.render(body)?;
         let bindings = renderer.bindings;
         let schema = renderer.schema;
@@ -118,19 +118,19 @@ impl View {
         self
     }
 
-    pub fn compile(html: &str, css: &str, resources: &str) -> Result<Self, ViewError> {
+    pub fn compile_deprecated(html: &str, css: &str, resources: &str) -> Result<Self, ViewError> {
         let html = Source::memory(html);
         let css = Source::memory(css);
-        Self::create(html, css, resources)
+        Self::create_deprecated(html, css, resources)
     }
 
-    pub fn watch(html: &str, css: &str, resources: &str) -> Result<Self, ViewError> {
+    pub fn watch_deprecated(html: &str, css: &str, resources: &str) -> Result<Self, ViewError> {
         let html = Source::file(html);
         let css = Source::file(css);
-        Self::create(html, css, resources)
+        Self::create_deprecated(html, css, resources)
     }
 
-    pub fn create(
+    pub fn create_deprecated(
         mut html_source: Source,
         mut css_source: Source,
         resources: &str,
@@ -177,7 +177,7 @@ impl View {
             .cloned()
             .ok_or(ViewError::BodyNotFound)?;
         //
-        let mut renderer = Renderer::new(templates);
+        let mut renderer = Renderer::new(templates, FakeTranslator::new());
         let [root, body] = renderer.render(body)?;
         let bindings = renderer.bindings;
         let schema = renderer.schema;
@@ -212,7 +212,7 @@ impl View {
 
     fn watch_changes(&mut self) {
         if self.html_source.detect_changes() || self.css_source.detect_changes() {
-            let view = View::create(
+            let view = View::create_deprecated(
                 self.html_source.clone(),
                 self.css_source.clone(),
                 &self.resources,
@@ -774,7 +774,7 @@ mod tests {
 
     fn view(html: &str, css: &str) -> View {
         setup_tests_logging();
-        View::compile(html, css, "./assets").expect("view valid and compiling complete")
+        View::compile_deprecated(html, css, "./assets").expect("view valid and compiling complete")
     }
 
     fn input(time: f32) -> Input {
@@ -1274,7 +1274,7 @@ mod tests {
             "body": "Body",
             "a": "A",
         });
-        let mut view = View::compile(html, css, "").expect("view valid");
+        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
 
         let user_input = vec![
             InputEvent::MouseMove([20.0, 20.0]),
@@ -1305,7 +1305,7 @@ mod tests {
         </body>
         </html>"#;
         let value = json!({ "name": "Alice" });
-        let mut view = View::compile(html, css, "").expect("view valid");
+        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
 
         let user_input = vec![
             InputEvent::MouseMove([20.0, 20.0]),
@@ -1340,7 +1340,7 @@ mod tests {
             "a": "A",
             "b": "B"
         });
-        let mut view = View::compile(html, css, "").expect("view valid");
+        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
 
         let user_input = vec![
             InputEvent::MouseMove([20.0, 20.0]),
@@ -1375,7 +1375,7 @@ mod tests {
             "a": "A",
             "b": "B"
         });
-        let mut view = View::compile(html, css, "").expect("view valid");
+        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
 
         let user_input = vec![
             InputEvent::MouseMove([20.0, 40.0]),
@@ -1419,7 +1419,7 @@ mod tests {
         let value = json!({
             "a": "A",
         });
-        let mut view = View::compile(html, css, "").expect("view valid");
+        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
         let initial_mouse_input = Input::new().event(InputEvent::MouseMove([20.0, 40.0]));
         view.update(initial_mouse_input, value.clone())
             .expect("valid update");

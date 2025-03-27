@@ -15,10 +15,11 @@ pub struct Renderer {
     pub schema: Schema,
     pub templates: HashMap<String, Html>,
     pub static_id: HashMap<String, NodeId>,
+    pub translator: Box<dyn RendererTranslator>,
 }
 
 impl Renderer {
-    pub fn new(templates: HashMap<String, Html>) -> Self {
+    pub fn new(templates: HashMap<String, Html>, translator: Box<dyn RendererTranslator>) -> Self {
         let tree = TaffyTree::new();
         let bindings = BTreeMap::new();
         let locals = HashMap::new();
@@ -31,6 +32,7 @@ impl Renderer {
             schema,
             templates,
             static_id,
+            translator,
         }
     }
 
@@ -59,7 +61,7 @@ impl Renderer {
             .into_iter()
             .enumerate()
             .map(|(index, span)| match span {
-                TextSpan::String(span) => span,
+                TextSpan::String(span) => self.translator.translate(span),
                 TextSpan::Binder(binder) => {
                     let path = self.schema.field(&binder, &mut self.locals);
                     let params = BindingParams::Text(node, index);
@@ -293,5 +295,23 @@ impl Renderer {
         self.tree.set_children(node, &children)?;
         // todo:
         Ok(node)
+    }
+}
+
+pub trait RendererTranslator {
+    fn translate(&self, span: String) -> String;
+}
+
+pub struct FakeTranslator;
+
+impl FakeTranslator {
+    pub fn new() -> Box<dyn RendererTranslator> {
+        Box::new(FakeTranslator)
+    }
+}
+
+impl RendererTranslator for FakeTranslator {
+    fn translate(&self, span: String) -> String {
+        span
     }
 }
