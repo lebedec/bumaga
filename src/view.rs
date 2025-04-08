@@ -1343,18 +1343,55 @@ mod tests {
         let mut view = View::compile_deprecated(html, css, "").expect("view valid");
 
         let user_input = vec![
+            InputEvent::MouseMove([100.0, 20.0]),
             InputEvent::MouseMove([20.0, 20.0]),
             InputEvent::MouseMove([20.0, 40.0]),
         ];
-        let mut output = Output::new();
+        let mut messages = vec![];
         for event in user_input {
-            output = view
+            let output = view
                 .update(Input::new().event(event), value.clone())
                 .expect("valid update");
+            messages.extend(output.messages);
         }
 
-        assert_eq!(output.is_input_captured, true, "cursor over view");
-        assert_eq!(output.messages, vec![msg("leave", "A"), msg("enter", "B")]);
+        assert_eq!(messages, vec![msg("enter", "A"), msg("leave", "A"), msg("enter", "B")]);
+    }
+
+    #[test]
+    pub fn test_mouse_enter_leave_over_border() {
+        let css = r#"
+            div {
+                width: 32px;
+                height: 32px;
+            }
+        "#;
+        let html = r#"<html>
+        <body>
+            <div ^onmouseenter="enter {a}" ^onmouseleave="leave {a}"></div>
+            <div ^onmouseenter="enter {b}" ^onmouseleave="leave {b}"></div>
+        </body>
+        </html>"#;
+        let value = json!({
+            "a": "A",
+            "b": "B"
+        });
+        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
+
+        let user_input = vec![
+            InputEvent::MouseMove([20.0, 20.0]),
+            InputEvent::MouseMove([20.0, 32.0]),
+            InputEvent::MouseMove([20.0, 40.0]),
+        ];
+        let mut messages = vec![];
+        for event in user_input {
+            let output = view
+                .update(Input::new().event(event), value.clone())
+                .expect("valid update");
+            messages.extend(output.messages);
+        }
+
+        assert_eq!(messages, vec![msg("enter", "A"), msg("leave", "A"), msg("enter", "B")]);
     }
 
     #[test]
@@ -1378,17 +1415,18 @@ mod tests {
         let mut view = View::compile_deprecated(html, css, "").expect("view valid");
 
         let user_input = vec![
+            InputEvent::MouseMove([100.0, 40.0]),
             InputEvent::MouseMove([20.0, 40.0]),
             InputEvent::MouseMove([20.0, 20.0]),
         ];
-        let mut output = Output::new();
+        let mut messages = vec![];
         for event in user_input {
-            output = view
+            let output = view
                 .update(Input::new().event(event), value.clone())
                 .expect("valid update");
+            messages.extend(output.messages);
         }
-        assert_eq!(output.is_input_captured, true, "cursor over view");
-        assert_eq!(output.messages, vec![msg("leave", "B"), msg("enter", "A")]);
+        assert_eq!(messages, vec![msg("enter", "B"), msg("leave", "B"), msg("enter", "A")]);
     }
 
     #[test]

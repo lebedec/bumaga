@@ -694,7 +694,7 @@ pub enum Reaction {
 fn hovers(point: [f32; 2], element: &Element) -> bool {
     let x = point[0] - element.position[0];
     let y = point[1] - element.position[1];
-    x >= 0.0 && x <= element.size[0] && y >= 0.0 && y <= element.size[1]
+    x >= 0.0 && x < element.size[0] && y >= 0.0 && y < element.size[1]
 }
 
 pub struct Schema {
