@@ -178,7 +178,7 @@ fn parse_content(pair: Pair<Rule>, is_last_content: bool) -> Html {
             let mut spans = vec![];
 
             for index in 0..count {
-                let is_next_binding = if let Some(TextSpan::Binder(_)) = prefetch.get(index + 1) {
+                let _is_next_binding = if let Some(TextSpan::Binder(_)) = prefetch.get(index + 1) {
                     true
                 } else {
                     false
@@ -186,14 +186,17 @@ fn parse_content(pair: Pair<Rule>, is_last_content: bool) -> Html {
                 let span = prefetch[index].clone();
                 match span {
                     TextSpan::String(string) => {
-                        let fragments: Vec<&str> = string
-                            .split("\n")
-                            .map(|fragment| fragment.trim())
-                            .filter(|fragment| !fragment.is_empty())
-                            .collect();
-                        let mut text = fragments.join(" ").trim().to_string();
-                        if is_next_binding || !is_last_content {
-                            text.push(' ');
+                        let mut text = String::new();
+                        for (index, fragment) in string.split("\n").enumerate() {
+                            if index != 0 {
+                                let fragment = fragment.trim_start();
+                                if !fragment.is_empty() || !is_last_content {
+                                    text.push(' ');
+                                    text.push_str(fragment);
+                                }
+                            } else {
+                                text.push_str(fragment);
+                            }
                         }
                         if !text.is_empty() {
                             spans.push(TextSpan::String(text));
@@ -202,35 +205,6 @@ fn parse_content(pair: Pair<Rule>, is_last_content: bool) -> Html {
                     span => spans.push(span),
                 }
             }
-
-            // for (index, span) in prefetch.into_iter().enumerate() {
-            //     match span {
-            //         TextSpan::String(string) => {
-            //             let fragments: Vec<String> = string
-            //                 .split("\n")
-            //                 .map(|fragment| {
-            //                     if index == count - 1 {
-            //                         if is_last_content {
-            //                             fragment.trim()
-            //                         } else {
-            //                             fragment
-            //                         }
-            //                     } else if index == 0 {
-            //                         fragment.trim_start()
-            //                     } else {
-            //                         fragment
-            //                     }
-            //                     .to_string()
-            //                 })
-            //                 .filter(|string| !string.is_empty())
-            //                 .collect();
-            //             if !fragments.is_empty() {
-            //                 spans.push(TextSpan::String(fragments.join(" ")));
-            //             }
-            //         }
-            //         _ => spans.push(span),
-            //     }
-            // }
             let text = TextBinding { spans };
             Html {
                 tag: "".to_string(),
@@ -414,7 +388,14 @@ mod tests {
     #[test]
     pub fn test_binding_text_multiple_spans_with_whitespaces() {
         let html = html(r#"<div>Hello,  {first}  {last}</div>"#);
-        let expected = text(&[t("Hello, "), b("first"), t(" "), b("last")]);
+        let expected = text(&[t("Hello,  "), b("first"), t("  "), b("last")]);
+        assert_eq!(html.children[0].text, expected)
+    }
+
+    #[test]
+    pub fn test_binding_text_no_space() {
+        let html = html(r#"<div>+{property}</div>"#);
+        let expected = text(&[t("+"), b("property")]);
         assert_eq!(html.children[0].text, expected)
     }
 
@@ -428,7 +409,7 @@ mod tests {
     #[test]
     pub fn test_binding_text_ends_with_whitespace() {
         let html = html(r#"<div>Hello, {binding} </div>"#);
-        assert_eq!(html.children[0].text, text(&[t("Hello, "), b("binding")]))
+        assert_eq!(html.children[0].text, text(&[t("Hello, "), b("binding"), t(" ")]))
     }
 
     #[test]
