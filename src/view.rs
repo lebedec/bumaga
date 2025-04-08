@@ -1,8 +1,7 @@
 use crate::css::{match_style, read_css, read_inline_css, Css, PseudoClassMatcher};
-use crate::fonts::DummyFonts;
 use crate::html::{read_html, ElementBinding, Html};
 use crate::metrics::ViewMetrics;
-use crate::rendering::{FakeTranslator, Renderer, RendererTranslator};
+use crate::rendering::{Renderer, RendererTranslator};
 use crate::styles::{inherit, Cascade, Scrolling, Sizes, Variables};
 use crate::tree::ViewTreeExtensions;
 use crate::view_model::{Reaction, ViewModel};
@@ -11,10 +10,7 @@ use log::error;
 use mesura::GaugeValue;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fs;
 use std::ops::{Add, Deref};
-use std::path::PathBuf;
-use std::time::SystemTime;
 use taffy::prelude::length;
 use taffy::style_helpers::TaffyMaxContent;
 use taffy::{AvailableSpace, Layout, NodeId, Point, PrintTree, Size, TaffyTree};
@@ -25,8 +21,6 @@ pub struct View {
     root: NodeId,
     body: NodeId,
     css: Css,
-    html_source: Source,
-    css_source: Source,
     resources: String,
     pub fonts: Box<dyn Fonts>,
     metrics: ViewMetrics,
@@ -34,13 +28,16 @@ pub struct View {
 }
 
 impl View {
-    pub fn from_html(path: &str, fonts: impl Fonts + 'static, translator: Box<dyn RendererTranslator>) -> Result<Self, ViewError> {
-        let mut html_source = Source::file(path);
-        let html = html_source.get_content()?;
-        let html = read_html(&html)?;
-        // TODO: rework
-        let mut css_files = vec![];
-        let css_base_directory = html_source.folder();
+    pub fn from_html(
+        html: &str,
+        css: &str,
+        resources: &str,
+        fonts: impl Fonts + 'static,
+        translator: Box<dyn RendererTranslator>,
+    ) -> Result<Self, ViewError> {
+        let html = read_html(html)?;
+        let css = read_css(css)?;
+
         let mut body = Html::empty();
         let mut templates = HashMap::new();
         for child in html.children {
@@ -49,16 +46,6 @@ impl View {
                 for binding in &child.bindings {
                     if let ElementBinding::None(key, value) = binding {
                         attrs.insert(key.clone(), value.as_str());
-                    }
-                }
-                if attrs.get("rel") == Some(&"stylesheet") {
-                    if let Some(href) = attrs.get("href") {
-                        if href.starts_with("http") {
-                            continue;
-                        }
-                        let mut file = css_base_directory.clone();
-                        file.push(href);
-                        css_files.push(file);
                     }
                 }
             }
@@ -83,10 +70,7 @@ impl View {
                 break;
             }
         }
-        let mut css_source = Source::files(css_files);
-        let css = css_source.get_content()?;
-        let css = read_css(&css)?;
-        //
+
         let mut renderer = Renderer::new(templates, translator);
         let [root, body] = renderer.render(body)?;
         let bindings = renderer.bindings;
@@ -94,16 +78,13 @@ impl View {
         let tree = renderer.tree;
         let identified = renderer.static_id;
         let model = ViewModel::create(bindings, schema.value);
-        let resources = css_base_directory.display().to_string();
         let mut view = Self {
             model,
             tree,
             root,
             body,
             css,
-            html_source,
-            css_source,
-            resources,
+            resources: resources.to_string(),
             fonts: Box::new(fonts),
             metrics: ViewMetrics::new(),
             identified,
@@ -118,91 +99,6 @@ impl View {
         self
     }
 
-    pub fn compile_deprecated(html: &str, css: &str, resources: &str) -> Result<Self, ViewError> {
-        let html = Source::memory(html);
-        let css = Source::memory(css);
-        Self::create_deprecated(html, css, resources)
-    }
-
-    pub fn watch_deprecated(html: &str, css: &str, resources: &str) -> Result<Self, ViewError> {
-        let html = Source::file(html);
-        let css = Source::file(css);
-        Self::create_deprecated(html, css, resources)
-    }
-
-    pub fn create_deprecated(
-        mut html_source: Source,
-        mut css_source: Source,
-        resources: &str,
-    ) -> Result<Self, ViewError> {
-        let html = html_source.get_content()?;
-        let css = css_source.get_content()?;
-        let html = read_html(&html)?;
-        let css = read_css(&css)?;
-        // TODO: remove cloned, take ownership
-        let mut templates = HashMap::new();
-        let _body = Html::empty();
-        for child in &html.children {
-            if child.tag == "link" {
-                let mut attrs = HashMap::new();
-                for binding in &child.bindings {
-                    if let ElementBinding::None(key, value) = binding {
-                        attrs.insert(key.clone(), value.as_str());
-                    }
-                }
-                if attrs.get("rel") == Some(&"stylesheet") {
-                    if let Some(_href) = attrs.get("href") {}
-                }
-            }
-            if child.tag == "template" {
-                let mut id = None;
-                for binding in &child.bindings {
-                    if let ElementBinding::None(key, value) = binding {
-                        if key == "id" {
-                            id = Some(value.clone());
-                        }
-                    }
-                }
-                if let Some(id) = id {
-                    if child.children.len() == 1 {
-                        templates.insert(format!("#{id}"), child.children[0].clone());
-                    }
-                }
-                continue;
-            }
-        }
-        let body = html
-            .children
-            .last()
-            .cloned()
-            .ok_or(ViewError::BodyNotFound)?;
-        //
-        let mut renderer = Renderer::new(templates, FakeTranslator::new());
-        let [root, body] = renderer.render(body)?;
-        let bindings = renderer.bindings;
-        let schema = renderer.schema;
-        let tree = renderer.tree;
-        let identified = renderer.static_id;
-        let model = ViewModel::create(bindings, schema.value);
-        let resources = resources.to_string();
-        let mut view = Self {
-            model,
-            tree,
-            root,
-            body,
-            css,
-            html_source,
-            css_source,
-            resources,
-            fonts: Box::new(DummyFonts),
-            metrics: ViewMetrics::new(),
-            identified,
-        };
-        view.calculate_elements_stylesheet(body)?;
-        view.apply_default_bindings_state()?;
-        Ok(view)
-    }
-
     pub fn pipe(mut self, name: &str, transformer: Transformer) -> Self {
         self.model
             .transformers
@@ -210,32 +106,8 @@ impl View {
         self
     }
 
-    fn watch_changes(&mut self) {
-        if self.html_source.detect_changes() || self.css_source.detect_changes() {
-            let view = View::create_deprecated(
-                self.html_source.clone(),
-                self.css_source.clone(),
-                &self.resources,
-            );
-            match view {
-                Ok(mut view) => {
-                    view.model.transformers = self.model.transformers.clone();
-                    self.model = view.model;
-                    self.tree = view.tree;
-                    self.root = view.root;
-                    self.body = view.body;
-                    self.css = view.css;
-                }
-                Err(error) => {
-                    error!("unable to handle view changes, {error:?}")
-                }
-            }
-        }
-    }
-
     pub fn update(&mut self, input: Input, value: Value) -> Result<Output, ViewError> {
         self.metrics.updates.inc();
-        self.watch_changes();
         let reactions = self.model.bind(&value);
         for reaction in reactions {
             self.update_tree(reaction)?;
@@ -669,104 +541,10 @@ impl PseudoClassMatcher for View {
     }
 }
 
-#[derive(Clone)]
-pub enum Source {
-    Memory(String),
-    File(PathBuf, SystemTime),
-    Files(Vec<(PathBuf, SystemTime)>),
-}
-
-impl Source {
-    fn memory(content: &str) -> Self {
-        Self::Memory(content.to_string())
-    }
-
-    fn file(path: &str) -> Self {
-        Self::File(PathBuf::from(path), SystemTime::UNIX_EPOCH)
-    }
-
-    fn files(files: Vec<PathBuf>) -> Self {
-        Self::Files(
-            files
-                .into_iter()
-                .map(|path| (path, SystemTime::UNIX_EPOCH))
-                .collect(),
-        )
-    }
-
-    fn folder(&self) -> PathBuf {
-        match self {
-            Source::Memory(_) => PathBuf::from("."),
-            Source::File(path, _) => {
-                let mut path = path.clone();
-                path.pop();
-                path
-            }
-            Source::Files(files) => {
-                let mut path = files[0].0.clone();
-                path.pop();
-                path
-            }
-        }
-    }
-
-    fn get_content(&mut self) -> Result<String, ViewError> {
-        match self {
-            Source::Memory(content) => Ok(content.clone()),
-            Source::File(path, modified) => {
-                *modified = Self::modified(path);
-                fs::read_to_string(path).map_err(ViewError::from)
-            }
-            Source::Files(files) => {
-                let mut content = String::new();
-                for (path, modified) in files.iter_mut() {
-                    *modified = Self::modified(path);
-                    content += &fs::read_to_string(path).map_err(ViewError::from)?;
-                }
-                Ok(content)
-            }
-        }
-    }
-
-    fn detect_changes(&mut self) -> bool {
-        match self {
-            Source::Memory(_) => false,
-            Source::File(path, modified) => {
-                let timestamp = Self::modified(&path);
-                if *modified < timestamp {
-                    *modified = timestamp;
-                    true
-                } else {
-                    false
-                }
-            }
-            Source::Files(files) => {
-                for (path, modified) in files.iter_mut() {
-                    let timestamp = Self::modified(&path);
-                    if *modified < timestamp {
-                        *modified = timestamp;
-                        return true;
-                    }
-                }
-                false
-            }
-        }
-    }
-
-    fn modified(path: &PathBuf) -> SystemTime {
-        match fs::metadata(path).and_then(|meta| meta.modified()) {
-            Ok(modified) => modified,
-            Err(error) => {
-                error!("unable to get {} metadata, {error:?}", path.display());
-                SystemTime::now()
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rendering::FakeTranslator;
     use crate::testing::setup_tests_logging;
     use crate::*;
     use serde_json::json;
@@ -774,7 +552,8 @@ mod tests {
 
     fn view(html: &str, css: &str) -> View {
         setup_tests_logging();
-        View::compile_deprecated(html, css, "./assets").expect("view valid and compiling complete")
+        View::from_html(html, css, "./assets", DummyFonts, FakeTranslator::new())
+            .expect("view valid and compiling complete")
     }
 
     fn input(time: f32) -> Input {
@@ -1054,7 +833,6 @@ mod tests {
         assert_eq!(item.position, [8.0, 8.0]);
     }
 
-
     #[test]
     pub fn test_visibility() {
         // The visibility shows or hides an element without changing the layout of a document.
@@ -1274,7 +1052,7 @@ mod tests {
             "body": "Body",
             "a": "A",
         });
-        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
+        let mut view = view(html, css);
 
         let user_input = vec![
             InputEvent::MouseMove([20.0, 20.0]),
@@ -1305,7 +1083,7 @@ mod tests {
         </body>
         </html>"#;
         let value = json!({ "name": "Alice" });
-        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
+        let mut view = view(html, css);
 
         let user_input = vec![
             InputEvent::MouseMove([20.0, 20.0]),
@@ -1340,7 +1118,7 @@ mod tests {
             "a": "A",
             "b": "B"
         });
-        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
+        let mut view = view(html, css);
 
         let user_input = vec![
             InputEvent::MouseMove([100.0, 20.0]),
@@ -1355,7 +1133,10 @@ mod tests {
             messages.extend(output.messages);
         }
 
-        assert_eq!(messages, vec![msg("enter", "A"), msg("leave", "A"), msg("enter", "B")]);
+        assert_eq!(
+            messages,
+            vec![msg("enter", "A"), msg("leave", "A"), msg("enter", "B")]
+        );
     }
 
     #[test]
@@ -1376,7 +1157,7 @@ mod tests {
             "a": "A",
             "b": "B"
         });
-        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
+        let mut view = view(html, css);
 
         let user_input = vec![
             InputEvent::MouseMove([20.0, 20.0]),
@@ -1391,7 +1172,10 @@ mod tests {
             messages.extend(output.messages);
         }
 
-        assert_eq!(messages, vec![msg("enter", "A"), msg("leave", "A"), msg("enter", "B")]);
+        assert_eq!(
+            messages,
+            vec![msg("enter", "A"), msg("leave", "A"), msg("enter", "B")]
+        );
     }
 
     #[test]
@@ -1412,7 +1196,7 @@ mod tests {
             "a": "A",
             "b": "B"
         });
-        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
+        let mut view = view(html, css);
 
         let user_input = vec![
             InputEvent::MouseMove([100.0, 40.0]),
@@ -1426,7 +1210,10 @@ mod tests {
                 .expect("valid update");
             messages.extend(output.messages);
         }
-        assert_eq!(messages, vec![msg("enter", "B"), msg("leave", "B"), msg("enter", "A")]);
+        assert_eq!(
+            messages,
+            vec![msg("enter", "B"), msg("leave", "B"), msg("enter", "A")]
+        );
     }
 
     #[test]
@@ -1457,7 +1244,7 @@ mod tests {
         let value = json!({
             "a": "A",
         });
-        let mut view = View::compile_deprecated(html, css, "").expect("view valid");
+        let mut view = view(html, css);
         let initial_mouse_input = Input::new().event(InputEvent::MouseMove([20.0, 40.0]));
         view.update(initial_mouse_input, value.clone())
             .expect("valid update");
