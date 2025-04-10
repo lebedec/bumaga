@@ -34,6 +34,7 @@ pub struct Element {
     pub scrolling: Option<Scrolling>,
     pub clipping: Option<Layout>,
     pub pointer_events: PointerEvents,
+    pub pointer: Pointer,
     pub visible: bool,
 
     pub style_hints: ElementStyleHints,
@@ -321,4 +322,18 @@ pub enum PointerEvents {
     #[default]
     Auto,
     None,
+}
+
+#[derive(Default, Debug, PartialEq, Clone, Copy)]
+pub enum Pointer {
+    #[default]
+    Auto,
+    Default,
+    ContextMenu,
+    Help,
+    Pointer,
+    Progress,
+    Wait,
+    Text,
+    NotAllowed
 }

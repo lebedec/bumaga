@@ -1,5 +1,5 @@
 use crate::{
-    Element, ElementState, HandlerArgument, Input, InputEvent, Keys, MouseButtons, Output,
+    Element, ElementState, HandlerArgument, Input, InputEvent, Keys, MouseButtons, Output, Pointer,
     PointerEvents, ValueExtensions, ViewError,
 };
 use log::error;
@@ -260,6 +260,14 @@ impl ViewModel {
         }
         self.output = Output::new();
         self.handle_elements_input(events, body, tree)?;
+        for node in self.elements_under_mouse.iter() {
+            if let Ok(element) = tree.get_element(*node) {
+                if let Pointer::Auto = element.pointer {
+                } else {
+                    self.output.pointer = element.pointer;
+                }
+            }
+        }
         self.output.is_input_captured = !self.elements_under_mouse.is_empty()
             || self.drag.is_some()
             || self.focus.is_some()

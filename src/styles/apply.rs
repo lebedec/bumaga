@@ -4,7 +4,7 @@ use crate::animation::{
 use crate::css::ComputedValue::{Keyword, Str, Time};
 use crate::css::{ComputedValue, Dim, PropertyKey, Units};
 use crate::styles::{Cascade, CascadeError};
-use crate::{Element, Length, PointerEvents, TextAlign, TransformFunction};
+use crate::{Element, Length, Pointer, PointerEvents, TextAlign, TransformFunction};
 use taffy::{BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Overflow};
 
 impl<'c> Cascade<'c> {
@@ -84,6 +84,20 @@ impl<'c> Cascade<'c> {
                 element.pointer_events = match keyword.as_str() {
                     "auto" => PointerEvents::Auto,
                     "none" => PointerEvents::None,
+                    keyword => return CascadeError::invalid_keyword(keyword),
+                }
+            }
+            (PropertyKey::Cursor, ComputedValue::Keyword(keyword)) => {
+                element.pointer = match keyword.as_str() {
+                    "auto" => Pointer::Auto,
+                    "default" => Pointer::Default,
+                    "pointer" => Pointer::Pointer,
+                    "context-menu" => Pointer::ContextMenu,
+                    "help" => Pointer::Help,
+                    "progress" => Pointer::Progress,
+                    "wait" => Pointer::Wait,
+                    "text" => Pointer::Text,
+                    "not-allowed" => Pointer::NotAllowed,
                     keyword => return CascadeError::invalid_keyword(keyword),
                 }
             }

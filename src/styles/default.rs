@@ -1,4 +1,4 @@
-use crate::{Borders, Element, FontFace, Length, ObjectFit, TextAlign};
+use crate::{Borders, Element, FontFace, Length, ObjectFit, Pointer, TextAlign};
 use taffy::{Dimension, NodeId, Overflow, Point, Rect};
 
 impl FontFace {
@@ -65,16 +65,17 @@ pub fn create_element(node: NodeId) -> Element {
         self_opacity: 1.0,
         opacity: 1.0,
         transforms: vec![],
-        animators: vec![],
         scrolling: None,
         clipping: None,
-        transitions: vec![],
-        state: Default::default(),
         pointer_events: Default::default(),
+        pointer: Pointer::Auto,
         visible: true,
         style_hints: Default::default(),
         styles: vec![],
         style: vec![],
+        animators: vec![],
+        state: Default::default(),
+        transitions: vec![],
     }
 }
 
